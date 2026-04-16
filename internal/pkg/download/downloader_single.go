@@ -32,6 +32,8 @@ func StartDownload(opt Options) error {
 		fileName = "downloaded.file"
 	}
 
+	fmt.Printf("\r %s Started Downloading \n", fileName)
+
 	fullPath := filepath.Join(fullFolderPath, fileName)
 
 	outFile, err := os.Create(fullPath)

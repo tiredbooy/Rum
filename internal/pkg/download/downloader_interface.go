@@ -15,6 +15,7 @@ type ParallelDownloader struct {
 }
 
 type Options struct {
-	URL string
-	Out string
+	URL      string
+	Out      string
+	Parallel int
 }
