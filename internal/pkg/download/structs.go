@@ -1,7 +1,5 @@
 package download
 
-// import "golang.org/x/sync/errgroup"
-
 type DownloaderInterface interface {
 	Download() error
 	Cancel()
@@ -18,4 +16,10 @@ type Options struct {
 	URL      string
 	Out      string
 	Parallel int
+}
+
+type DownloadResult struct {
+	URL     string
+	Success bool
+	Error   error
 }

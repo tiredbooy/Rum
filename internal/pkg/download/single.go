@@ -12,7 +12,8 @@ import (
 	"swiftget.com/internal/pkg/format"
 )
 
-func StartDownload(opt Options) error {
+func DownloadSingleFile(opt Options) error {
+
 	resp, err := http.Get(opt.URL)
 	if err != nil {
 		return err
@@ -45,6 +46,8 @@ func StartDownload(opt Options) error {
 	defer outFile.Close()
 
 	fileSize := resp.ContentLength
+	fmt.Printf("\r=============================\n")
+	fmt.Println("FILE URL: ", opt.URL)
 	fmt.Printf("\rFileName: %s, FileSize: %s\n", fileName, format.FormatSize(fileSize))
 
 	if fileSize <= 0 {
@@ -87,4 +90,5 @@ func StartDownload(opt Options) error {
 	}
 
 	return nil
+
 }

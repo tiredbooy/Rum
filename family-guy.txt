@@ -1,0 +1,4 @@
+https://git.ir/code/?action=download&id=1784&filename=freeCodeCamp-master.zip
+https://git.ir/code/?action=download&id=3224&filename=the-book-of-secret-knowledge-master.zip
+https://git.ir/code/?action=download&id=1790&filename=computer-science-master.zip
+https://git.ir/code/?action=download&id=600&filename=lazygit-master.zip
