@@ -1,21 +1,20 @@
 package download
 
-type DownloaderInterface interface {
-	Download() error
-	Cancel()
-	// GetProgress() *Progress
-}
-
-type ParallelDownloader struct {
-	// g         *errgroup.Group
-	workers   int
-	chunkSize int
+type DownloadTask struct {
+	Index    int
+	URL      string
+	Attempts int
+	Options
 }
 
 type Options struct {
-	URL      string
+	// URL string
+
 	Out      string
 	Parallel int
+
+	WantGroupFolder bool
+	GroupFolder     string
 }
 
 type DownloadResult struct {

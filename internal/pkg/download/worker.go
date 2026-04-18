@@ -5,20 +5,20 @@ import (
 	"log"
 )
 
-func DownloadWorker(opt Options) {
-	if opt.URL == "" {
-		resultChan <- DownloadResult{URL: opt.URL, Success: false, Error: errors.New("Invalid URL provided")}
+func DownloadWorker(task DownloadTask) {
+	if task.URL == "" {
+		resultChan <- DownloadResult{URL: task.URL, Success: false, Error: errors.New("Invalid URL provided")}
 		return
 	}
 
-	err := DownloadSingleFile(opt)
+	err := DownloadSingleFile(*Opt, task.URL)
 	if err != nil {
-		log.Printf("Error downloading %s: %v\n", opt.URL, err)
-		resultChan <- DownloadResult{URL: opt.URL, Success: false, Error: err}
+		log.Printf("Error downloading %s: %v\n", task.URL, err.Error())
+		resultChan <- DownloadResult{URL: task.URL, Success: false, Error: err}
 		return
 	}
 
-	log.Printf("\rSuccessfully Downloaded: %s\n", opt.URL)
-	resultChan <- DownloadResult{URL: opt.URL, Success: true, Error: nil}
+	log.Printf("\rSuccessfully Downloaded: %s\n", task.URL)
+	resultChan <- DownloadResult{URL: task.URL, Success: true, Error: nil}
 
 }

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	filesystem "swiftget.com/internal/pkg/file-system"
@@ -14,8 +15,10 @@ var resultChan chan DownloadResult
 
 func RunProgram(args []string) {
 	var (
-		wg sync.WaitGroup
-		mu sync.Mutex
+		wg              sync.WaitGroup
+		mu              sync.Mutex
+		wantGroupFolder string
+		groupFolderName string
 	)
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	downloadDir := filesystem.GetOrCreateDirectory()
@@ -42,7 +45,13 @@ func RunProgram(args []string) {
 	rest := fs.Args()
 	urls = append(urls, rest...)
 
+	opt := Options{
+		Out:      *out,
+		Parallel: *parallel,
+	}
+
 	if *inputPath != "" {
+
 		txtFileURLs, err := filesystem.GetTxtUrls(*inputPath)
 		if err != nil {
 			log.Printf("ERROR reading input file %s: %v\n", *inputPath, err.Error())
@@ -50,6 +59,36 @@ func RunProgram(args []string) {
 		}
 
 		urls = append(urls, txtFileURLs...)
+
+		for {
+			fmt.Print("Do You want a Group Folder? (Y,N): ")
+			fmt.Scanln(&wantGroupFolder)
+			wantGroupFolder = strings.TrimSpace(strings.ToUpper(wantGroupFolder))
+
+			if wantGroupFolder == "Y" || wantGroupFolder == "N" {
+				break
+			}
+
+			fmt.Println("Please Enter Only Y or N")
+		}
+
+		if wantGroupFolder == "Y" {
+			for {
+				fmt.Print("Enter the folder name: ")
+
+				fmt.Scanln(&groupFolderName)
+				groupFolderName = strings.TrimSpace(groupFolderName)
+
+				if groupFolderName != "" {
+					break
+				}
+
+				fmt.Println("Folder name cannot be empty")
+			}
+
+			opt.WantGroupFolder = true
+			opt.GroupFolder = groupFolderName
+		}
 
 	}
 
@@ -60,6 +99,8 @@ func RunProgram(args []string) {
 		return
 	}
 
+	LoadOptions(opt)
+
 	fmt.Println("Download Started...")
 	totalURLs := len(urls)
 	resultChan = make(chan DownloadResult, totalURLs)
@@ -68,7 +109,7 @@ func RunProgram(args []string) {
 
 	semphoreChan := make(chan struct{}, *parallel)
 
-	for _, url := range urls {
+	for i, url := range urls {
 		semphoreChan <- struct{}{}
 		wg.Add(1)
 
@@ -78,40 +119,24 @@ func RunProgram(args []string) {
 				wg.Done()
 			}()
 
-			opt := Options{
-				URL:      currentURL,
-				Out:      *out,
-				Parallel: *parallel,
+			task := DownloadTask{
+				Index:    i,
+				URL:      url,
+				Attempts: 1,
 			}
 
 			mu.Lock()
 			// StartDownload(opt)
-			DownloadWorker(opt)
+			DownloadWorker(task)
 			mu.Unlock()
 		}(url)
 	}
 
 	// wg.Add(1)
 
-	// go func() {
-	// 	defer wg.Done()
-	// 	for _, url := range urls {
-	// 		wg.Add(*parallel)
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			mu.Lock()
-	// 			opt := Options{
-	// 				URL:      url,
-	// 				Out:      *out,
-	// 				Parallel: *parallel,
-	// 			}
-	// 			DownloadWorker(opt)
-	// 			mu.Unlock()
-	// 		}()
-	// 	}
-	// }()
-
 	// wg.Wait()
+
+	GatherFailedURLs()
 
 	fmt.Printf("\rDownload have been completed\n")
 
