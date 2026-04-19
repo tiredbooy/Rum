@@ -8,9 +8,9 @@ type DownloadTask struct {
 }
 
 type Options struct {
-
-	Out      string
-	Parallel int
+	SpeedLimit float64
+	Out        string
+	Parallel   int
 
 	WantGroupFolder bool
 	GroupFolder     string

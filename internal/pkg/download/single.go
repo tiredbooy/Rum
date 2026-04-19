@@ -115,10 +115,10 @@ func DownloadSingleFile(opt Options, rawUrl string) error {
 			if totalSize > 0 {
 				percent := float64(downloaded) / float64(totalSize) * 100
 				elapsed := time.Since(start).Seconds()
-				speed := float64(downloaded) / 1024 / elapsed
+				currentSpeed := float64(downloaded) / 1024 / elapsed
 
 				fmt.Printf("\rDownloading... %.2f%% (%s of %s) at %s",
-					percent, format.FormatSize(downloaded), format.FormatSize(totalSize), format.FormatSize(int64(speed*1024)))
+					percent, format.FormatSize(downloaded), format.FormatSize(totalSize), format.FormatSize(int64(currentSpeed*1024)))
 			}
 		}
 

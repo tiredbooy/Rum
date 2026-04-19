@@ -2,9 +2,12 @@ package download
 
 import (
 	"fmt"
+	"log"
 )
 
 func collectResult(expected int) {
+	log.Println("Result: ", <-resultChan)
+	log.Println("COLLECTED ")
 	successCount := 0
 	failureCount := 0
 	var failedURLs []string
@@ -12,8 +15,10 @@ func collectResult(expected int) {
 	for result := range resultChan {
 		if result.Success {
 			successCount++
+			log.Println("Success Count: ", successCount)
 		} else {
 			failureCount++
+			log.Println("Failure Count: ", failureCount)
 			if result.Error != nil {
 				failedURLs = append(failedURLs, fmt.Sprintf("%s (%s)", result.URL, result.Error.Error()))
 			} else {

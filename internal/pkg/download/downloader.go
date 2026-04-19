@@ -31,9 +31,10 @@ func RunProgram(args []string) {
 	out := fs.String("out", downloadDir, "Output Directory")
 	inputPath := fs.String("input", "", "Input URLs Text File ")
 	parallel := fs.Int("p", 1, "Parallel Download")
+	Limit := fs.Float64("limit", 0, "Network Bandewitch")
+	// bandewith := fs.Int("-b", 1000, "Network Bandewitch")
 
 	// resume := fs.Bool("r", true, "Resume Download")
-	// bandewith := fs.Int("-b", 1000, "Network Bandewitch")
 	// userAgent := fs.String("-u", "", "User Agent")
 
 	if err := fs.Parse(args); err != nil {
@@ -46,8 +47,9 @@ func RunProgram(args []string) {
 	urls = append(urls, rest...)
 
 	opt := Options{
-		Out:      *out,
-		Parallel: *parallel,
+		Out:        *out,
+		Parallel:   *parallel,
+		SpeedLimit: *Limit,
 	}
 
 	if *inputPath != "" {
