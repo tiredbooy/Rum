@@ -126,24 +126,12 @@ func RunProgram(args []string) {
 			}
 
 			mu.Lock()
-			// StartDownload(opt)
 			DownloadWorker(task)
 			mu.Unlock()
 		}(url)
 	}
 
-	// wg.Add(1)
-
-	// wg.Wait()
-
 	GatherFailedURLs()
 
-	fmt.Printf("\rDownload have been completed\n")
-
-	// fmt.Println("URL :", *url)
-	// opt := download.Options{
-	// 	URL: *url,
-	// 	Out: downloadDir,
-	// }
-
+	fmt.Printf("\rDownloads have been completed\n")
 }

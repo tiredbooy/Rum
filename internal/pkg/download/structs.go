@@ -8,7 +8,6 @@ type DownloadTask struct {
 }
 
 type Options struct {
-	// URL string
 
 	Out      string
 	Parallel int
