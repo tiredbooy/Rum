@@ -7,9 +7,8 @@ import (
 	"swiftget.com/internal/pkg/download"
 )
 
-
-
 func main() {
+
 	if len(os.Args) < 2 {
 		download.RunProgram(os.Args[1:])
 		return

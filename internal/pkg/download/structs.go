@@ -21,3 +21,11 @@ type DownloadResult struct {
 	Success bool
 	Error   error
 }
+
+type DownloadTargets struct {
+	FileName string
+	FileSize int64
+
+	DownloadSpeed   float64
+	DownloadedBytes int64
+}

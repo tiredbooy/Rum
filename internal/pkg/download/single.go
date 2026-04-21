@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
+	"swiftget.com/internal/pkg/utils"
 )
 
 func DownloadSingleFile(opt Options, rawUrl string) error {
@@ -90,48 +90,31 @@ func DownloadSingleFile(opt Options, rawUrl string) error {
 
 	defer outFile.Close()
 
-	fmt.Printf("\r=============================\n")
+	//fmt.Printf("\r=============================\n")
+	fmt.Println("=== Downloading ===")
 	remaining := resp.ContentLength
 	totalSize := existsFileSize + remaining
 
-	fmt.Printf("Downloading %s: total size %s\n",
-		fileName, format.FormatSize(totalSize))
-
-	if totalSize <= 0 {
-		fmt.Println("Cannot get content length, progress bar disabled")
-	}
+	bar := utils.NewProgressBar(totalSize, fileName)
 
 	buffer := make([]byte, 64*1024)
-
-	downloaded := existsFileSize
-	start := time.Now()
 
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
 			outFile.Write(buffer[:n])
-			downloaded += int64(n)
-
-			if totalSize > 0 {
-				percent := float64(downloaded) / float64(totalSize) * 100
-				elapsed := time.Since(start).Seconds()
-				currentSpeed := float64(downloaded) / 1024 / elapsed
-
-				fmt.Printf("\rDownloading... %.2f%% (%s of %s) at %s",
-					percent, format.FormatSize(downloaded), format.FormatSize(totalSize), format.FormatSize(int64(currentSpeed*1024)))
-			}
+			utils.UpdateProgress(bar, int64(n)) // Add64 که مقدار اضافه می‌کنه
 		}
-
 		if err != nil {
 			if err == io.EOF {
 				break
-			} else {
-				return err
 			}
+			return err
 		}
 	}
 
-	fmt.Printf("\r=============================\n")
+	utils.FinishProgress(bar)
+	//fmt.Printf("\r=============================\n")
 
 	err = outFile.Sync()
 	if err != nil {
