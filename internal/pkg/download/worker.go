@@ -1,24 +1,23 @@
 package download
 
 import (
-	"errors"
-	"log"
+	"context"
 )
 
-func DownloadWorker(task DownloadTask) {
-	if task.URL == "" {
-		resultChan <- DownloadResult{URL: task.URL, Success: false, Error: errors.New("Invalid URL provided")}
-		return
-	}
+func DownloadWorker(ctx context.Context, job *Job) {
+	err := DownloadSingleFile(ctx, *Opt, job.URL)
 
-	err := DownloadSingleFile(*Opt, task.URL)
-	if err != nil {
-		log.Printf("Error downloading %s: %v\n", task.URL, err.Error())
-		resultChan <- DownloadResult{URL: task.URL, Success: false, Error: err}
-		return
+	mu.Lock()
+	if err == context.Canceled {
+		job.Status = "paused"
+	} else if err == nil {
+		job.Status = "completed"
+		resultChan <- DownloadResult{URL: job.URL, Success: true, Error: nil}
+	} else {
+		job.Status = "error"
+		job.Error = err
+		resultChan <- DownloadResult{URL: job.URL, Success: false, Error: err}
 	}
-
-	log.Printf("\rSuccessfully Downloaded: %s\n", task.URL)
-	resultChan <- DownloadResult{URL: task.URL, Success: true, Error: nil}
+	mu.Unlock()
 
 }

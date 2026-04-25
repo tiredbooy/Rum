@@ -1,10 +1,35 @@
 package download
 
+import (
+	"context"
+)
+
 type DownloadTask struct {
-	Index    int
+	ID       string
 	URL      string
 	Attempts int
 	Options
+	Downloaded int64
+	TotalSize  int64
+	Cancel     context.CancelFunc
+	Status     string
+}
+
+type Job struct {
+	ID         string
+	URL        string
+	Status     string
+	CancelFunc context.CancelFunc
+	OutputPath string
+	Error      error
+}
+
+type RequestHeaders struct {
+	Referer        string
+	UserAgent      string
+	AcceptLanguage string
+	AcceptEncoding string
+	Connection     string
 }
 
 type Options struct {
@@ -14,6 +39,9 @@ type Options struct {
 
 	WantGroupFolder bool
 	GroupFolder     string
+
+	Referer   string
+	UserAgent string
 }
 
 type DownloadResult struct {

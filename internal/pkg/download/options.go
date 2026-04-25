@@ -7,8 +7,8 @@ var (
 	once sync.Once
 )
 
-func LoadOptions(cfg Options) {
+func LoadOptions(cfg *Options) {
 	once.Do(func() {
-		Opt = &cfg
+		Opt = cfg
 	})
 }

@@ -1,6 +1,7 @@
 package format
 
 import (
+	"net/url"
 	"path"
 	"strings"
 )
@@ -33,4 +34,22 @@ func CleanFileName(url string) string {
 	urlArr := strings.Split(url, "?")
 	fileName := path.Base(urlArr[0])
 	return fileName
+}
+
+func ExtractFileNameFromURL(inputUrl string) string {
+	parsed, err := url.Parse(inputUrl)
+	if err != nil {
+		return ""
+	}
+
+	if fname := parsed.Query().Get("filename"); fname != "" {
+		decoded, err := url.QueryUnescape(fname)
+		if err == nil && decoded != "" {
+			return decoded
+		}
+
+		return fname
+	}
+
+	return ""
 }

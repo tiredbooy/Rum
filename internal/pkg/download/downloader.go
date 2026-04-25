@@ -1,25 +1,33 @@
 package download
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 
+	"github.com/gen2brain/beeep"
+	"github.com/google/uuid"
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
 )
 
-var resultChan chan DownloadResult
+var (
+	resultChan chan DownloadResult
+	jobs       = make(map[string]*Job)
+	mu         sync.Mutex
+)
 
 func RunProgram(args []string) {
 	var (
 		wg              sync.WaitGroup
-		mu              sync.Mutex
 		wantGroupFolder string
 		groupFolderName string
 	)
+	beeep.AppName = "Swiftget"
+
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	downloadDir := filesystem.GetOrCreateDirectory()
 
@@ -34,8 +42,8 @@ func RunProgram(args []string) {
 	Limit := fs.Float64("limit", 0, "Network Bandewitch")
 	// bandewith := fs.Int("-b", 1000, "Network Bandewitch")
 
+	userAgent := fs.String("-uA", "", "User Agent")
 	// resume := fs.Bool("r", true, "Resume Download")
-	// userAgent := fs.String("-u", "", "User Agent")
 
 	if err := fs.Parse(args); err != nil {
 		log.Printf("Error parsing flags: %v\n", err)
@@ -46,10 +54,11 @@ func RunProgram(args []string) {
 	rest := fs.Args()
 	urls = append(urls, rest...)
 
-	opt := Options{
+	opt := &Options{
 		Out:        *out,
 		Parallel:   *parallel,
 		SpeedLimit: *Limit,
+		UserAgent:  *userAgent,
 	}
 
 	if *inputPath != "" {
@@ -91,7 +100,6 @@ func RunProgram(args []string) {
 			opt.WantGroupFolder = true
 			opt.GroupFolder = groupFolderName
 		}
-
 	}
 
 	if len(urls) == 0 {
@@ -110,30 +118,55 @@ func RunProgram(args []string) {
 	fmt.Printf("Starting download of %d URLs to %s with %d parallel workers...\n", totalURLs, *out, *parallel)
 
 	semphoreChan := make(chan struct{}, *parallel)
-
-	for i, url := range urls {
+	for _, url := range urls {
 		semphoreChan <- struct{}{}
 		wg.Add(1)
 
-		go func(currentURL string) {
+		// task := DownloadTask{
+		// 	ID:       string(i),
+		// 	URL:      url,
+		// 	Attempts: 1,
+		// }
+
+		job := &Job{
+			ID:         uuid.New().String(),
+			URL:        url,
+			OutputPath: opt.Out,
+			Status:     "pending",
+		}
+
+		mu.Lock()
+
+		jobs[job.ID] = job
+
+		mu.Unlock()
+
+		go func(j *Job) {
 			defer func() {
 				<-semphoreChan
 				wg.Done()
 			}()
 
-			task := DownloadTask{
-				Index:    i,
-				URL:      url,
-				Attempts: 1,
-			}
+			// ctx, cancel := context.WithCancel(context.Background())
+			// j.CancelFunc = cancel
+			// j.Status = "running"
 
-			mu.Lock()
-			DownloadWorker(task)
-			mu.Unlock()
-		}(url)
+			// err := Down
+
+			ctx, cancel := context.WithCancel(context.Background())
+			j.CancelFunc = cancel
+			j.Status = "running"
+
+			DownloadWorker(ctx, j)
+
+			// DownloadWorker(context.Background(), task)
+
+		}(job)
 	}
 
 	GatherFailedURLs()
 
-	fmt.Printf("\rDownloads have been completed\n")
+	beeep.Notify("Download Completed.", "All The Files have been downloaded successfully!", "")
+	beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+
 }
