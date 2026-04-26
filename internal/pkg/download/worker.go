@@ -4,20 +4,27 @@ import (
 	"context"
 )
 
-func DownloadWorker(ctx context.Context, job *Job) {
-	err := DownloadSingleFile(ctx, *Opt, job.URL)
+type ProgressFunc func(downloaded, total int64)
+
+func DownloadWorker(ctx context.Context, opt *Options, job *Job, progressFn ProgressFunc) {
+	err := DownloadSingleFile(ctx, *Opt, job, progressFn)
 
 	mu.Lock()
-	if err == context.Canceled {
+	defer mu.Unlock()
+
+	if ctx.Err() == context.Canceled {
 		job.Status = "paused"
-	} else if err == nil {
+		return
+	}
+
+	if err == nil {
 		job.Status = "completed"
 		resultChan <- DownloadResult{URL: job.URL, Success: true, Error: nil}
+	} else if err == context.Canceled {
+		job.Status = "paused"
 	} else {
 		job.Status = "error"
 		job.Error = err
 		resultChan <- DownloadResult{URL: job.URL, Success: false, Error: err}
 	}
-	mu.Unlock()
-
 }

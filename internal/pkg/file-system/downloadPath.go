@@ -22,7 +22,7 @@ func getHomeDir() string {
 
 func GetOrCreateDirectory() string {
 	homeDir := getHomeDir()
-	appName := "swiftget"
+	appName := "Rum"
 	downloadDir := path.Join(homeDir, "Downloads", appName)
 
 	_, err := os.Stat(downloadDir)

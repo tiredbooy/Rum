@@ -56,7 +56,6 @@ func GetHeaderInfo(url string) (*HeaderInfo, error) {
 	headResp, err := GetWithTimeout(url, "HEAD", 10*time.Second)
 	if err == nil && headResp != nil {
 		defer headResp.Body.Close()
-		log.Println("WE GOT THE HEADER FIRST TRY")
 		return ParseHeaderInfo(headResp), nil
 	}
 
@@ -70,8 +69,6 @@ func GetHeaderInfo(url string) (*HeaderInfo, error) {
 	}
 
 	defer resp.Body.Close()
-
-	log.Println("WE GOT THE HEADER WITH FALLBACK")
 
 	io.Copy(io.Discard, resp.Body)
 

@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/cheggaaa/pb/v3"
-	"github.com/gen2brain/beeep"
 )
 
 var (
@@ -47,11 +46,17 @@ func UpdateProgress(bar *pb.ProgressBar, n int64) {
 	}
 }
 
-func FinishProgress(bar *pb.ProgressBar, fileName string) {
+func FinishProgress(bar *pb.ProgressBar, fileName, status string) {
+	if status == "canceled" {
+		bar.Finish()
+		fmt.Fprintf(os.Stderr, "\n Download Paused\n")
+	}
+
 	if bar != nil {
 		bar.Finish()
 		fmt.Fprintln(os.Stderr, "\n✅ Download complete!\n")
 
-		beeep.Notify("Download Completed", fmt.Sprintf("Your file '%s' Have been Downloaded.", fileName), "")
+		// beeep.Notify("Download Completed", fmt.Sprintf("Your file '%s' Have been Downloaded.", fileName), "")
 	}
+
 }

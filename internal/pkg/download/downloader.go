@@ -1,10 +1,11 @@
 package download
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -20,35 +21,42 @@ var (
 	mu         sync.Mutex
 )
 
-func RunProgram(args []string) {
+func RunProgram(args []string) (map[string]*Job, *Options) {
 	var (
-		wg              sync.WaitGroup
 		wantGroupFolder string
 		groupFolderName string
 	)
-	beeep.AppName = "Swiftget"
-
+	beeep.AppName = "Rum"
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	downloadDir := filesystem.GetOrCreateDirectory()
+
+	configPath := GetJobsFilePath()
+	testFile := configPath + ".test"
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		fmt.Printf("⚠️ WARNING: Cannot write to config directory: %v\n", err)
+		fmt.Printf("   Tried to write: %s\n", testFile)
+	} else {
+		os.Remove(testFile)
+		fmt.Printf("✓ Config directory writable: %s\n", filepath.Dir(configPath))
+	}
 
 	var urls format.StringSlice
 	fs.Func("url", "Download URLs", func(flagValue string) error {
 		urls = append(urls, flagValue)
 		return nil
 	})
-	out := fs.String("out", downloadDir, "Output Directory")
-	inputPath := fs.String("input", "", "Input URLs Text File ")
-	parallel := fs.Int("p", 1, "Parallel Download")
-	Limit := fs.Float64("limit", 0, "Network Bandewitch")
-	// bandewith := fs.Int("-b", 1000, "Network Bandewitch")
 
-	userAgent := fs.String("-uA", "", "User Agent")
-	// resume := fs.Bool("r", true, "Resume Download")
+	out := fs.String("out", downloadDir, "Output Directory")
+	inputPath := fs.String("input", "", "Input URLs Text File")
+	parallel := fs.Int("p", 1, "Parallel Download")
+	limit := fs.Float64("limit", 0, "Network bandwidth limit (MB/s)")
+	userAgent := fs.String("uA", "", "User Agent")
+	referer := fs.String("rE", "", "Referer")
 
 	if err := fs.Parse(args); err != nil {
 		log.Printf("Error parsing flags: %v\n", err)
 		fs.Usage()
-		return
+		return nil, nil
 	}
 
 	rest := fs.Args()
@@ -57,116 +65,69 @@ func RunProgram(args []string) {
 	opt := &Options{
 		Out:        *out,
 		Parallel:   *parallel,
-		SpeedLimit: *Limit,
+		SpeedLimit: *limit,
 		UserAgent:  *userAgent,
+		Referer:    *referer,
 	}
+	Opt = opt
 
+	// Handle input file if provided
 	if *inputPath != "" {
-
 		txtFileURLs, err := filesystem.GetTxtUrls(*inputPath)
 		if err != nil {
 			log.Printf("ERROR reading input file %s: %v\n", *inputPath, err.Error())
-			return
+			return nil, nil
 		}
-
 		urls = append(urls, txtFileURLs...)
 
 		for {
-			fmt.Print("Do You want a Group Folder? (Y,N): ")
+			fmt.Print("Do you want a Group Folder? (Y,N): ")
 			fmt.Scanln(&wantGroupFolder)
 			wantGroupFolder = strings.TrimSpace(strings.ToUpper(wantGroupFolder))
-
 			if wantGroupFolder == "Y" || wantGroupFolder == "N" {
 				break
 			}
-
-			fmt.Println("Please Enter Only Y or N")
+			fmt.Println("Please enter only Y or N")
 		}
 
 		if wantGroupFolder == "Y" {
 			for {
 				fmt.Print("Enter the folder name: ")
-
 				fmt.Scanln(&groupFolderName)
 				groupFolderName = strings.TrimSpace(groupFolderName)
-
 				if groupFolderName != "" {
 					break
 				}
-
 				fmt.Println("Folder name cannot be empty")
 			}
-
 			opt.WantGroupFolder = true
 			opt.GroupFolder = groupFolderName
 		}
 	}
 
 	if len(urls) == 0 {
-		fmt.Println("URLS: ", urls)
-		fmt.Println("Error: Atleast one -url is Required")
+		fmt.Println("Error: at least one URL is required")
 		fs.Usage()
-		return
+		return nil, nil
 	}
 
 	LoadOptions(opt)
 
-	fmt.Println("Download Started...")
-	totalURLs := len(urls)
-	resultChan = make(chan DownloadResult, totalURLs)
-	go collectResult(totalURLs)
-	fmt.Printf("Starting download of %d URLs to %s with %d parallel workers...\n", totalURLs, *out, *parallel)
+	LoadJobsFromDisk()
 
-	semphoreChan := make(chan struct{}, *parallel)
 	for _, url := range urls {
-		semphoreChan <- struct{}{}
-		wg.Add(1)
-
-		// task := DownloadTask{
-		// 	ID:       string(i),
-		// 	URL:      url,
-		// 	Attempts: 1,
-		// }
-
 		job := &Job{
 			ID:         uuid.New().String(),
 			URL:        url,
 			OutputPath: opt.Out,
 			Status:     "pending",
 		}
-
 		mu.Lock()
-
 		jobs[job.ID] = job
-
 		mu.Unlock()
-
-		go func(j *Job) {
-			defer func() {
-				<-semphoreChan
-				wg.Done()
-			}()
-
-			// ctx, cancel := context.WithCancel(context.Background())
-			// j.CancelFunc = cancel
-			// j.Status = "running"
-
-			// err := Down
-
-			ctx, cancel := context.WithCancel(context.Background())
-			j.CancelFunc = cancel
-			j.Status = "running"
-
-			DownloadWorker(ctx, j)
-
-			// DownloadWorker(context.Background(), task)
-
-		}(job)
 	}
 
-	GatherFailedURLs()
+	SaveJobsToDisk()
 
-	beeep.Notify("Download Completed.", "All The Files have been downloaded successfully!", "")
-	beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
-
+	return jobs, opt
 }

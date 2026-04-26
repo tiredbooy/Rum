@@ -1,3 +1,5 @@
 *.txt
 .idea
 cmd/swiftget/swiftget
+cmd/rum/Rum
+.VSCodeCounter

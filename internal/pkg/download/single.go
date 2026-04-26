@@ -8,6 +8,8 @@ import (
 	urlPkg "net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
 
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
@@ -41,20 +43,16 @@ func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, f
 	return fullPath, fileName
 }
 
-func DownloadWithRange(ctx context.Context, req *http.Request, fileName string, outFile *os.File, offset int64) error {
+func DownloadWithRange(ctx context.Context, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
+	req = req.WithContext(ctx)
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
-	}
-
-	if resp != nil {
-		defer resp.Body.Close()
-	} else {
-		return fmt.Errorf("Http Client returned a nil response")
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
@@ -72,67 +70,73 @@ func DownloadWithRange(ctx context.Context, req *http.Request, fileName string, 
 		offset = 0
 	}
 
-	return SaveDownloadedFile(ctx, resp, outFile, offset, fileName)
+	return SaveDownloadedFile(ctx, resp, outFile, offset, fileName, job, progressFn)
 }
 
-func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.File, existsFileSize int64, fileName string) error {
-
+func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.File, existsFileSize int64, fileName string, job *Job, progressFn ProgressFunc) error {
 	if _, err := outFile.Seek(existsFileSize, io.SeekStart); err != nil {
 		return err
 	}
-
-	remainingSize := resp.ContentLength
-	totalSize := existsFileSize + remainingSize
-
-	bar := utils.NewProgressBar(totalSize, existsFileSize, fileName)
-
-	buffer := make([]byte, 64*1024)
+	totalSize := existsFileSize + resp.ContentLength
+	buffer := make([]byte, 1024*1024) // 1MB
+	var downloaded int64 = existsFileSize
 
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			n, err := resp.Body.Read(buffer)
-			if n > 0 {
-				if _, err := outFile.Write(buffer[:n]); err != nil {
-					return err
-				}
-				utils.UpdateProgress(bar, int64(n))
+		n, err := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, werr := outFile.Write(buffer[:n]); werr != nil {
+				return werr
 			}
-
-			if err == io.EOF {
-				utils.FinishProgress(bar, fileName)
-				if syncErr := outFile.Sync(); syncErr != nil {
-					return syncErr
-				}
-				return nil
+			downloaded += int64(n)
+			atomic.AddInt64(&job.Downloaded, int64(n))
+			if progressFn != nil {
+				progressFn(downloaded, totalSize)
 			}
-			if err != nil {
-				utils.FinishProgress(bar, fileName)
-
-				return err
+			if downloaded%500 == 0 {
+				go SaveJobsToDisk()
 			}
 		}
-
+		if err == io.EOF {
+			if syncErr := outFile.Sync(); syncErr != nil {
+				return syncErr
+			}
+			return nil
+		}
+		if err != nil {
+			// If the context was cancelled, return that error
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return err
+		}
 	}
-
 }
 
-func DownloadSingleFile(ctx context.Context, opt Options, rawUrl string) error {
-	url := utils.UrlValidation(rawUrl)
+func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
+	url := utils.UrlValidation(job.URL)
+
 	var referer string
+	var userAgent string
+
 	if opt.Referer != "" {
 		referer = opt.Referer
 	} else {
-		u, _ := urlPkg.Parse(rawUrl)
+		u, _ := urlPkg.Parse(job.URL)
 		referer = fmt.Sprintf("%s://%s/", u.Scheme, u.Host)
+	}
+
+	if opt.UserAgent != "" {
+		userAgent = opt.UserAgent
+	} else {
+		userAgent = utils.GetRandomUserAgent()
 	}
 
 	fileInfo, err := GetHeaderInfo(url)
 	if err != nil {
 		return err
 	}
+
+	job.TotalSize, _ = strconv.ParseInt(fileInfo.ContentSize, 64, 10)
 
 	fullPath, fileName := PrepareOutputPath(opt, url, fileInfo.ContentType)
 
@@ -152,28 +156,22 @@ func DownloadSingleFile(ctx context.Context, opt Options, rawUrl string) error {
 	}
 
 	req, err := GetFile(url)
-	if err != nil {
 
+	if err != nil {
 		return err
 	}
 
-	req.Header.Set("User-Agent", utils.GetRandomUserAgent())
+	req = req.WithContext(ctx)
+
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Referer", referer)
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Set("Connection", "keep-alive")
 
-	// fmt.Println("DEBUG: about to use variable Resp")
-	// if req != nil {
-	// 	defer req.Body.Close()
-	// } else {
-	// 	fmt.Println("Failed to get Request")
-	// 	return err
-	// }
-
 	if existsFileSize > 0 && fileInfo.SupportsRange {
-		fmt.Printf("Resuming download at %s...\n", format.FormatSize(existsFileSize))
-		return DownloadWithRange(ctx, req, fileName, outFile, existsFileSize)
+		// fmt.Printf("Resuming download at %s...\n", format.FormatSize(existsFileSize))
+		return DownloadWithRange(ctx, req, fileName, outFile, existsFileSize, job, progressFn)
 	}
 
 	if existsFileSize > 0 && !fileInfo.SupportsRange {
@@ -183,45 +181,5 @@ func DownloadSingleFile(ctx context.Context, opt Options, rawUrl string) error {
 		}
 	}
 
-	return DownloadWithRange(ctx, req, fileName, outFile, 0)
+	return DownloadWithRange(ctx, req, fileName, outFile, 0, job, progressFn)
 }
-
-// fmt.Println("=== Downloading ===")
-// remaining := resp.ContentLength
-// totalSize := existsFileSize + remaining
-
-// bar := utils.NewProgressBar(totalSize, existsFileSize, fileName)
-
-// buffer := make([]byte, 64*1024)
-
-// for {
-// 	select {
-// 	case <-ctx.Done():
-// 		return nil
-
-// 	default:
-// 		n, err := resp.Body.Read(buffer)
-// 		if n > 0 {
-// 			outFile.Write(buffer[:n])
-// 			utils.UpdateProgress(bar, int64(n))
-// 			// downloaded += int64(n)
-// 		}
-// 		if err != nil {
-// 			if err == io.EOF {
-// 				break
-// 			}
-// 			return err
-// 		}
-// 	}
-
-// 	utils.FinishProgress(bar, fileName)
-
-// 	err = outFile.Sync()
-// 	if err != nil {
-// 		log.Println("Failed to Sync output File: ", err.Error())
-// 		return err
-// 	}
-
-// 	return nil
-
-// }
