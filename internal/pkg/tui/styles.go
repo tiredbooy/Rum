@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"swiftget.com/internal/pkg/download"
 	"swiftget.com/internal/pkg/format"
 )
 
@@ -27,21 +26,17 @@ var (
 				Width(10)
 )
 
-func renderJobRow(job *download.Job, width int) string {
-    status := fmt.Sprintf("[%-7s]", job.Status)
-    name := shortURL(job.URL, 40)
-    speed := format.FormatSpeed(job.Speed)
-    eta := format.FormatDuration(job.RemainingTime)
-    percent := 0.0
-    if job.TotalSize > 0 {
-        percent = float64(job.Downloaded) / float64(job.TotalSize)
-    }
-    bar := renderProgressBar(percent, 20)
-    percentStr := fmt.Sprintf("%5.1f%%", percent*100)
-    sizeStr := fmt.Sprintf("%s / %s", format.FormatBytes(job.Downloaded), format.FormatBytes(job.TotalSize))
+func renderJobRow(status, name, id string, speedStr, etaStr string, downloaded, total int64, width int) string {
+	percent := 0.0
+	if total > 0 {
+		percent = float64(downloaded) / float64(total)
+	}
+	bar := renderProgressBar(percent, 20)
+	percentStr := fmt.Sprintf("%5.1f%%", percent*100)
+	sizeStr := fmt.Sprintf("%s / %s", format.FormatBytes(downloaded), format.FormatBytes(total))
 
-    return fmt.Sprintf("%-10s %-42s %-12s %-12s %-22s %-8s %s",
-        status, name, speed, eta, bar, percentStr, sizeStr)
+	return fmt.Sprintf("%-10s %-42s %-12s %-12s %-22s %-8s %s",
+		status, name, speedStr, etaStr, bar, percentStr, sizeStr)
 }
 
 func renderProgressBar(percent float64, width int) string {
@@ -52,7 +47,7 @@ func renderProgressBar(percent float64, width int) string {
 	if filled > width {
 		filled = width
 	}
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	bar := strings.Repeat("█", filled) + strings.Repeat("_", width-filled)
 	return bar
 }
 
@@ -62,3 +57,5 @@ func shortURL(url string, truncate int) string {
 	}
 	return url
 }
+
+// "░"

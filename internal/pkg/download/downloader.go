@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gen2brain/beeep"
+	// "github.com/gen2brain/beeep"
 	"github.com/google/uuid"
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
@@ -26,7 +26,7 @@ func RunProgram(args []string) (map[string]*Job, *Options) {
 		wantGroupFolder string
 		groupFolderName string
 	)
-	beeep.AppName = "Rum"
+	// beeep.AppName = "Rum"
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	downloadDir := filesystem.GetOrCreateDirectory()
 
@@ -71,7 +71,6 @@ func RunProgram(args []string) (map[string]*Job, *Options) {
 	}
 	Opt = opt
 
-	// Handle input file if provided
 	if *inputPath != "" {
 		txtFileURLs, err := filesystem.GetTxtUrls(*inputPath)
 		if err != nil {
@@ -105,28 +104,53 @@ func RunProgram(args []string) (map[string]*Job, *Options) {
 		}
 	}
 
+	LoadOptions(opt)
+
 	if len(urls) == 0 {
 		fmt.Println("Error: at least one URL is required")
 		fs.Usage()
 		return nil, nil
 	}
 
-	LoadOptions(opt)
+	uniqueURLs := make(map[string]bool)
+	var finalURLs []string
+	for _, u := range urls {
+		if !uniqueURLs[u] {
+			uniqueURLs[u] = true
+			finalURLs = append(finalURLs, u)
+		} else {
+			fmt.Printf("⚠️ Duplicate URL skipped: %s\n", u)
+		}
+	}
+	urls = finalURLs
 
 	LoadJobsFromDisk()
 
 	for _, url := range urls {
-		job := &Job{
-			ID:         uuid.New().String(),
-			URL:        url,
-			OutputPath: opt.Out,
-			Status:     "pending",
-		}
+		exists := false
 		mu.Lock()
-		jobs[job.ID] = job
+		for _, existingJob := range jobs {
+			if existingJob.URL == url {
+				exists = true
+				break
+			}
+		}
 		mu.Unlock()
-	}
 
+		if !exists {
+			job := &Job{
+				ID:         uuid.New().String(),
+				URL:        url,
+				OutputPath: opt.Out,
+				Status:     "pending",
+			}
+			mu.Lock()
+			jobs[job.ID] = job
+			mu.Unlock()
+		} else {
+			fmt.Printf("✓ Job for %s already loaded, skipping creation\n", url)
+		}
+	}
 	SaveJobsToDisk()
 
 	return jobs, opt

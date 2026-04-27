@@ -13,17 +13,17 @@ func DownloadWorker(ctx context.Context, opt *Options, job *Job, progressFn Prog
 	defer mu.Unlock()
 
 	if ctx.Err() == context.Canceled {
-		job.Status = "paused"
+		job.SetStatus(StatusPaused)
 		return
 	}
 
 	if err == nil {
-		job.Status = "completed"
+		job.SetStatus(StatusCompleted)
 		resultChan <- DownloadResult{URL: job.URL, Success: true, Error: nil}
 	} else if err == context.Canceled {
-		job.Status = "paused"
+		job.SetStatus(StatusPaused)
 	} else {
-		job.Status = "error"
+		job.SetStatus(StatusError)
 		job.Error = err
 		resultChan <- DownloadResult{URL: job.URL, Success: false, Error: err}
 	}

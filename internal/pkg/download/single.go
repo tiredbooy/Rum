@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync/atomic"
 
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
@@ -77,7 +76,16 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 	if _, err := outFile.Seek(existsFileSize, io.SeekStart); err != nil {
 		return err
 	}
-	totalSize := existsFileSize + resp.ContentLength
+
+	remainingSize := resp.ContentLength
+	var totalSize int64
+
+	if remainingSize > 0 {
+		totalSize = existsFileSize + remainingSize
+	} else {
+		totalSize = -1
+	}
+
 	buffer := make([]byte, 1024*1024) // 1MB
 	var downloaded int64 = existsFileSize
 
@@ -88,7 +96,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 				return werr
 			}
 			downloaded += int64(n)
-			atomic.AddInt64(&job.Downloaded, int64(n))
+			job.SetDownloaded(downloaded)
 			if progressFn != nil {
 				progressFn(downloaded, totalSize)
 			}
@@ -136,9 +144,16 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		return err
 	}
 
-	job.TotalSize, _ = strconv.ParseInt(fileInfo.ContentSize, 64, 10)
+	fileSize, _ := strconv.ParseInt(fileInfo.ContentSize, 64, 10)
+
+	if fileSize > 0 {
+		job.SetTotalSize(fileSize)
+	} else {
+		job.SetTotalSize(-1)
+	}
 
 	fullPath, fileName := PrepareOutputPath(opt, url, fileInfo.ContentType)
+	job.SetFileName(fileName)
 
 	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -169,8 +184,16 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Set("Connection", "keep-alive")
 
+	if existsFileSize == fileSize {
+		DebugLog("Found Completed File Pass")
+
+		job.SetStatus(StatusCompleted)
+		job.SetDownloaded(fileSize)
+		return nil
+	}
+
 	if existsFileSize > 0 && fileInfo.SupportsRange {
-		// fmt.Printf("Resuming download at %s...\n", format.FormatSize(existsFileSize))
+		DebugLog("Trying to Resume Exists File")
 		return DownloadWithRange(ctx, req, fileName, outFile, existsFileSize, job, progressFn)
 	}
 

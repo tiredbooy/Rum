@@ -10,14 +10,14 @@ import (
 
 var debugFile *os.File
 
-func InitLogFile() {
+func InitLogFile() error {
 	path, err := os.UserConfigDir()
 	if err != nil {
 		log.Println("Failed to get user config path")
-		return
+		return err
 	}
 
-	filePath := filepath.Join(path, "debug.log")
+	filePath := filepath.Join(path, "rum", "debug.log")
 
 	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
@@ -25,6 +25,8 @@ func InitLogFile() {
 	}
 
 	log.Printf("Log Initilized At %s", filePath)
+
+	return nil
 }
 
 func DebugLog(msg string) {

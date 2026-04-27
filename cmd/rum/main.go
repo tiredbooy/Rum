@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gen2brain/beeep"
 	"swiftget.com/internal/pkg/download"
 	"swiftget.com/internal/pkg/tui"
 )
@@ -15,22 +16,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	download.InitLogFile()
+	err := download.InitLogFile()
+	if err != nil {
+		fmt.Println("Failed to Create file..")
+		return
+	}
+
+	beeep.AppName = "Rum"
 
 	sub := args[0]
 	switch sub {
-	case "get":
+	case "get", "-g", "download":
 		jobs, opt := download.RunProgram(args[1:])
 		if jobs == nil || len(jobs) == 0 {
 			return
 		}
 		tui.RunTUI(jobs, opt)
-	case "version":
+	case "version", "v", "-v", "--v":
 		fmt.Println("Rum v0.1.0")
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		// Assume first argument is a URL
 		jobs, opt := download.RunProgram(args)
 		if jobs == nil || len(jobs) == 0 {
 			return

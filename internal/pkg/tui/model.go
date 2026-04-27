@@ -1,124 +1,214 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/gen2brain/beeep"
 	"swiftget.com/internal/pkg/download"
+	"swiftget.com/internal/pkg/format"
 )
 
 type model struct {
-	Jobs     map[string]*download.Job
-	Mu       sync.RWMutex
-	Program  *tea.Program
-	JobOrder []string
-	Status   string
-	Error    error
-	Width    int
-	Height   int
-	Ready    bool
-	Opt      *download.Options
+	jobs     map[string]*download.Job
+	mu       sync.RWMutex
+	program  *tea.Program
+	jobOrder []string
+	width    int
+	height   int
+	ready    bool
+	opt      *download.Options
 }
 
-func NewModel(jobs map[string]*download.Job, opt *download.Options) model {
+func NewModel(jobs map[string]*download.Job, opt *download.Options) *model {
 	order := make([]string, 0, len(jobs))
 	for id := range jobs {
 		order = append(order, id)
 	}
-	return model{
-		Jobs:     jobs,
-		JobOrder: order,
-		Status:   "downloading",
-		Opt:      opt,
+	return &model{
+		jobs:     jobs,
+		jobOrder: order,
+		opt:      opt,
 	}
 }
 
+func (m *model) SetProgram(p *tea.Program) {
+	m.mu.Lock()
+	m.program = p
+	m.mu.Unlock()
+}
+
 func (m *model) Init() tea.Cmd {
-	for _, job := range m.Jobs {
-		if job.Status == "pending" || job.Status == "paused" {
-			go runJob(job, m.Program, m.Opt)
+	cmds := make([]tea.Cmd, 0)
+	m.mu.RLock()
+
+	for _, job := range m.jobs {
+		if job.Status == download.StatusPending || job.Status == download.StatusPaused {
+			cmds = append(cmds, startDownloadCmd(job, m.opt, m.program))
 		}
 	}
-	return nil
+	m.mu.RUnlock()
+	return tea.Batch(cmds...)
 }
+
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
-			for _, job := range m.Jobs {
-				if (job.Status == "running" || job.Status == "pending") && job.CancelFunc != nil {
+			// Cancel all jobs – do NOT set status manually!
+			m.mu.Lock()
+			for _, job := range m.jobs {
+				if job.CancelFunc != nil {
 					job.CancelFunc()
-					job.Status = "paused"
 				}
 			}
-			download.SaveJobsToDisk()
-			fmt.Println("Use 'q' to Terminate the app.")
+			m.mu.Unlock()
+			beeep.Notify("Downlaods Paused Successfully", "All Downloads Have been Paused Successfully.", "")
 			return m, nil
+
 		case "r":
-			fmt.Println("DEBUG: r pressed, resuming paused jobs")
-			for _, job := range m.Jobs {
-				if job.Status == "paused" {
-					fmt.Printf("DEBUG: Resuming job %s\n", job.ID[:8])
-					go runJob(job, m.Program, m.Opt)
-				}
-			}
-			return m, nil
+			return m, m.resumePaused()
+
 		case "q":
-			// Cancel all running/pending jobs before quitting
-			for _, job := range m.Jobs {
-				if (job.Status == "running" || job.Status == "pending") && job.CancelFunc != nil {
+			m.mu.Lock()
+			for _, job := range m.jobs {
+				if job.CancelFunc != nil {
 					job.CancelFunc()
-					job.Status = "paused"
 				}
 			}
-			download.SaveJobsToDisk()
+			m.mu.Unlock()
+			beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
 			return m, tea.Quit
 		}
 
 	case tea.WindowSizeMsg:
-		m.Width = msg.Width
+		m.mu.Lock()
+		m.width = msg.Width
+		m.height = msg.Height
+		m.ready = true
+		m.mu.Unlock()
+
 	case progressMsg:
-		m.Mu.Lock()
-		if job, ok := m.Jobs[msg.jobID]; ok {
-			job.Downloaded = msg.downloaded
-			job.TotalSize = msg.total
+		m.mu.Lock()
+		if job, ok := m.jobs[msg.jobID]; ok {
+			job.SetDownloaded(msg.downloaded)
+			job.SetTotalSize(msg.total)
 		}
-		m.Mu.Unlock()
+		m.mu.Unlock()
 
 	case jobDoneMsg:
-		m.Mu.Lock()
-		if job, ok := m.Jobs[msg.jobID]; ok {
+		m.mu.Lock()
+		if job, ok := m.jobs[msg.jobID]; ok {
 			if msg.err == nil {
-				job.Status = "completed"
+				job.SetStatus(download.StatusCompleted)
+			} else if msg.err == context.Canceled {
+				job.SetStatus(download.StatusPaused)
 			} else {
-				job.Status = "error"
-				job.Error = msg.err
+				job.SetStatus(download.StatusError)
+				job.SetError(msg.err)
 			}
 		}
-		m.Mu.Unlock()
-		return m, nil
-
+		if m.allJobsDone() {
+			m.mu.Unlock()
+			return m, m.notifyCompletion()
+		}
+		m.mu.Unlock()
 	}
-
 	return m, nil
 }
 
 func (m *model) View() string {
-	if m.Width == 0 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if !m.ready {
 		return "Loading..."
 	}
-	s := titleStyle.Render("Rum – Download Manager") + "\n\n"
-	headers := fmt.Sprintf("%-10s %-42s %-12s %-12s %-22s %-8s %s\n",
-		"STATUS", "NAME", "SPEED", "ETA", "PROGRESS", "PCT", "SIZE")
-	s += headers
-	// headers = fmt.Sprintf("%-10s %-45s %-12s %-12s %s\n", "STATUS", "NAME", "SPEED", "ETA", "PROGRESS")
-	// s += headers
-	for _, id := range m.JobOrder {
-		job := m.Jobs[id]
-		s += renderJobRow(job, m.Width) + "\n"
+
+	var s strings.Builder
+	s.WriteString(titleStyle.Render("Rum – Download Manager") + "\n\n")
+	s.WriteString(fmt.Sprintf("%-10s %-42s %-12s %-12s %-22s %-8s %s\n",
+		"STATUS", "NAME", "SPEED", "ETA", "PROGRESS", "PCT", "SIZE"))
+
+	for _, id := range m.jobOrder {
+		job, ok := m.jobs[id]
+		if !ok {
+			continue
+		}
+		
+		status := job.GetStatus()
+		downloaded := job.GetDownloaded()
+		total := job.GetTotalSize()
+		speed := job.GetSpeed()
+		eta := job.GetRemainingTime()
+		name := job.GetFileName()
+		if name == "" {
+			name = shortURL(job.GetURL(), 50)
+		} else {
+			name = shortURL(name, 50)
+		}
+
+		speedStr := format.FormatSpeed(speed)
+		etaStr := ""
+		if eta > 0 {
+			etaStr = eta.String() // "5m22s"
+		} else if status == "running" {
+			etaStr = "…"
+		} else {
+			etaStr = "--:--"
+		}
+		s.WriteString(renderJobRow(status, name, job.ID, speedStr, etaStr, downloaded, total, m.width) + "\n")
 	}
-	s += helpStyle.Render("\nCtrl+C: pause • r: resume • q: quit")
-	return s
+	s.WriteString(helpStyle.Render("\nCtrl+C: pause • r: resume • q: quit"))
+	return s.String()
+}
+
+func (m *model) pauseAllAndSave() tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, job := range m.jobs {
+		if (job.Status == download.StatusRunning || job.Status == download.StatusPending) && job.CancelFunc != nil {
+			job.CancelFunc()
+			job.Status = download.StatusPaused
+		}
+	}
+
+	go download.SaveJobsToDisk()
+	return nil
+}
+
+func (m *model) resumePaused() tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var cmds []tea.Cmd
+	for _, job := range m.jobs {
+		if job.GetStatus() == download.StatusPaused {
+			cmds = append(cmds, startDownloadCmd(job, m.opt, m.program))
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *model) allJobsDone() bool {
+	for _, job := range m.jobs {
+		status := job.GetStatus()
+		if status != download.StatusCompleted && status != download.StatusError {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *model) notifyCompletion() tea.Cmd {
+	return func() tea.Msg {
+		beeep.Notify("Downloads Finished", "All Files have been downloaded successfully!", "")
+		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+		return nil
+	}
 }

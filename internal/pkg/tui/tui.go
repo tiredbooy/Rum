@@ -9,8 +9,8 @@ func RunTUI(jobs map[string]*download.Job, opt *download.Options) {
 	InitWorkerPool(opt.Parallel)
 
 	m := NewModel(jobs, opt)
-	p := tea.NewProgram(&m, tea.WithAltScreen())
-	m.Program = p
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	m.SetProgram(p)
 	if _, err := p.Run(); err != nil {
 		panic(err)
 	}

@@ -84,6 +84,7 @@ func GetHTTPClient(timeout time.Duration) *http.Client {
 				KeepAlive: 30 * time.Second,
 				DualStack: true,
 			}).DialContext,
+			MaxConnsPerHost:     2,
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
