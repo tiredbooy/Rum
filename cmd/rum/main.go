@@ -6,24 +6,27 @@ import (
 	"os"
 
 	"github.com/gen2brain/beeep"
+	"swiftget.com/internal/pkg/config"
 	"swiftget.com/internal/pkg/download"
 	"swiftget.com/internal/pkg/tui"
 )
 
 func main() {
+	cfg, err := config.Load(".env")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+		return
+	}
+
 	args := os.Args[1:]
 	if len(args) == 0 {
 		printUsage()
 		os.Exit(1)
 	}
 
-	err := download.InitLogFile()
-	if err != nil {
-		fmt.Println("Failed to Create file..")
-		return
-	}
+	download.InitLogFile()
 
-	beeep.AppName = "Rum"
+	beeep.AppName = cfg.AppName
 
 	sub := args[0]
 	switch sub {
@@ -38,8 +41,8 @@ func main() {
 		}
 		tui.RunTUI(jobs, jobOrder, opt)
 	case "version", "v", "-v", "--v":
-		fmt.Println("Rum v0.1.0")
-	case "help", "--help", "-h":
+		fmt.Printf("%s v%s", cfg.AppName, cfg.Version)
+	case "help", "--help", "-h", "--h":
 		printUsage()
 	default:
 		jobs, jobOrder, opt, err := download.RunProgram(args)

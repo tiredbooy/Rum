@@ -24,8 +24,6 @@ func InitLogFile() error {
 		debugFile = f
 	}
 
-	log.Printf("Log Initilized At %s", filePath)
-
 	return nil
 }
 

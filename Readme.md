@@ -23,7 +23,7 @@ It supports parallel downloads, resume, automatic file organisation, and a gorge
 ## 📦 Installation
 
 ### Prerequisites
-- [Go](https://go.dev/doc/install) version **1.21 or later**
+- [Go](https://go.dev/doc/install) version **1.25 or later**
 
 ### 1. Build the binary
 Clone the repository and compile the project:
@@ -41,26 +41,61 @@ To use rum from any terminal, move it to a directory that is in your PATH.
 Create a personal bin folder (if it doesn't exist)
 ```bash
 mkdir -p ~/bin
+```
 Move the binary
-bash
+```bash
 mv rum ~/bin/
 Add ~/bin to your shell’s PATH
+```
 If you use bash:
 
-bash
+```bash
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
+```
 If you use zsh:
 
-bash
+```bash
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 Now you can type rum in a new terminal window and it will run.
 
-### 3. (Optional) Install script
-An installation script may be added in the future; for now the manual steps above are all you need.
+### 3. Automatic Installation script
+If you've already cloned the repository, the easiest way to install is with the provided installer script.
 
+#### Windows
+Use the PowerShell installer. Make sure Go is installed first.
+
+```bash
+cd Rum
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # only needed once, if scripts are blocked
+.\install.ps1
+```
+
+#### Linux / macOS
+Run the interactive bash installer:
+
+```bash
+cd Rum
+chmod +x install.sh
+./install.sh
+```
+
+#### The installer will:
+
+- Detect where the project root is (it works even if you're inside a subfolder).
+- Check that Go is installed.
+- Build the rum binary.
+- Install it to ~/bin (creating the folder if needed).
+- Offer to automatically add ~/bin to your shell's PATH (bash or zsh).
+- Provide a beautiful, guided experience with coloured output and a spinner.
+
+#### After the script finishes, open a new terminal or run:
+```bash
+source ~/.bashrc   # for bash
+source ~/.zshrc    # for zsh
+```
 
 ### 🚀 Usage
 Rum is controlled with command‑line flags and an interactive text interface.
