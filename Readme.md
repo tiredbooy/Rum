@@ -32,13 +32,14 @@ Clone the repository and compile the project:
 git clone https://github.com/YourUsername/Rum.git
 cd Rum
 go build -o rum ./cmd/rum
+```
 This produces an executable named rum in the current folder.
 
-2. Make it runnable from anywhere (Linux / macOS)
+### 2. Make it runnable from anywhere (Linux / macOS)
 To use rum from any terminal, move it to a directory that is in your PATH.
 
 Create a personal bin folder (if it doesn't exist)
-bash
+```bash
 mkdir -p ~/bin
 Move the binary
 bash
@@ -54,65 +55,62 @@ If you use zsh:
 bash
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
+```
 Now you can type rum in a new terminal window and it will run.
 
-3. (Optional) Install script
+### 3. (Optional) Install script
 An installation script may be added in the future; for now the manual steps above are all you need.
 
-🚀 Usage
+
+### 🚀 Usage
 Rum is controlled with command‑line flags and an interactive text interface.
 Once launched, use your keyboard to control the downloads.
 
 Basic download
-bash
+```bash
 rum --url "https://example.com/file.mp4"
 Multiple URLs at once
-bash
+```
+```bash
 rum --url "https://example.com/file1.zip" --url "https://example.com/file2.zip"
 Download from a text file
 Create a .txt file with one URL per line:
+```
 
-text
-https://git.ir/api/…/video1.mp4
-https://git.ir/api/…/video2.mp4
 Then run:
 
-bash
+```bash
 rum --input mylinks.txt
+```
 You will be prompted to optionally place all files inside a single sub‑folder.
 
-Control the TUI
+### Control the TUI
 Once downloads begin, the following keys are active:
 
 Key	Action
+```bash
 Ctrl+C	Pause all running downloads
 r	Resume all paused downloads
 q	Quit (pauses everything)
 ← / →	Manually scroll through the job list
+```
 While you are manually scrolling, automatic page advancement is temporarily disabled. It will resume after a few seconds of inactivity.
 
 ⚙️ Complete Flag Reference
-Flag	Type	Default	Description
---url	string (repeatable)	–	URL to download. Use multiple times for several files.
---input	string	–	Path to a .txt file containing URLs (one per line).
---out	string	~/Downloads/Rum	Output directory for downloaded files.
---p	int	1	Number of parallel downloads.
---limit	float	0	Bandwidth limit in MB/s (0 = unlimited).
---max-speed	int	0	Bandwidth limit in KB/s (0 = unlimited). Overrides --limit.
---uA	string	random	Custom User‑Agent header.
---rE	string	scheme://host	Custom Referer header. If empty, derived from the download URL.
---retry	int	3	Number of times to retry a failed chunk.
---segments	int	1	Split each file into N parallel segments (makes use of Range requests).
---silent	bool	false	Suppress all desktop notifications.
---no-resume	bool	false	Force downloads to restart from scratch, ignoring partial files.
---config	string	(OS default)	Custom configuration directory for job persistence.
---timeout	int	0	Per‑segment read timeout in seconds (0 = no timeout). Useful for stalled connections.
---no-bar	bool	false	Disable the progress bar (handy when redirecting output to a log file).
---continue	bool	false	Only resume paused jobs; skip any new URLs.
-Note: All flags can be combined. For example:
-rum --input links.txt --p 4 --limit 2.5 --silent
+| Flag         | Type   | Default         | Description |
+|--------------|--------|-----------------|-------------|
+| `-url`      | string | –                | URL to download. Use multiple times for several files. |
+| `-input`    | string | –                | Path to a `.txt` file containing URLs (one per line). |
+| `-out`      | string | `~/Downloads/Rum` | Output directory for downloaded files. |
+| `-p`        | int | –        1          | Number of parallel downloads. |
+| `-limit`    | float | –      0          | Bandwidth limit in MB/s (0 = unlimited). |
+| `-uA`      | string | `random` | Custom User‑Agent header. |
+| `-rE`      | string | `scheme://host` | Custom Referer header. If empty, derived from the download URL. |
 
-🧠 How It Works (Briefly)
+#### Note: All flags can be combined. For example:
+rum --input links.txt --p 4 -uA userAgent -rE Referer
+
+### 🧠 How It Works (Briefly)
 Job creation – Each URL becomes a Job with a unique ID. Jobs are saved to disk so they survive crashes and restarts.
 
 Size detection – A HEAD request is attempted to read the file size. If the server refuses HEAD, the app falls back and downloads anyway.
@@ -123,8 +121,8 @@ Resume via Range – If a partial local file exists, a Range: bytes=… header i
 
 Smart folders – The Content-Type header determines where the file is saved (e.g. videos/, audios/, compressed/, documents/, …). Unknown types go into others/.
 
-🌍 Example Session
-bash
+### 🌍 Example Session
+```bash
 $ rum --input season1.txt --p 4 --limit 2.5
 
 Do you want a Group Folder? (Y/N): Y
@@ -141,7 +139,8 @@ waiting    005-Bloopers.mp4              –       –         [                
 ──────────────────────────────────────────────────
 Showing 1–5 of 12 downloads
 Ctrl+C: pause • r: resume • q: quit
-🤝 Contributing
+```
+### 🤝 Contributing
 Rum is an open source project and contributions are sincerely appreciated.
 Whether it’s a bug report, a feature suggestion, or a pull request – feel free to open an issue or submit a PR.
 
@@ -155,10 +154,10 @@ Add comments where the logic isn’t obvious.
 
 If you’re unsure about anything, just open an issue and we can discuss it first. All help is welcome, and contributors will be credited in the project.
 
-📝 License
+### 📝 License
 This project is licensed under the MIT License – see the LICENSE file for details.
 
-📬 Contact / Support
+#### 📬 Contact / Support
 Issues & feature requests: GitHub Issues
 
 Discussions: GitHub Discussions (if enabled)

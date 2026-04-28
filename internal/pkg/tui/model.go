@@ -150,8 +150,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.notifyCompletion()
 		}
 		m.mu.Unlock()
+		beeep.Notify("Downloads have been Completed", "All files have been Downloaded Successfully.", "")
 	}
-	return m, nil
+	return m, tea.Quit
 }
 
 func (m *model) pauseAllAndSave() tea.Cmd {
@@ -194,7 +195,7 @@ func (m *model) allJobsDone() bool {
 
 func (m *model) notifyCompletion() tea.Cmd {
 	return func() tea.Msg {
-		beeep.Notify("Downloads Finished", "All Files have been downloaded successfully!", "")
+		beeep.Notify("Downloads Finished", "All Files have been downloaded successfully, See you again.", "")
 		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		return nil
 	}
