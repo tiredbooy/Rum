@@ -42,24 +42,28 @@ func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, f
 	return fullPath, fileName
 }
 
-func DownloadWithRange(ctx context.Context, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
+func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
-	req = req.WithContext(ctx)
-
-	resp, err := http.DefaultClient.Do(req)
+	//resp, err := http.DefaultClient.Do(req)
+	resp, err := downloader.Client.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		if offset > 0 && resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+			job.SetDownloaded(offset)
+			job.SetTotalSize(offset)
+			job.SetStatus(StatusCompleted)
+			return nil
+		}
 		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
 	if offset > 0 && resp.StatusCode == http.StatusOK {
-		fmt.Println("Server does not support partial content. Restarting download...")
 		if err := outFile.Truncate(0); err != nil {
 			return err
 		}
@@ -86,7 +90,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 		totalSize = -1
 	}
 
-	buffer := make([]byte, 1024*1024) // 1MB
+	buffer := make([]byte, 1024*1024)
 	var downloaded int64 = existsFileSize
 
 	for {
@@ -111,7 +115,6 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 			return nil
 		}
 		if err != nil {
-			// If the context was cancelled, return that error
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -123,8 +126,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
 
-	var referer string
-	var userAgent string
+	var referer, userAgent string
 
 	if opt.Referer != "" {
 		referer = opt.Referer
@@ -139,7 +141,10 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		userAgent = utils.GetRandomUserAgent()
 	}
 
-	fileInfo, err := GetHeaderInfo(url)
+	downloader := NewDownloader(userAgent, referer)
+
+	//fileInfo, err := GetHeaderInfo(url)
+	fileInfo, err := downloader.HeadWithFallback(url)
 	if err != nil {
 		return err
 	}
@@ -170,7 +175,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 	}
 
-	req, err := GetFile(url)
+	req, err := downloader.NewRequest("GET", url)
 
 	if err != nil {
 		return err
@@ -178,13 +183,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	req = req.WithContext(ctx)
 
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Referer", referer)
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Set("Connection", "keep-alive")
-
-	if existsFileSize == fileSize {
+	if fileSize >= 1 && existsFileSize == fileSize {
 		DebugLog("Found Completed File Pass")
 
 		job.SetStatus(StatusCompleted)
@@ -192,9 +191,9 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		return nil
 	}
 
-	if existsFileSize > 0 && fileInfo.SupportsRange {
+	if existsFileSize > 0 {
 		DebugLog("Trying to Resume Exists File")
-		return DownloadWithRange(ctx, req, fileName, outFile, existsFileSize, job, progressFn)
+		return DownloadWithRange(ctx, downloader, req, fileName, outFile, existsFileSize, job, progressFn)
 	}
 
 	if existsFileSize > 0 && !fileInfo.SupportsRange {
@@ -204,5 +203,5 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 	}
 
-	return DownloadWithRange(ctx, req, fileName, outFile, 0, job, progressFn)
+	return DownloadWithRange(ctx, downloader, req, fileName, outFile, 0, job, progressFn)
 }

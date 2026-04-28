@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/gen2brain/beeep"
@@ -27,21 +28,29 @@ func main() {
 	sub := args[0]
 	switch sub {
 	case "get", "-g", "download":
-		jobs, opt := download.RunProgram(args[1:])
+		jobs, jobOrder, opt, err := download.RunProgram(args[1:])
+		if err != nil {
+			log.Println("Failed To run Program: ", err.Error())
+			return
+		}
 		if jobs == nil || len(jobs) == 0 {
 			return
 		}
-		tui.RunTUI(jobs, opt)
+		tui.RunTUI(jobs, jobOrder, opt)
 	case "version", "v", "-v", "--v":
 		fmt.Println("Rum v0.1.0")
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		jobs, opt := download.RunProgram(args)
+		jobs, jobOrder, opt, err := download.RunProgram(args)
+		if err != nil {
+			log.Println("Failed To run Program: ", err.Error())
+			return
+		}
 		if jobs == nil || len(jobs) == 0 {
 			return
 		}
-		tui.RunTUI(jobs, opt)
+		tui.RunTUI(jobs, jobOrder, opt)
 	}
 }
 

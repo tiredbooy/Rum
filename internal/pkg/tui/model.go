@@ -2,36 +2,38 @@ package tui
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gen2brain/beeep"
 	"swiftget.com/internal/pkg/download"
-	"swiftget.com/internal/pkg/format"
 )
 
 type model struct {
-	jobs     map[string]*download.Job
-	mu       sync.RWMutex
-	program  *tea.Program
-	jobOrder []string
-	width    int
-	height   int
-	ready    bool
-	opt      *download.Options
+	jobs           map[string]*download.Job
+	mu             sync.RWMutex
+	program        *tea.Program
+	jobOrder       []string
+	width          int
+	height         int
+	ready          bool
+	opt            *download.Options
+	visibleStart   int
+	autoScroll     bool
+	lastUserScroll time.Time
 }
 
-func NewModel(jobs map[string]*download.Job, opt *download.Options) *model {
-	order := make([]string, 0, len(jobs))
-	for id := range jobs {
-		order = append(order, id)
-	}
+func NewModel(jobs map[string]*download.Job, jobOrder []string, opt *download.Options) *model {
+	// order := make([]string, 0, len(jobs))
+	// for id := range jobs {
+	// 	order = append(order, id)
+	// }
 	return &model{
-		jobs:     jobs,
-		jobOrder: order,
-		opt:      opt,
+		jobs:       jobs,
+		jobOrder:   jobOrder,
+		opt:        opt,
+		autoScroll: true,
 	}
 }
 
@@ -45,7 +47,11 @@ func (m *model) Init() tea.Cmd {
 	cmds := make([]tea.Cmd, 0)
 	m.mu.RLock()
 
-	for _, job := range m.jobs {
+	for _, id := range m.jobOrder {
+		job, ok := m.jobs[id]
+		if !ok {
+			continue
+		}
 		if job.Status == download.StatusPending || job.Status == download.StatusPaused {
 			cmds = append(cmds, startDownloadCmd(job, m.opt, m.program))
 		}
@@ -83,6 +89,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mu.Unlock()
 			beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
 			return m, tea.Quit
+		case "left", "h":
+			m.mu.Lock()
+			if m.visibleStart > 0 {
+				m.visibleStart--
+			}
+			m.autoScroll = false
+			m.lastUserScroll = time.Now()
+			m.mu.Unlock()
+
+		case "right", "l":
+			m.mu.Lock()
+			if m.visibleStart+maxVisible < len(m.jobOrder) {
+				m.visibleStart++
+			}
+			m.autoScroll = false
+			m.lastUserScroll = time.Now()
+			m.mu.Unlock()
 		}
 
 	case tea.WindowSizeMsg:
@@ -97,8 +120,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if job, ok := m.jobs[msg.jobID]; ok {
 			job.SetDownloaded(msg.downloaded)
 			job.SetTotalSize(msg.total)
+			m.updateVisibleStart()
 		}
 		m.mu.Unlock()
+
+	case tickMsg:
+		m.mu.Lock()
+		if !m.autoScroll && time.Since(m.lastUserScroll) > 3*time.Second {
+			m.autoScroll = true
+		}
+		m.mu.Unlock()
+		return m, tickCmd()
 
 	case jobDoneMsg:
 		m.mu.Lock()
@@ -112,6 +144,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				job.SetError(msg.err)
 			}
 		}
+		m.updateVisibleStart()
 		if m.allJobsDone() {
 			m.mu.Unlock()
 			return m, m.notifyCompletion()
@@ -119,52 +152,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mu.Unlock()
 	}
 	return m, nil
-}
-
-func (m *model) View() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if !m.ready {
-		return "Loading..."
-	}
-
-	var s strings.Builder
-	s.WriteString(titleStyle.Render("Rum – Download Manager") + "\n\n")
-	s.WriteString(fmt.Sprintf("%-10s %-42s %-12s %-12s %-22s %-8s %s\n",
-		"STATUS", "NAME", "SPEED", "ETA", "PROGRESS", "PCT", "SIZE"))
-
-	for _, id := range m.jobOrder {
-		job, ok := m.jobs[id]
-		if !ok {
-			continue
-		}
-		
-		status := job.GetStatus()
-		downloaded := job.GetDownloaded()
-		total := job.GetTotalSize()
-		speed := job.GetSpeed()
-		eta := job.GetRemainingTime()
-		name := job.GetFileName()
-		if name == "" {
-			name = shortURL(job.GetURL(), 50)
-		} else {
-			name = shortURL(name, 50)
-		}
-
-		speedStr := format.FormatSpeed(speed)
-		etaStr := ""
-		if eta > 0 {
-			etaStr = eta.String() // "5m22s"
-		} else if status == "running" {
-			etaStr = "…"
-		} else {
-			etaStr = "--:--"
-		}
-		s.WriteString(renderJobRow(status, name, job.ID, speedStr, etaStr, downloaded, total, m.width) + "\n")
-	}
-	s.WriteString(helpStyle.Render("\nCtrl+C: pause • r: resume • q: quit"))
-	return s.String()
 }
 
 func (m *model) pauseAllAndSave() tea.Cmd {
@@ -210,5 +197,22 @@ func (m *model) notifyCompletion() tea.Cmd {
 		beeep.Notify("Downloads Finished", "All Files have been downloaded successfully!", "")
 		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		return nil
+	}
+}
+
+func (m *model) updateVisibleStart() {
+	if !m.autoScroll {
+		return
+	}
+
+	for i, id := range m.jobOrder {
+		status := m.jobs[id].GetStatus()
+		if status != download.StatusCompleted && status != download.StatusError {
+			m.visibleStart = i
+			return
+		}
+	}
+	if len(m.jobOrder) > maxVisible {
+		m.visibleStart = len(m.jobOrder) - maxVisible
 	}
 }

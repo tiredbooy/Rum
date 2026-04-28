@@ -4,8 +4,6 @@ import (
 	"context"
 )
 
-
-
 type DownloadTask struct {
 	ID       string
 	URL      string
@@ -15,14 +13,6 @@ type DownloadTask struct {
 	TotalSize  int64
 	Cancel     context.CancelFunc
 	Status     string
-}
-
-type RequestHeaders struct {
-	Referer        string
-	UserAgent      string
-	AcceptLanguage string
-	AcceptEncoding string
-	Connection     string
 }
 
 type Options struct {
@@ -35,6 +25,9 @@ type Options struct {
 
 	Referer   string
 	UserAgent string
+
+	MaxRetries int
+	Silent     bool
 }
 
 type DownloadResult struct {

@@ -73,3 +73,4 @@ func startDownloadCmd(job *download.Job, opt *download.Options, p *tea.Program) 
 		return nil
 	}
 }
+
