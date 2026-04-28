@@ -103,11 +103,11 @@ Once launched, use your keyboard to control the downloads.
 
 Basic download
 ```bash
-rum --url "https://example.com/file.mp4"
+rum --url "https://example.com/file"
 Multiple URLs at once
 ```
 ```bash
-rum --url "https://example.com/file1.zip" --url "https://example.com/file2.zip"
+rum --url "https://example.com/file1" --url "https://example.com/file2"
 Download from a text file
 Create a .txt file with one URL per line:
 ```
@@ -159,10 +159,12 @@ Smart folders – The Content-Type header determines where the file is saved (e.
 ### 🌍 Example Session
 ```bash
 $ rum --input season1.txt --p 4 --limit 2.5
-
+```
+```bash
 Do you want a Group Folder? (Y/N): Y
 Enter folder name: season-1
-
+```
+```bash
 ⬇ Rum – Download Manager
 ──────────────────────────────────────────────────
 STATUS     NAME                     SPEED       ETA        PROGRESS               PCT    SIZE
