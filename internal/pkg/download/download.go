@@ -103,38 +103,6 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 		totalSize = -1
 	}
 
-	// fmt.Printf("DEBUG SPEED: Opt.SpeedLimit = %d bytes/s, bufferSize will be %d\n",
-	// 	Opt.SpeedLimit,
-	// 	func() int64 {
-	// 		if Opt.SpeedLimit > 0 {
-	// 			bs := int64(Opt.SpeedLimit)
-	// 			if bs < 32*1024 {
-	// 				return 32 * 1024
-	// 			}
-	// 			if bs > 4*1024*1024 {
-	// 				return 4 * 1024 * 1024
-	// 			}
-	// 			return bs
-	// 		}
-	// 		return 1024 * 1024
-	// 	}())
-
-	// if Opt.SpeedLimit > 0 && Opt.SpeedLimit < 10240 {
-	// 	Opt.SpeedLimit = 10240
-	// 	fmt.Printf("Speed limit too low, adjusted to minimum 10 KB/s (10240 bytes/s)\n")
-	// }
-
-	// bufferSize := int64(1024 * 1024)
-	// if Opt.SpeedLimit > 0 {
-	// 	bufferSize = int64(Opt.SpeedLimit)
-	// 	if bufferSize < 32*1024 {
-	// 		bufferSize = 32 * 1024
-	// 	}
-	// 	if bufferSize > 4*1024*1024 {
-	// 		bufferSize = 4 * 1024 * 1024
-	// 	}
-	// }
-
 	buffer := make([]byte, downloadBufferSize)
 	var downloaded int64 = existsFileSize
 
@@ -188,29 +156,13 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	downloader := NewDownloader(userAgent, referer)
 
-	//fileInfo, err := GetHeaderInfo(url)
 	fileInfo, err := downloader.HeadWithFallback(url)
 	if err != nil {
 		return err
 	}
 
-	fileSize, _ := strconv.ParseInt(fileInfo.ContentSize, 64, 10)
-
-	if fileSize > 0 {
-		job.SetTotalSize(fileSize)
-	} else {
-		job.SetTotalSize(-1)
-	}
-
 	fullPath, fileName := PrepareOutputPath(opt, url, fileInfo.ContentType)
 	job.SetFileName(fileName)
-
-	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return err
-	}
-
-	defer outFile.Close()
 
 	var existsFileSize int64 = 0
 	if filesystem.IsFileExists(fullPath) {
@@ -220,6 +172,41 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 	}
 
+	fileSize, _ := strconv.ParseInt(fileInfo.ContentSize, 64, 10)
+	if fileSize > 0 {
+		job.SetTotalSize(fileSize)
+	} else {
+		job.SetTotalSize(-1)
+	}
+
+	// NEW: if size unknown and local file exists -> assume complete
+	if fileSize <= 0 && existsFileSize > 0 {
+		DebugLog("Remote size unknown, local file exists -> marking as completed")
+		job.SetStatus(StatusCompleted)
+		job.SetDownloaded(existsFileSize)
+		return nil
+	}
+
+	if fileSize >= 1 && existsFileSize == fileSize {
+		DebugLog("Found Completed File Pass")
+		job.SetStatus(StatusCompleted)
+		job.SetDownloaded(fileSize)
+		return nil
+	}
+
+	if fileSize > 0 {
+		job.SetTotalSize(fileSize)
+	} else {
+		job.SetTotalSize(-1)
+	}
+
+	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer outFile.Close()
+
 	req, err := downloader.NewRequest("GET", url)
 
 	if err != nil {
@@ -227,14 +214,6 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	}
 
 	req = req.WithContext(ctx)
-
-	if fileSize >= 1 && existsFileSize == fileSize {
-		DebugLog("Found Completed File Pass")
-
-		job.SetStatus(StatusCompleted)
-		job.SetDownloaded(fileSize)
-		return nil
-	}
 
 	if existsFileSize > 0 {
 		DebugLog("Trying to Resume Exists File")

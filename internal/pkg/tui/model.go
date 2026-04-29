@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -138,6 +139,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if msg.err == context.Canceled {
 				job.SetStatus(download.StatusPaused)
 			} else {
+				log.Println("ERROR: ", msg.err)
 				job.SetStatus(download.StatusError)
 				job.SetError(msg.err)
 			}

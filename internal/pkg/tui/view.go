@@ -45,6 +45,14 @@ func (m *model) View() string {
 		return "Loading..."
 	}
 
+	totalJobs := len(m.jobs)
+	completedJobs := 0
+	for _, job := range m.jobs {
+		if job.GetStatus() == "completed" {
+			completedJobs++
+		}
+	}
+
 	var s strings.Builder
 	s.WriteString(titleStyle.Render("⬇ Rum – Download Manager") + "\n")
 	s.WriteString(separatorStyle.Render(strings.Repeat("─", m.width)) + "\n\n")
@@ -112,9 +120,9 @@ func (m *model) View() string {
 			styledStatus, 40, shortURL(name, 40), speedStr, etaStr, bar, percentStr, sizeStr)
 		s.WriteString(row + "\n")
 	}
-
-	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Showing %d–%d of %d downloads",
-		start+1, end, len(m.jobOrder))))
+	
+	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Completed: %d/%d • Showing %d–%d of %d downloads",
+		completedJobs, totalJobs, start+1, end, totalJobs)))
 	if !m.autoScroll {
 		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500")).Render("[manual]"))
 	}
