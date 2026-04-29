@@ -147,12 +147,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateVisibleStart()
 		if m.allJobsDone() {
 			m.mu.Unlock()
-			return m, m.notifyCompletion()
+			return m, tea.Batch(m.notifyCompletion(), tea.Quit)
 		}
 		m.mu.Unlock()
 		beeep.Notify("Downloads have been Completed", "All files have been Downloaded Successfully.", "")
 	}
-	return m, tea.Quit
+	return m, nil
 }
 
 func (m *model) pauseAllAndSave() tea.Cmd {

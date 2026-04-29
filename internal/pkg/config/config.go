@@ -1,8 +1,10 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"os"
+	"path/filepath"
+	"sync"
 
 	"github.com/joho/godotenv"
 )
@@ -12,25 +14,59 @@ type Config struct {
 	Version string
 }
 
-func Load(path string) (*Config, error) {
-	if path == "" {
-		path = ".env"
-	}
+var (
+	cfg  *Config
+	once sync.Once
+)
 
-	_ = godotenv.Load(path)
+func Load() *Config {
+	once.Do(func() {
+		root, err := projectRoot()
+		if err != nil {
+			root = "."
+		}
+		envPath := filepath.Join(root, ".env")
+		_ = godotenv.Load(envPath)
 
-	cfg := &Config{
-		AppName: envOr("APP_NAME", "Rum"),
-		Version: envOr("VERSION", "0.1.1"),
-	}
+		cfg = &Config{
+			AppName: envOr("APP_NAME", "Rum"),
+			Version: envOr("VERSION", "0.1.1"),
+		}
+	})
+	return cfg
+}
 
-	return cfg, nil
+func LoadFrom(path string) *Config {
+	once.Do(func() {
+		_ = godotenv.Load(path)
+		cfg = &Config{
+			AppName: envOr("APP_NAME", "Rum"),
+			Version: envOr("VERSION", "0.1.1"),
+		}
+	})
+	return cfg
 }
 
 func envOr(key, fallback string) string {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
-		log.Println("VALUE: ", val)
 		return val
 	}
 	return fallback
+}
+
+func projectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("go.mod not found")
+		}
+		dir = parent
+	}
 }

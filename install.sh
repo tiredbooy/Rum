@@ -108,8 +108,29 @@ if [[ ! "$build_choice" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# ═══════════════════════════════════════════════════════════
+#  Optional Iranian mirror for Go modules
+# ═══════════════════════════════════════════════════════════
 echo ""
-run_with_spinner "Building Rum binary …" go build -o rum ./cmd/rum
+echo -e "${YELLOW}Would you like to use a Iranian mirror for downloading Go modules?${RESET}"
+echo "  (This can greatly speed up downloads And bypass Internet restriction for users in Iran) [Y/n]"
+read -r mirror_choice
+mirror_choice=${mirror_choice:-y}
+
+BUILD_CMD="go build -o rum ./cmd/rum"
+if [[ "$mirror_choice" =~ ^[Yy]$ ]]; then
+    MIRROR_URL="https://mirror-go.runflare.com"
+    echo -e "  ${CYAN}✓ Using mirror: ${MIRROR_URL}${RESET}"
+    BUILD_CMD="env GOPROXY=${MIRROR_URL} ${BUILD_CMD}"
+else
+    echo -e "  ${CYAN}Using default Go proxy (or direct connection)${RESET}"
+fi
+echo ""
+
+# ═══════════════════════════════════════════════════════════
+#  Build
+# ═══════════════════════════════════════════════════════════
+run_with_spinner "Building Rum binary …" ${BUILD_CMD}
 
 if [[ ! -f "rum" ]]; then
     echo -e "${BG_RED} ERROR ${RESET} Build produced no executable."

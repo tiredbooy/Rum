@@ -12,11 +12,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load(".env")
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-		return
-	}
+	cfg := config.Load()
 
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -41,7 +37,7 @@ func main() {
 		}
 		tui.RunTUI(jobs, jobOrder, opt)
 	case "version", "v", "-v", "--v":
-		fmt.Printf("%s v%s", cfg.AppName, cfg.Version)
+		fmt.Printf("%s v%s ", cfg.AppName, cfg.Version)
 	case "help", "--help", "-h", "--h":
 		printUsage()
 	default:
