@@ -108,9 +108,10 @@ Multiple URLs at once
 ```
 ```bash
 rum --url "https://example.com/file1" --url "https://example.com/file2"
+```
+
 Download from a text file
 Create a .txt file with one URL per line:
-```
 
 Then run:
 
@@ -138,7 +139,7 @@ While you are manually scrolling, automatic page advancement is temporarily disa
 | `-input`    | string | –                | Path to a `.txt` file containing URLs (one per line). |
 | `-out`      | string | `~/Downloads/Rum` | Output directory for downloaded files. |
 | `-p`        | int | –        1          | Number of parallel downloads. |
-| `-limit`    | float | –      0          | Bandwidth limit in MB/s (0 = unlimited). |
+| `-limit`    | int | –      0          | Bandwidth limit in KB/s (Default (0) = unlimited). |
 | `-uA`      | string | `random` | Custom User‑Agent header. |
 | `-rE`      | string | `scheme://host` | Custom Referer header. If empty, derived from the download URL. |
 

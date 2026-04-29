@@ -65,7 +65,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
-			// Cancel all jobs – do NOT set status manually!
 			m.mu.Lock()
 			for _, job := range m.jobs {
 				if job.CancelFunc != nil {
@@ -126,7 +125,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.mu.Lock()
-		if !m.autoScroll && time.Since(m.lastUserScroll) > 3*time.Second {
+		if !m.autoScroll && time.Since(m.lastUserScroll) > 2*time.Second {
 			m.autoScroll = true
 		}
 		m.mu.Unlock()

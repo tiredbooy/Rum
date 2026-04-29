@@ -16,7 +16,7 @@ type DownloadTask struct {
 }
 
 type Options struct {
-	SpeedLimit float64
+	SpeedLimit int
 	Out        string
 	Parallel   int
 

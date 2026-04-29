@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"golang.org/x/time/rate"
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
 	"swiftget.com/internal/pkg/utils"
@@ -47,11 +48,12 @@ func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Re
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
-	//resp, err := http.DefaultClient.Do(req)
 	resp, err := downloader.Client.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
+
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		if offset > 0 && resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
@@ -73,6 +75,17 @@ func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Re
 		offset = 0
 	}
 
+	var body io.ReadCloser = resp.Body
+	if Opt.SpeedLimit > 0 {
+		limiter := rate.NewLimiter(rate.Limit(Opt.SpeedLimit), Opt.SpeedLimit)
+		body = &rateLimitedReader{
+			reader:  resp.Body,
+			limiter: limiter,
+			ctx:     ctx,
+		}
+	}
+	resp.Body = body
+
 	return SaveDownloadedFile(ctx, resp, outFile, offset, fileName, job, progressFn)
 }
 
@@ -90,7 +103,39 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 		totalSize = -1
 	}
 
-	buffer := make([]byte, 1024*1024)
+	// fmt.Printf("DEBUG SPEED: Opt.SpeedLimit = %d bytes/s, bufferSize will be %d\n",
+	// 	Opt.SpeedLimit,
+	// 	func() int64 {
+	// 		if Opt.SpeedLimit > 0 {
+	// 			bs := int64(Opt.SpeedLimit)
+	// 			if bs < 32*1024 {
+	// 				return 32 * 1024
+	// 			}
+	// 			if bs > 4*1024*1024 {
+	// 				return 4 * 1024 * 1024
+	// 			}
+	// 			return bs
+	// 		}
+	// 		return 1024 * 1024
+	// 	}())
+
+	// if Opt.SpeedLimit > 0 && Opt.SpeedLimit < 10240 {
+	// 	Opt.SpeedLimit = 10240
+	// 	fmt.Printf("Speed limit too low, adjusted to minimum 10 KB/s (10240 bytes/s)\n")
+	// }
+
+	// bufferSize := int64(1024 * 1024)
+	// if Opt.SpeedLimit > 0 {
+	// 	bufferSize = int64(Opt.SpeedLimit)
+	// 	if bufferSize < 32*1024 {
+	// 		bufferSize = 32 * 1024
+	// 	}
+	// 	if bufferSize > 4*1024*1024 {
+	// 		bufferSize = 4 * 1024 * 1024
+	// 	}
+	// }
+
+	buffer := make([]byte, downloadBufferSize)
 	var downloaded int64 = existsFileSize
 
 	for {

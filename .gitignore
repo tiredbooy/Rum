@@ -3,3 +3,4 @@
 cmd/swiftget/swiftget
 cmd/rum/Rum
 .VSCodeCounter
+cmd/rum/build.sh

@@ -32,15 +32,20 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	out := fs.String("out", downloadDir, "Output directory")
 	inputPath := fs.String("input", "", "Text file with URLs")
 	parallel := fs.Int("p", 1, "Number of parallel downloads")
-	limit := fs.Float64("limit", 0, "Bandwidth limit (MB/s)")
+	limit := fs.Int("limit", 0, "Bandwidth limit (MB/s)")
 	userAgent := fs.String("uA", "", "Custom User-Agent")
 	referer := fs.String("rE", "", "Custom Referer")
-	// New flags (see Section 3)
+
 	retry := fs.Int("retry", 3, "Max retries on failure")
 	silent := fs.Bool("silent", false, "Suppress notifications")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, nil, nil, fmt.Errorf("flag parse: %w", err)
+	}
+
+	var limitKB int = 0
+	if *limit > 0 {
+		limitKB = *limit * 1024
 	}
 
 	// 2. Collect URLs from leftover args
@@ -50,7 +55,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	opt := &Options{
 		Out:        *out,
 		Parallel:   *parallel,
-		SpeedLimit: *limit,
+		SpeedLimit: limitKB,
 		UserAgent:  *userAgent,
 		Referer:    *referer,
 		MaxRetries: *retry,
