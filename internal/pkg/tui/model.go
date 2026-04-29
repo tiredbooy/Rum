@@ -72,7 +72,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.mu.Unlock()
-			beeep.Notify("Downlaods Paused Successfully", "All Downloads Have been Paused Successfully.", "")
 			return m, nil
 
 		case "r":
@@ -88,7 +87,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mu.Unlock()
 			beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
 			return m, tea.Quit
-		case "left", "h":
+		case "left", "top", "h":
 			m.mu.Lock()
 			if m.visibleStart > 0 {
 				m.visibleStart--
@@ -97,7 +96,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastUserScroll = time.Now()
 			m.mu.Unlock()
 
-		case "right", "l":
+		case "right", "bottom", "l":
 			m.mu.Lock()
 			if m.visibleStart+maxVisible < len(m.jobOrder) {
 				m.visibleStart++
@@ -149,7 +148,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.notifyCompletion(), tea.Quit)
 		}
 		m.mu.Unlock()
-		beeep.Notify("Downloads have been Completed", "All files have been Downloaded Successfully.", "")
 	}
 	return m, nil
 }

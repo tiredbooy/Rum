@@ -126,8 +126,14 @@ Once downloads begin, the following keys are active:
 Key	Action
 ```bash
 Ctrl+C	Pause all running downloads
+```
+```bash
 r	Resume all paused downloads
+```
+```bash
 q	Quit (pauses everything)
+```
+```bash
 ← / →	Manually scroll through the job list
 ```
 While you are manually scrolling, automatic page advancement is temporarily disabled. It will resume after a few seconds of inactivity.
