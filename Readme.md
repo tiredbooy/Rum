@@ -69,7 +69,7 @@ Use the PowerShell installer. Make sure Go is installed first.
 
 ```bash
 cd Rum
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # only needed once, if scripts are blocked
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned  # only needed once, if scripts are blocked
 .\install.ps1
 ```
 
