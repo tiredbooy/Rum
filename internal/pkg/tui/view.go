@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"swiftget.com/internal/pkg/download"
 	"swiftget.com/internal/pkg/format"
 )
 
@@ -50,6 +51,20 @@ func (m *model) View() string {
 	for _, job := range m.jobs {
 		if job.GetStatus() == "completed" {
 			completedJobs++
+		}
+	}
+
+	pausedJobs := 0
+	for _, job := range m.jobs {
+		if job.GetStatus() == download.StatusPaused {
+			pausedJobs++
+		}
+	}
+
+	failedJobs := 0
+	for _, job := range m.jobs {
+		if job.GetStatus() == download.StatusError {
+			failedJobs++
 		}
 	}
 
@@ -120,15 +135,30 @@ func (m *model) View() string {
 			styledStatus, 40, shortURL(name, 40), speedStr, etaStr, bar, percentStr, sizeStr)
 		s.WriteString(row + "\n")
 	}
-	
-	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Completed: %d/%d • Showing %d–%d of %d downloads",
+
+	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Showing %d–%d of %d • downloads Completed: %d/%d ",
 		completedJobs, totalJobs, start+1, end, totalJobs)))
+
+	if failedJobs >= 1 {
+		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#f3330399")).Render(
+			fmt.Sprintf("⚠️ %d errors", failedJobs),
+		))
+	}
+
+	if pausedJobs < totalJobs && m.opt.Parallel > 1 {
+		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#0099ff")).Render(
+			fmt.Sprintf("Active downloads: %d", m.opt.Parallel),
+		))
+	}
+
 	if !m.autoScroll {
-		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500")).Render("[manual]"))
+		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500")).Render("[Manual Scroll]"))
+	} else {
+		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#a200c7")).Render("[Auto Scroll]"))
 	}
 	s.WriteString("\n")
 	s.WriteString(separatorStyle.Render(strings.Repeat("─", m.width)) + "\n")
-	s.WriteString(helpStyle.Render("Ctrl+C: pause • r: resume • q: quit • ->: Next page • <-: Prev Page"))
+	s.WriteString(helpStyle.Render("Ctrl+C: pause • r: resume • q: quit • ->: Scroll Down • <-: Scroll Up"))
 
 	return s.String()
 }
