@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	urlPkg "net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"golang.org/x/time/rate"
 	filesystem "swiftget.com/internal/pkg/file-system"
@@ -158,8 +160,11 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	fileInfo, err := downloader.HeadWithFallback(url)
 	if err != nil {
+		log.Println("Failed to get fileinfo: ", err.Error())
 		return err
 	}
+
+	// log.Println("FileInfo: ", fileInfo)
 
 	fullPath, fileName := PrepareOutputPath(opt, url, fileInfo.ContentType)
 	job.SetFileName(fileName)
@@ -172,14 +177,16 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 	}
 
-	fileSize, _ := strconv.ParseInt(fileInfo.ContentSize, 64, 10)
-	if fileSize > 0 {
-		job.SetTotalSize(fileSize)
+	sizeStr := strings.TrimSpace(fileInfo.ContentSize)
+	fileSize, _ := strconv.Atoi(sizeStr)
+	if err != nil {
+		job.SetTotalSize(-1)
+	} else if fileSize > 0 {
+		job.SetTotalSize(int64(fileSize))
 	} else {
 		job.SetTotalSize(-1)
 	}
 
-	// NEW: if size unknown and local file exists -> assume complete
 	if fileSize <= 0 && existsFileSize > 0 {
 		DebugLog("Remote size unknown, local file exists -> marking as completed")
 		job.SetStatus(StatusCompleted)
@@ -187,15 +194,15 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		return nil
 	}
 
-	if fileSize >= 1 && existsFileSize == fileSize {
+	if fileSize >= 1 && existsFileSize == int64(fileSize) {
 		DebugLog("Found Completed File Pass")
 		job.SetStatus(StatusCompleted)
-		job.SetDownloaded(fileSize)
+		job.SetDownloaded(int64(fileSize))
 		return nil
 	}
 
 	if fileSize > 0 {
-		job.SetTotalSize(fileSize)
+		job.SetTotalSize(int64(fileSize))
 	} else {
 		job.SetTotalSize(-1)
 	}

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -26,10 +25,6 @@ type model struct {
 }
 
 func NewModel(jobs map[string]*download.Job, jobOrder []string, opt *download.Options) *model {
-	// order := make([]string, 0, len(jobs))
-	// for id := range jobs {
-	// 	order = append(order, id)
-	// }
 	return &model{
 		jobs:       jobs,
 		jobOrder:   jobOrder,
@@ -88,7 +83,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mu.Unlock()
 			beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
 			return m, tea.Quit
-		case "left", "top", "h":
+		case "left", "up", "h":
 			m.mu.Lock()
 			if m.visibleStart > 0 {
 				m.visibleStart--
@@ -97,7 +92,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastUserScroll = time.Now()
 			m.mu.Unlock()
 
-		case "right", "bottom", "l":
+		case "right", "down", "l":
 			m.mu.Lock()
 			if m.visibleStart+maxVisible < len(m.jobOrder) {
 				m.visibleStart++
@@ -135,11 +130,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mu.Lock()
 		if job, ok := m.jobs[msg.jobID]; ok {
 			if msg.err == nil {
+				m.autoScroll = true
 				job.SetStatus(download.StatusCompleted)
 			} else if msg.err == context.Canceled {
 				job.SetStatus(download.StatusPaused)
 			} else {
-				log.Println("ERROR: ", msg.err)
 				job.SetStatus(download.StatusError)
 				job.SetError(msg.err)
 			}

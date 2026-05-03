@@ -32,7 +32,7 @@ type RequestHeaders struct {
 func NewDownloader(userAgent, referer string) *Downloader {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{
-		Jar:     jar,
+		Jar: jar,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
