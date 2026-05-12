@@ -19,7 +19,15 @@ import (
 )
 
 func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, fileName string) {
-	folderName := format.GetFolderName(contentType)
+	defaultDownloadDir := filesystem.GetOrCreateDirectory()
+
+	var folderName string = ""
+	if opt.Out != defaultDownloadDir {
+		folderName = ""
+	} else {
+		folderName = format.GetFolderName(contentType)
+	}
+
 
 	fullFolderPath := filepath.Join(opt.Out, folderName)
 	os.MkdirAll(fullFolderPath, os.ModePerm)

@@ -35,6 +35,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	limit := fs.Int("limit", 0, "Bandwidth limit (MB/s)")
 	userAgent := fs.String("uA", "", "Custom User-Agent")
 	referer := fs.String("rE", "", "Custom Referer")
+	groupFolder := fs.String("group", "", "Create Group Folder")
 
 	retry := fs.Int("retry", 3, "Max retries on failure")
 	silent := fs.Bool("silent", false, "Suppress notifications")
@@ -48,18 +49,25 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 		limitKB = *limit * 1024
 	}
 
+	var wantGroup bool
+	if *groupFolder != "" {
+		wantGroup = true
+	}
+
 	// 2. Collect URLs from leftover args
 	urls = append(urls, fs.Args()...)
 
 	// 3. Prepare options and load persisted jobs
 	opt := &Options{
-		Out:        *out,
-		Parallel:   *parallel,
-		SpeedLimit: limitKB,
-		UserAgent:  *userAgent,
-		Referer:    *referer,
-		MaxRetries: *retry,
-		Silent:     *silent,
+		Out:             *out,
+		Parallel:        *parallel,
+		SpeedLimit:      limitKB,
+		UserAgent:       *userAgent,
+		Referer:         *referer,
+		MaxRetries:      *retry,
+		Silent:          *silent,
+		WantGroupFolder: wantGroup,
+		GroupFolder:     *groupFolder,
 	}
 	Opt = opt
 	LoadOptions(opt)
