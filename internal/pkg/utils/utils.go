@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -11,4 +12,11 @@ func UrlValidation(rawURL string) string {
 	}
 
 	return url
+}
+
+func ConvertSizeToInt(size string) int64 {
+	sizeStr := strings.TrimSpace(size)
+	fileSize, _ := strconv.Atoi(sizeStr)
+
+	return int64(fileSize)
 }

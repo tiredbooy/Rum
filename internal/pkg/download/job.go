@@ -23,6 +23,8 @@ type Job struct {
 	Status        string             `json:"status"`
 	Downloaded    int64              `json:"downloaded"`
 	TotalSize     int64              `json:"total_size"`
+	ContentType   string             `json:"content_type"`
+	SupportRange  bool               `json:"support_range"`
 	Speed         float64            `json:"speed"`
 	RemainingTime time.Duration      `json:"remaining_time"`
 	Error         error              `json:"error"`

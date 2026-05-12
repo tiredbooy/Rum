@@ -3,13 +3,15 @@ package download
 import (
 	"flag"
 	"fmt"
+	"log"
+	"mime"
 	"strings"
 	"sync"
 
-	// "github.com/gen2brain/beeep"
 	"github.com/google/uuid"
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
+	"swiftget.com/internal/pkg/utils"
 )
 
 var (
@@ -57,7 +59,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	// 2. Collect URLs from leftover args
 	urls = append(urls, fs.Args()...)
 
-	// 3. Prepare options and load persisted jobs
+	// 3. Prepare options
 	opt := &Options{
 		Out:             *out,
 		Parallel:        *parallel,
@@ -72,7 +74,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	Opt = opt
 	LoadOptions(opt)
 
-	// 4. Read URLs from input file
+	// 4. Read URLs from input file if provided
 	if *inputPath != "" {
 		fileURLs, err := filesystem.GetTxtUrls(*inputPath)
 		if err != nil {
@@ -98,7 +100,14 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 		}
 	}
 
-	// 5. Build final URL list (deduplicated)
+	// 5. Prepare the Downloader (set a random user agent if none given)
+	if *userAgent == "" {
+		*userAgent = utils.GetRandomUserAgent()
+	}
+	downloader := NewDownloader(*userAgent, *referer)
+	opt.Downloader = downloader
+
+	// 6. Build final URL list (no duplicates)
 	unique := make(map[string]bool)
 	var finalURLs []string
 	for _, u := range urls {
@@ -114,31 +123,96 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 		return nil, nil, nil, fmt.Errorf("at least one URL required")
 	}
 
-	// 6. Load previous jobs from disk and merge new URLs
+	// 7. Load saved jobs from disk (so we know which URLs already have a job)
 	LoadJobsFromDisk()
+
+	// 8. Find which URLs are NEW (not already in the jobs map)
 	mu.Lock()
-	for _, url := range finalURLs {
-		exists := false
-		for _, j := range jobs {
-			if j.URL == url {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			job := &Job{
-				ID:         uuid.New().String(),
-				URL:        url,
-				OutputPath: opt.Out,
-				Status:     "pending",
-			}
-			jobs[job.ID] = job
-		}
+	existingURLs := make(map[string]bool)
+	for _, j := range jobs {
+		existingURLs[j.URL] = true
 	}
 	mu.Unlock()
 
-	// 7. Create ordered ID slice matching finalURLs order
+	type newURL struct {
+		idx int
+		url string
+	}
+	var toHead []newURL
+	for i, url := range finalURLs {
+		if !existingURLs[url] {
+			toHead = append(toHead, newURL{idx: i, url: url})
+		}
+	}
+
+	// 9. Run HEAD requests for new URLs all at the same time (concurrent)
+	//    We use a "semaphore" to limit how many goroutines run at once.
+	maxConcurrent := 5
+	if opt.Parallel > 1 {
+		maxConcurrent = opt.Parallel
+	}
+	sem := make(chan struct{}, maxConcurrent)
+	resultCh := make(chan HeadResult, len(toHead))
+
+	for _, item := range toHead {
+		sem <- struct{}{} // wait if we already have maxConcurrent goroutines running
+		go func(n newURL) {
+			defer func() { <-sem }() // release the slot when done
+			info, err := downloader.HeadWithFallback(n.url)
+			resultCh <- HeadResult{URL: n.url, FileInfo: info, Err: err}
+		}(item)
+	}
+
+	// 10. Collect all results and build new Job objects
+	newJobs := make(map[string]*Job)
+	for i := 0; i < len(toHead); i++ {
+		res := <-resultCh
+		if res.Err != nil {
+			log.Printf("⚠️ Failed to get file info for %s: %v", res.URL, res.Err)
+			continue
+		}
+
+		// Determine the filename (same logic as before)
+		var fileName string
+		if res.FileInfo.ContentDisposition != "" {
+			_, params, err := mime.ParseMediaType(res.FileInfo.ContentDisposition)
+			if err == nil {
+				fileName = params["filename"]
+			}
+		}
+		if fileName == "" {
+			fileName = format.ExtractFileNameFromURL(res.URL)
+		}
+		if fileName == "" {
+			fileName = format.CleanFileName(res.URL)
+		}
+		if fileName == "" || fileName == "/" {
+			fileName = "downloaded.file"
+		}
+
+		job := &Job{
+			ID:           uuid.New().String(),
+			URL:          res.URL,
+			OutputPath:   opt.Out,
+			FileName:     fileName,
+			TotalSize:    utils.ConvertSizeToInt(res.FileInfo.ContentSize),
+			ContentType:  res.FileInfo.ContentType,
+			SupportRange: res.FileInfo.SupportsRange,
+			Status:       "pending",
+		}
+		newJobs[job.ID] = job
+	}
+
+	// 11. Merge the new jobs into the global job map
+	mu.Lock()
+	for id, j := range newJobs {
+		jobs[id] = j
+	}
+	mu.Unlock()
+
+	// 12. Build the ordered slice of job IDs (same order as finalURLs)
 	jobOrder := make([]string, 0, len(finalURLs))
+	mu.Lock()
 	for _, url := range finalURLs {
 		for id, j := range jobs {
 			if j.URL == url {
@@ -147,6 +221,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 			}
 		}
 	}
+	mu.Unlock()
 
 	SaveJobsToDisk()
 	return jobs, jobOrder, opt, nil

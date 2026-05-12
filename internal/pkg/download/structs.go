@@ -28,6 +28,8 @@ type Options struct {
 
 	MaxRetries int
 	Silent     bool
+
+	Downloader *Downloader
 }
 
 type DownloadResult struct {
@@ -42,4 +44,11 @@ type DownloadTargets struct {
 
 	DownloadSpeed   float64
 	DownloadedBytes int64
+}
+
+type HeadResult struct {
+	Index    int 
+	URL      string
+	FileInfo *HeaderInfo
+	Err      error
 }

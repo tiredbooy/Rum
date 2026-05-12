@@ -7,13 +7,15 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"time"
 )
 
 type HeaderInfo struct {
-	ContentSize   string
-	ContentType   string
-	SupportsRange bool
+	ContentSize        string
+	ContentType        string
+	ContentDisposition string
+	SupportsRange      bool
 }
 
 type Downloader struct {
@@ -43,27 +45,41 @@ func NewDownloader(userAgent, referer string) *Downloader {
 		},
 	}
 
+	headers := map[string]string{
+		"User-Agent": userAgent,
+		// "Referer":         referer,
+		"Accept":          "*/*",
+		"Accept-Language": "en-US,en;q=0.5",
+		"Accept-Encoding": "gzip, deflate, br",
+		"Connection":      "keep-alive",
+	}
+
+	if referer != "" {
+		headers["Referer"] = referer
+	}
+
 	return &Downloader{
-		Client: client,
-		Headers: map[string]string{
-			"User-Agent":      userAgent,
-			"Referer":         referer,
-			"Accept":          "*/*",
-			"Accept-Language": "en-US,en;q=0.5",
-			"Accept-Encoding": "gzip, deflate, br",
-			"Connection":      "keep-alive",
-		},
+		Client:  client,
+		Headers: headers,
 	}
 }
 
-func (d *Downloader) NewRequest(method, url string) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, nil)
+func (d *Downloader) NewRequest(method, urlStr string) (*http.Request, error) {
+	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
 	for key, value := range d.Headers {
 		req.Header.Set(key, value)
 	}
+
+	if req.Header.Get("Referer") == "" {
+		u, err := url.Parse(urlStr)
+		if err == nil {
+			req.Header.Set("Referer", fmt.Sprintf("%s://%s/", u.Scheme, u.Host))
+		}
+	}
+
 	return req, nil
 }
 
@@ -152,9 +168,10 @@ func GetHTTPClient(timeout time.Duration) *http.Client {
 func ParseHeaderInfo(resp *http.Response) *HeaderInfo {
 	acceptRange := resp.Header.Get("Accept-Ranges")
 	return &HeaderInfo{
-		ContentSize:   resp.Header.Get("Content-Length"),
-		ContentType:   resp.Header.Get("Content-Type"),
-		SupportsRange: acceptRange != "",
+		ContentSize:        resp.Header.Get("Content-Length"),
+		ContentType:        resp.Header.Get("Content-Type"),
+		ContentDisposition: resp.Header.Get("Content-Disposition"),
+		SupportsRange:      acceptRange != "",
 	}
 }
 

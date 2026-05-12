@@ -4,13 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	urlPkg "net/url"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"golang.org/x/time/rate"
 	filesystem "swiftget.com/internal/pkg/file-system"
@@ -18,7 +14,7 @@ import (
 	"swiftget.com/internal/pkg/utils"
 )
 
-func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, fileName string) {
+func PrepareOutputPath(opt Options, fileName, url string, contentType string) (fullPath string) {
 	defaultDownloadDir := filesystem.GetOrCreateDirectory()
 
 	var folderName string = ""
@@ -28,21 +24,11 @@ func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, f
 		folderName = format.GetFolderName(contentType)
 	}
 
-
 	fullFolderPath := filepath.Join(opt.Out, folderName)
 	os.MkdirAll(fullFolderPath, os.ModePerm)
 
 	groupFolderPath := filepath.Join(fullFolderPath, opt.GroupFolder)
 	filesystem.CreateGroupFolder(groupFolderPath)
-
-	fileName = format.ExtractFileNameFromURL(url)
-	if fileName == "" {
-		fileName = format.CleanFileName(url)
-	}
-
-	if fileName == "" || fileName == "/" {
-		fileName = "downloaded.file"
-	}
 
 	if opt.WantGroupFolder {
 		fullPath = filepath.Join(groupFolderPath, fileName)
@@ -50,7 +36,7 @@ func PrepareOutputPath(opt Options, url string, contentType string) (fullPath, f
 		fullPath = filepath.Join(fullFolderPath, fileName)
 	}
 
-	return fullPath, fileName
+	return fullPath
 }
 
 func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
@@ -149,68 +135,46 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
 
-	var referer, userAgent string
-
-	if opt.Referer != "" {
-		referer = opt.Referer
-	} else {
-		u, _ := urlPkg.Parse(job.URL)
-		referer = fmt.Sprintf("%s://%s/", u.Scheme, u.Host)
-	}
-
-	if opt.UserAgent != "" {
-		userAgent = opt.UserAgent
-	} else {
-		userAgent = utils.GetRandomUserAgent()
-	}
-
-	downloader := NewDownloader(userAgent, referer)
-
-	fileInfo, err := downloader.HeadWithFallback(url)
-	if err != nil {
-		log.Println("Failed to get fileinfo: ", err.Error())
-		return err
-	}
-
 	// log.Println("FileInfo: ", fileInfo)
 
-	fullPath, fileName := PrepareOutputPath(opt, url, fileInfo.ContentType)
-	job.SetFileName(fileName)
+	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
+	// job.SetFileName(fileName)
 
 	var existsFileSize int64 = 0
 	if filesystem.IsFileExists(fullPath) {
-		existsFileSize, err = filesystem.GetExistsFileSize(fullPath)
+		gotExistsFileSize, err := filesystem.GetExistsFileSize(fullPath)
 		if err != nil {
 			return err
 		}
+		existsFileSize = gotExistsFileSize
 	}
 
-	sizeStr := strings.TrimSpace(fileInfo.ContentSize)
-	fileSize, _ := strconv.Atoi(sizeStr)
-	if err != nil {
-		job.SetTotalSize(-1)
-	} else if fileSize > 0 {
-		job.SetTotalSize(int64(fileSize))
-	} else {
-		job.SetTotalSize(-1)
-	}
+	// sizeStr := strings.TrimSpace(fileInfo.ContentSize)
+	// fileSize, _ := strconv.Atoi(sizeStr)
+	// if err != nil {
+	// 	job.SetTotalSize(-1)
+	// } else if fileSize > 0 {
+	// 	job.SetTotalSize(int64(fileSize))
+	// } else {
+	// 	job.SetTotalSize(-1)
+	// }
 
-	if fileSize <= 0 && existsFileSize > 0 {
+	if job.TotalSize <= 0 && existsFileSize > 0 {
 		DebugLog("Remote size unknown, local file exists -> marking as completed")
 		job.SetStatus(StatusCompleted)
 		job.SetDownloaded(existsFileSize)
 		return nil
 	}
 
-	if fileSize >= 1 && existsFileSize == int64(fileSize) {
+	if job.TotalSize >= 1 && existsFileSize == int64(job.TotalSize) {
 		DebugLog("Found Completed File Pass")
 		job.SetStatus(StatusCompleted)
-		job.SetDownloaded(int64(fileSize))
+		job.SetDownloaded(int64(job.TotalSize))
 		return nil
 	}
 
-	if fileSize > 0 {
-		job.SetTotalSize(int64(fileSize))
+	if job.TotalSize > 0 {
+		job.SetTotalSize(int64(job.TotalSize))
 	} else {
 		job.SetTotalSize(-1)
 	}
@@ -222,7 +186,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	defer outFile.Close()
 
-	req, err := downloader.NewRequest("GET", url)
+	req, err := opt.Downloader.NewRequest("GET", url)
 
 	if err != nil {
 		return err
@@ -232,15 +196,15 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	if existsFileSize > 0 {
 		DebugLog("Trying to Resume Exists File")
-		return DownloadWithRange(ctx, downloader, req, fileName, outFile, existsFileSize, job, progressFn)
+		return DownloadWithRange(ctx, opt.Downloader, req, job.FileName, outFile, existsFileSize, job, progressFn)
 	}
 
-	if existsFileSize > 0 && !fileInfo.SupportsRange {
+	if existsFileSize > 0 && !job.SupportRange {
 		fmt.Println("Server does not support range. Starting over...")
 		if err := outFile.Truncate(0); err != nil {
 			return err
 		}
 	}
 
-	return DownloadWithRange(ctx, downloader, req, fileName, outFile, 0, job, progressFn)
+	return DownloadWithRange(ctx, opt.Downloader, req, job.FileName, outFile, 0, job, progressFn)
 }
