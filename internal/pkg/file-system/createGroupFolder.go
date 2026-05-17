@@ -19,5 +19,4 @@ func CreateGroupFolder(folderPath string) {
 			return
 		}
 	}
-
 }

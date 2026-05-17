@@ -81,7 +81,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.mu.Unlock()
-			beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
+			if !m.opt.Silent {
+				beeep.Notify("App Closed Successfully", "App Have been closed Successfully And all downloads are paused.", "")
+			}
 			return m, tea.Quit
 		case "left", "up", "h":
 			m.mu.Lock()
@@ -189,8 +191,10 @@ func (m *model) allJobsDone() bool {
 
 func (m *model) notifyCompletion() tea.Cmd {
 	return func() tea.Msg {
-		beeep.Notify("Downloads Finished", "All Files have been downloaded successfully, See you again.", "")
-		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+		if !m.opt.Silent {
+			beeep.Notify("Downloads Finished", "All Files have been downloaded successfully, See you again.", "")
+			beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+		}
 		return nil
 	}
 }

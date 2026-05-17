@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/time/rate"
+
 	filesystem "swiftget.com/internal/pkg/file-system"
 	"swiftget.com/internal/pkg/format"
 	"swiftget.com/internal/pkg/utils"
@@ -134,11 +135,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
-
-	// log.Println("FileInfo: ", fileInfo)
-
 	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
-	// job.SetFileName(fileName)
 
 	var existsFileSize int64 = 0
 	if filesystem.IsFileExists(fullPath) {
@@ -148,16 +145,6 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 		existsFileSize = gotExistsFileSize
 	}
-
-	// sizeStr := strings.TrimSpace(fileInfo.ContentSize)
-	// fileSize, _ := strconv.Atoi(sizeStr)
-	// if err != nil {
-	// 	job.SetTotalSize(-1)
-	// } else if fileSize > 0 {
-	// 	job.SetTotalSize(int64(fileSize))
-	// } else {
-	// 	job.SetTotalSize(-1)
-	// }
 
 	if job.TotalSize <= 0 && existsFileSize > 0 {
 		DebugLog("Remote size unknown, local file exists -> marking as completed")
