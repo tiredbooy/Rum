@@ -15,6 +15,7 @@ func main() {
 	cfg := config.Load()
 
 	args := os.Args[1:]
+
 	if len(args) == 0 {
 		printUsage()
 		os.Exit(1)
@@ -32,7 +33,7 @@ func main() {
 			log.Println("Failed To run Program: ", err.Error())
 			return
 		}
-		if jobs == nil || len(jobs) == 0 {
+		if jobs == nil && len(jobs) == 0 {
 			return
 		}
 		tui.RunTUI(jobs, jobOrder, opt)
@@ -46,7 +47,7 @@ func main() {
 			log.Println("Failed To run Program: ", err.Error())
 			return
 		}
-		if jobs == nil || len(jobs) == 0 {
+		if jobs == nil && len(jobs) == 0 {
 			return
 		}
 		tui.RunTUI(jobs, jobOrder, opt)

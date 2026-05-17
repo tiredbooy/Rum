@@ -162,7 +162,7 @@ func (m *model) pauseAllAndSave() tea.Cmd {
 		}
 	}
 
-	go download.SaveJobsToDisk()
+	go download.SaveJobsToDisk(m.jobs)
 	return nil
 }
 

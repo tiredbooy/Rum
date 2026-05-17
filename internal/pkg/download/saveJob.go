@@ -19,9 +19,7 @@ func GetJobsFilePath() string {
 	return filepath.Join(dir, "queue.json")
 }
 
-func SaveJobsToDisk() error {
-	mu.Lock()
-	defer mu.Unlock()
+func SaveJobsToDisk(jobs map[string]*Job) error {
 
 	var activeJobs []*Job
 	for _, job := range jobs {
@@ -68,24 +66,23 @@ func writeErrorLog(msg string) {
 	}
 }
 
-func LoadJobsFromDisk() {
+func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 	path := GetJobsFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
 
-	var loadedJobs []*Job
-	if err := json.Unmarshal(data, &loadedJobs); err != nil {
+	var loaded []*Job
+	if err := json.Unmarshal(data, &loaded); err != nil {
 		log.Printf("Failed to parse saved jobs: %v", err)
 		return
 	}
-
-	fmt.Printf("Found %d incomplete downloads. Resume later from the TUI.\n", len(loadedJobs))
-	for _, j := range loadedJobs {
-		j.Status = "paused"
-		mu.Lock()
-		jobs[j.ID] = j
-		mu.Unlock()
+	fmt.Printf("Found %d incomplete downloads. Resume later from the TUI.\n", len(jobs))
+	for _, job := range loaded {
+		job.Status = "paused"
+		jobs[job.ID] = job
+		urlToID[job.URL] = job.ID
 	}
+	fmt.Printf("Loaded %d incomplete downloads.\n", len(loaded))
 }

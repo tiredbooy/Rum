@@ -15,6 +15,8 @@ import (
 	"swiftget.com/internal/pkg/utils"
 )
 
+type ProgressFunc func(downloaded, total int64)
+
 func PrepareOutputPath(opt Options, fileName, url string, contentType string) (fullPath string) {
 	defaultDownloadDir := filesystem.GetOrCreateDirectory()
 
@@ -113,9 +115,6 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 			job.SetDownloaded(downloaded)
 			if progressFn != nil {
 				progressFn(downloaded, totalSize)
-			}
-			if downloaded%500 == 0 {
-				go SaveJobsToDisk()
 			}
 		}
 		if err == io.EOF {
