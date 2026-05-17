@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"swiftget.com/internal/pkg/format"
-	"swiftget.com/internal/pkg/utils"
+	"github.com/tiredbooy/Rum/internal/pkg/format"
+	"github.com/tiredbooy/Rum/internal/pkg/utils"
 )
 
 type JobManager struct {

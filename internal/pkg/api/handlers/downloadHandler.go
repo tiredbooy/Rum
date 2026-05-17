@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"swiftget.com/internal/pkg/api/dto"
-	"swiftget.com/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/api/dto"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
 )
 
 var GlobalManager *download.JobManager

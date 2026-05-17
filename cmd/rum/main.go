@@ -6,9 +6,9 @@ import (
 	"os"
 
 	"github.com/gen2brain/beeep"
-	"swiftget.com/internal/pkg/config"
-	"swiftget.com/internal/pkg/download"
-	"swiftget.com/internal/pkg/tui"
+	"github.com/tiredbooy/Rum/internal/pkg/config"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/tui"
 )
 
 func main() {

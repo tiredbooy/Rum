@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gen2brain/beeep"
-	"swiftget.com/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
 )
 
 type model struct {

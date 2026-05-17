@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"swiftget.com/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
 )
 
 var progressThrottle = newThrottler()

@@ -1,4 +1,4 @@
-module swiftget.com
+module github.com/tiredbooy/Rum
 
 go 1.25.7
 

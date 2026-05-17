@@ -2,7 +2,7 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
-	"swiftget.com/internal/pkg/api/handlers"
+	"github.com/tiredbooy/Rum/internal/pkg/api/handlers"
 )
 
 func SetupRouter(r *gin.Engine) {

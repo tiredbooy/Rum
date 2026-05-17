@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	filesystem "swiftget.com/internal/pkg/file-system"
-	"swiftget.com/internal/pkg/format"
-	"swiftget.com/internal/pkg/utils"
+	filesystem "github.com/tiredbooy/Rum/internal/pkg/file-system"
+	"github.com/tiredbooy/Rum/internal/pkg/format"
+	"github.com/tiredbooy/Rum/internal/pkg/utils"
 )
 
 func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {

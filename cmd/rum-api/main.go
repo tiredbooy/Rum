@@ -2,11 +2,11 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
-	"swiftget.com/internal/pkg/api/handlers"
-	"swiftget.com/internal/pkg/api/middlewares"
-	"swiftget.com/internal/pkg/api/routes"
-	"swiftget.com/internal/pkg/download"
-	filesystem "swiftget.com/internal/pkg/file-system"
+	"github.com/tiredbooy/Rum/internal/pkg/api/handlers"
+	"github.com/tiredbooy/Rum/internal/pkg/api/middlewares"
+	"github.com/tiredbooy/Rum/internal/pkg/api/routes"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
+	filesystem "github.com/tiredbooy/Rum/internal/pkg/file-system"
 )
 
 func main() {

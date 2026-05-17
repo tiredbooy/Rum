@@ -4,7 +4,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"swiftget.com/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
 )
 
 func RunTUI(jobs map[string]*download.Job, jobOrder []string, opt *download.Options) {

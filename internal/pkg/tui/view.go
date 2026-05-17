@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"swiftget.com/internal/pkg/download"
-	"swiftget.com/internal/pkg/format"
+	"github.com/tiredbooy/Rum/internal/pkg/download"
+	"github.com/tiredbooy/Rum/internal/pkg/format"
 )
 
 const maxVisible = 8
