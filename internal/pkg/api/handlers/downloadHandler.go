@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +30,9 @@ func CreateDownload(c *gin.Context) {
 	}
 
 	for _, job := range jobs {
-		go GlobalManager.StartJob(c.Request.Context(), job.ID)
+		if req.AutoStart {
+			go GlobalManager.StartJob(c.Request.Context(), job.ID)
+		}
 	}
 
 	var jobInfos []dto.JobInfo
@@ -68,4 +71,60 @@ func GetDownloadStatus(c *gin.Context) {
 		// CreatedAt:  job.CreatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func GetAllJobs(c *gin.Context) {
+	var jobs []dto.DownloadResponse
+
+	foundJob := GlobalManager.GetAllJobs()
+
+	for _, job := range foundJob {
+
+		j := dto.DownloadResponse{
+			ID:         job.ID,
+			URL:        job.URL,
+			Filename:   job.FileName,
+			Progress:   (int(job.Downloaded) / int(job.TotalSize)) * 100,
+			Status:     job.Status,
+			Downloaded: job.Downloaded,
+			TotalSize:  job.TotalSize,
+			Speed:      job.Speed,
+			Remaining:  int64(job.RemainingTime),
+			// Error:       job.Error.Error(),
+			CreatedAt:   job.CreatedAt,
+			CompletedAt: job.CompletedAt,
+		}
+
+		jobs = append(jobs, j)
+	}
+
+	if len(jobs) <= 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "No Job Found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, jobs)
+}
+
+func StartDownload(c *gin.Context) {
+	jobID := c.Param("id")
+
+	jobExists := GlobalManager.CheckJobExists(c.Request.Context(), jobID)
+	if !jobExists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Job does not exists"})
+		return
+	}
+
+	err := GlobalManager.StartJob(c.Request.Context(), jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to start download %s: ", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Job Started Successfully."})
+}
+
+func StartDownloads(c *gin.Context) {
+	go GlobalManager.StartAllJobs(c.Request.Context())
+	c.JSON(http.StatusAccepted, gin.H{"message": "Starting all pending/paused jobs"})
 }

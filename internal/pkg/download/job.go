@@ -29,6 +29,8 @@ type Job struct {
 	RemainingTime time.Duration      `json:"remaining_time"`
 	Error         error              `json:"error"`
 	CancelFunc    context.CancelFunc `json:"-"`
+	CreatedAt     string             `json:"created_at"`
+	CompletedAt   string             `json:"completed_at"`
 }
 
 func (j *Job) GetFileName() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.FileName }

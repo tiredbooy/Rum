@@ -8,16 +8,19 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/tiredbooy/Rum/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/internal/pkg/format"
 	"github.com/tiredbooy/Rum/internal/pkg/utils"
 )
 
 type JobManager struct {
-	mu   sync.RWMutex
-	jobs map[string]*Job
-	urls map[string]string
-	sem  chan struct{}
-	opt  *Options
+	mu          sync.RWMutex
+	jobs        map[string]*Job
+	urls        map[string]string
+	sem         chan struct{}
+	opt         *Options
+	subscribers map[string][]chan dto.ProgressUpdate
+	subMu       sync.RWMutex
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -29,10 +32,11 @@ func NewJobManager(opt *Options) *JobManager {
 	}
 
 	m := &JobManager{
-		jobs: make(map[string]*Job),
-		urls: make(map[string]string),
-		sem:  make(chan struct{}, opt.Parallel),
-		opt:  opt,
+		jobs:        make(map[string]*Job),
+		urls:        make(map[string]string),
+		sem:         make(chan struct{}, opt.Parallel),
+		opt:         opt,
+		subscribers: make(map[string][]chan dto.ProgressUpdate),
 	}
 
 	m.mu.Lock()
@@ -102,9 +106,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		sem <- struct{}{}
 		go func(u string) {
 			defer func() { <-sem }()
-			log.Println("Reached head req")
 			info, err := downloader.HeadWithFallback(u)
-			log.Println("done head req")
 			resCh <- headRes{url: u, info: info, err: err}
 		}(url)
 	}
@@ -178,12 +180,22 @@ func (m *JobManager) GetAllJobs() []*Job {
 	return jobs
 }
 
+func (m *JobManager) CheckJobExists(ctx context.Context, jobID string) bool {
+	m.mu.Lock()
+	_, exists := m.jobs[jobID]
+	if !exists {
+		return false
+	}
+	m.mu.Unlock()
+	return true
+}
+
 func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.mu.Lock()
 	job, exists := m.jobs[jobID]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("Job %s not found", jobID)
+		return fmt.Errorf("job %s not found", jobID)
 	}
 	if job.Status != StatusPending && job.Status != StatusPaused {
 		m.mu.Unlock()
@@ -194,34 +206,80 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 
 	select {
 	case m.sem <- struct{}{}:
-		// acquired
+		log.Printf("StartJob: acquired semaphore for %s", jobID)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 
 	go func() {
-		defer func() { <-m.sem }() // release worker
+		defer func() { <-m.sem }()
+		log.Printf("StartJob: goroutine running for %s", jobID)
 
-		// Update status to running
 		m.mu.Lock()
 		job.SetStatus(StatusRunning)
 		m.mu.Unlock()
 
-		err := DownloadSingleFile(ctx, *m.opt, job, nil)
+		progressFn := func(downloaded, total int64) {
+			update := dto.ProgressUpdate{
+				JobID:      jobID,
+				Downloaded: downloaded,
+				TotalSize:  total,
+				Speed:      job.GetSpeed(),
+				Status:     string(job.Status),
+			}
+			if total > 0 {
+				update.Progress = int(float64(downloaded) / float64(total) * 100)
+			}
+			m.publishProgress(update)
+		}
+
+		err := DownloadSingleFile(ctx, *m.opt, job, progressFn)
+
+		finalUpdate := dto.ProgressUpdate{
+			JobID:      jobID,
+			Downloaded: job.GetDownloaded(),
+			TotalSize:  job.TotalSize,
+			Speed:      0,
+			Status:     string(job.Status),
+		}
+		if job.TotalSize > 0 {
+			finalUpdate.Progress = int(float64(job.GetDownloaded()) / float64(job.GetTotalSize()) * 100)
+		}
+		m.publishProgress(finalUpdate)
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if ctx.Err() == context.Canceled {
 			job.SetStatus(StatusPaused)
+			log.Printf("Job %s paused", jobID)
 		} else if err == nil {
 			job.SetStatus(StatusCompleted)
+			log.Printf("Job %s completed", jobID)
 		} else {
 			job.SetStatus(StatusError)
 			job.Error = err
+			log.Printf("Job %s error: %v", jobID, err)
 		}
 		m.saveToDisk()
 	}()
 	return nil
+}
+
+func (m *JobManager) StartAllJobs(ctx context.Context) {
+	m.mu.RLock()
+	var jobIDs []string
+	for id, job := range m.jobs {
+		if job.Status == StatusPending || job.Status == StatusPaused {
+			jobIDs = append(jobIDs, id)
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, id := range jobIDs {
+		if err := m.StartJob(ctx, id); err != nil {
+			log.Printf("StartAllJobs: failed to start job %s: %v", id, err)
+		}
+	}
 }
 
 func (m *JobManager) PauseJob(jobID string) error {
@@ -238,4 +296,40 @@ func (m *JobManager) PauseJob(jobID string) error {
 		return nil
 	}
 	return fmt.Errorf("job %s has no active download", jobID)
+}
+
+func (m *JobManager) Subscribe(jobID string) <-chan dto.ProgressUpdate {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	ch := make(chan dto.ProgressUpdate, 10)
+	m.subscribers[jobID] = append(m.subscribers[jobID], ch)
+	return ch
+}
+
+func (m *JobManager) UnSubscribe(jobID string, ch <-chan dto.ProgressUpdate) {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	subscribers := m.subscribers[jobID]
+	for i, sub := range subscribers {
+		if sub == ch {
+			m.subscribers[jobID] = append(m.subscribers[jobID], subscribers[i+1:]...)
+			close(sub)
+			break
+		}
+	}
+
+	if len(m.subscribers[jobID]) == 0 {
+		delete(m.subscribers, jobID)
+	}
+}
+
+func (m *JobManager) publishProgress(update dto.ProgressUpdate) {
+	m.subMu.RLock()
+	defer m.subMu.RUnlock()
+	for _, ch := range m.subscribers[update.JobID] {
+		select {
+		case ch <- update:
+		default:
+		}
+	}
 }
