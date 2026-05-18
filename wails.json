@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Rum",
+  "outputfilename": "Rum",
+  "rum:install": "npm install",
+  "rum:build": "npm run build",
+  "rum:dev:watcher": "npm run dev",
+  "rum:dev:serverUrl": "auto",
+  "author": {
+    "name": "tiredbooy",
+    "email": "mahdykazemyo1i2@gmail.com"
+  }
+}

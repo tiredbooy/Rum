@@ -4,3 +4,6 @@ cmd/swiftget/swiftget
 cmd/rum/Rum
 .VSCodeCounter
 cmd/rum/build.sh
+frontend/dist
+frontend/node_modules
+build
