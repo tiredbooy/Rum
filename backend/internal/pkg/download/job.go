@@ -56,3 +56,9 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 }
 func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
 func (j *Job) SetError(e error) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Error = e }
+
+func (j *Job) GetCreatedAt() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
+func (j *Job) SetCreatedAt(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
+
+func (j *Job) GetCompletedAt() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CompletedAt }
+func (j *Job) SetCompletedAt(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CompletedAt = v }

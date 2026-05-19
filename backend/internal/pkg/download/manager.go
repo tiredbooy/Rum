@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -130,6 +131,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 			ContentType:  res.info.ContentType,
 			SupportRange: res.info.SupportsRange,
 			Status:       StatusPending,
+			CreatedAt:    time.Now().String(),
 		}
 		newJobs = append(newJobs, job)
 	}

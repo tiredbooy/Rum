@@ -11,43 +11,59 @@ import (
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
 
+func toQueueJob(job *Job) *Job {
+	return &Job{
+		ID:         job.ID,
+		URL:        job.URL,
+		Status:     job.Status,
+		OutputPath: job.OutputPath,
+		Downloaded: job.Downloaded,
+		TotalSize:  job.TotalSize,
+	}
+}
 
+func toHistoryJob(job *Job) *Job {
+	return &Job{
+		ID:          job.ID,
+		URL:         job.URL,
+		Status:      job.Status,
+		OutputPath:  job.OutputPath,
+		Downloaded:  job.Downloaded,
+		TotalSize:   job.TotalSize,
+		CompletedAt: job.CompletedAt,
+		CreatedAt:   job.CreatedAt,
+	}
+}
 
 func SaveJobsToDisk(jobs map[string]*Job) error {
-
 	var activeJobs []*Job
+	var historyJobs []*Job
+
 	for _, job := range jobs {
 		if job.Status == "running" || job.Status == "paused" {
-			copyJob := &Job{
-				ID:         job.ID,
-				URL:        job.URL,
-				Status:     job.Status,
-				OutputPath: job.OutputPath,
-				Downloaded: job.Downloaded,
-				TotalSize:  job.TotalSize,
-			}
-			activeJobs = append(activeJobs, copyJob)
+			activeJobs = append(activeJobs, toQueueJob(job))
+		} else {
+			historyJobs = append(historyJobs, toHistoryJob(job))
 		}
 	}
 
-	path := filesystem.CreateMetadataFile("queue.json")
 	if len(activeJobs) == 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			writeErrorLog("Failed to remove job file: " + err.Error())
+		queuePath := filesystem.CreateMetadataFile("queue.json")
+		if err := os.Remove(queuePath); err != nil && !os.IsNotExist(err) {
+			writeErrorLog("Failed to remove queue.json: " + err.Error())
 		}
-		return nil
+	} else {
+		if err := filesystem.WriteMetadataFile("queue.json", activeJobs); err != nil {
+			writeErrorLog("Failed to save queue: " + err.Error())
+			return err
+		}
 	}
 
-	data, err := json.MarshalIndent(activeJobs, "", "  ")
-	if err != nil {
-		writeErrorLog("JSON marshal error: " + err.Error())
+	if err := filesystem.WriteMetadataFile("history.json", historyJobs); err != nil {
+		writeErrorLog("Failed to save history: " + err.Error())
 		return err
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		writeErrorLog("WriteFile error: " + err.Error())
-		return err
-	}
 	return nil
 }
 
