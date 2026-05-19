@@ -20,7 +20,7 @@ func getHomeDir() string {
 	return ""
 }
 
-func GetOrCreateDirectory() string {
+func GetOrCreateDownloadDirectory() string {
 	homeDir := getHomeDir()
 	appName := "Rum"
 	downloadDir := path.Join(homeDir, "Downloads", appName)

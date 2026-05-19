@@ -18,7 +18,7 @@ import (
 type ProgressFunc func(downloaded, total int64)
 
 func PrepareOutputPath(opt Options, fileName, url string, contentType string) (fullPath string) {
-	defaultDownloadDir := filesystem.GetOrCreateDirectory()
+	defaultDownloadDir := filesystem.GetOrCreateDownloadDirectory()
 
 	var folderName string = ""
 	if opt.Out != defaultDownloadDir {

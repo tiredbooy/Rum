@@ -14,6 +14,24 @@ import (
 func main() {
 	cfg := config.Load()
 
+	var setting config.Setting
+	err := setting.LoadSettingMetadata()
+	if err != nil {
+		log.Println("Error Opening setting: ", err.Error())
+		return
+	}
+	opt := &download.Options{
+		SpeedLimit: setting.SpeedLimitKB,
+		Parallel:   setting.MaxParallel,
+		Out:        setting.OutDir,
+		MaxRetries: setting.MaxRetries,
+		Silent:     setting.Silent,
+	}
+
+	opt.Downloader = download.NewDownloader("", "")
+
+	download.LoadOptions(opt)
+
 	args := os.Args[1:]
 
 	if len(args) == 0 {
@@ -58,6 +76,8 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  Rum get [flags] URL...")
 	fmt.Println("  Rum version")
+	fmt.Println("Run Server(API): ")
+	fmt.Println("go run ./cmd/server")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  Rum get https://example.com/file.zip --out ./downloads -p 4")

@@ -7,17 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
 
-func GetJobsFilePath() string {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = ".rum"
-	}
-	dir := filepath.Join(configDir, "rum")
-	os.MkdirAll(dir, 0755)
-	return filepath.Join(dir, "queue.json")
-}
+
 
 func SaveJobsToDisk(jobs map[string]*Job) error {
 
@@ -36,7 +30,7 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 		}
 	}
 
-	path := GetJobsFilePath()
+	path := filesystem.CreateMetadataFile("queue.json")
 	if len(activeJobs) == 0 {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			writeErrorLog("Failed to remove job file: " + err.Error())
@@ -58,7 +52,7 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 }
 
 func writeErrorLog(msg string) {
-	logPath := filepath.Join(filepath.Dir(GetJobsFilePath()), "error.log")
+	logPath := filepath.Join(filepath.Dir(filesystem.CreateMetadataFile("logs.json")), "error.log")
 	f, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if f != nil {
 		fmt.Fprintf(f, "%s: %s\n", time.Now().Format(time.RFC3339), msg)
@@ -67,8 +61,8 @@ func writeErrorLog(msg string) {
 }
 
 func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
-	path := GetJobsFilePath()
-	data, err := os.ReadFile(path)
+
+	data, err := filesystem.ReadMetadataFile("queue.json")
 	if err != nil {
 		return
 	}

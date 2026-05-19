@@ -13,7 +13,7 @@ import (
 func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	// ---------- 1. Parse flags ----------
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
-	downloadDir := filesystem.GetOrCreateDirectory()
+	downloadDir := filesystem.GetOrCreateDownloadDirectory()
 
 	var urls format.StringSlice
 	fs.Func("url", "Download URLs", func(s string) error {
