@@ -15,9 +15,12 @@ func SetupRouter(r *gin.Engine) {
 		v1.GET("/downloads/:id", handlers.GetDownloadStatus)
 		v1.POST("/downloads/:id/start", handlers.StartDownload)
 		v1.GET("/downloads/:id/stream", handlers.StreamProgress)
-		// Optional: pause, resume, delete
-		// v1.PUT("/downloads/:id/pause", handlers.PauseDownload)
-		// v1.PUT("/downloads/:id/resume", handlers.ResumeDownload)
+
+
+		v1.PUT("/downloads/:id/pause", handlers.PauseDownload)
+		v1.PUT("/downloads/:id/resume", handlers.ResumeDownload)
+
+		
 		v1.GET("/settings", handlers.GetSettings)
 	}
 }

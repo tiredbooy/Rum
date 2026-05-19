@@ -121,10 +121,42 @@ func StartDownload(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Job Started Successfully."})
+	c.JSON(http.StatusAccepted, gin.H{"message": "Job Started Successfully."})
 }
 
 func StartDownloads(c *gin.Context) {
 	go GlobalManager.StartAllJobs(c.Request.Context())
 	c.JSON(http.StatusAccepted, gin.H{"message": "Starting all pending/paused jobs"})
+}
+
+func PauseDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		return
+	}
+
+	err := GlobalManager.PauseJob(jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "Downlaod Paused."})
+}
+
+func ResumeDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		return
+	}
+
+	err := GlobalManager.StartJob(c.Request.Context(), jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "Download Resumed."})
 }
