@@ -335,3 +335,16 @@ func (m *JobManager) publishProgress(update dto.ProgressUpdate) {
 		}
 	}
 }
+
+func (m *JobManager) DeleteJob(jobID string) error {
+	if jobID == "" {
+		return fmt.Errorf("Job Id is not valid")
+	}
+
+	err := DeleteJobFromDisk(jobID)
+	if err != nil {
+		return fmt.Errorf("Failed to delete job: (%v)", err)
+	}
+
+	return nil
+}

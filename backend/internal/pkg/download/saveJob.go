@@ -36,24 +36,10 @@ func writeErrorLog(msg string) {
 }
 
 func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
-	data, err := filesystem.ReadMetadataFile("jobs.json")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return // no saved state, clean start
-		}
-		log.Printf("Failed to read jobs file: %v", err)
-		return
-	}
-
-	var loaded []*Job
-	if err := json.Unmarshal(data, &loaded); err != nil {
-		log.Printf("Failed to parse jobs.json: %v", err)
-		return
-	}
+	items := readJobsFile()
 
 	incomplete := 0
-	for _, job := range loaded {
-		// Only pause jobs that weren't finished/cancelled
+	for _, job := range items {
 		if !utils.IsTerminal(job.Status) {
 			job.Status = "paused"
 			incomplete++
@@ -62,5 +48,46 @@ func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 		urlToID[job.URL] = job.ID
 	}
 
-	fmt.Printf("Loaded %d jobs (%d incomplete, paused).\n", len(loaded), incomplete)
+	fmt.Printf("Loaded %d jobs (%d incomplete, paused).\n", len(items), incomplete)
+}
+
+func DeleteJobFromDisk(jobID string) error {
+	items := readJobsFile()
+
+	var updated []*Job
+	for _, item := range items {
+		if item.ID == jobID {
+			updated = append(updated, item)
+		}
+	}
+
+	if len(updated) == len(items) {
+		return fmt.Errorf("Item with id %d Not Found", jobID)
+	}
+
+	err := filesystem.WriteMetadataFile("jobs.json", updated)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readJobsFile() []*Job {
+	data, err := filesystem.ReadMetadataFile("jobs.json")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		log.Printf("Failed to read jobs file: %v", err)
+		return nil
+	}
+
+	var loaded []*Job
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("Failed to parse jobs.json: %v", err)
+		return nil
+	}
+
+	return loaded
 }

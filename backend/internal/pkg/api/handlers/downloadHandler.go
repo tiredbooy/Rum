@@ -162,3 +162,19 @@ func ResumeDownload(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "Download Resumed."})
 }
+
+func DeleteDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		return
+	}
+
+	err := GlobalManager.DeleteJob(jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, gin.H{"message": "Download Deleted."})
+}
