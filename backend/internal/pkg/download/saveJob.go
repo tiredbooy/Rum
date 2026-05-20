@@ -62,7 +62,7 @@ func DeleteJobFromDisk(jobID string) error {
 	}
 
 	if len(updated) == len(items) {
-		return fmt.Errorf("Item with id %d Not Found", jobID)
+		return fmt.Errorf("Item with id %s Not Found", jobID)
 	}
 
 	err := filesystem.WriteMetadataFile("jobs.json", updated)
@@ -91,3 +91,4 @@ func readJobsFile() []*Job {
 
 	return loaded
 }
+

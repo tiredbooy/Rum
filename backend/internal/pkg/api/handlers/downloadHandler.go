@@ -148,6 +148,17 @@ func PauseDownload(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"message": "Downlaod Paused."})
 }
 
+func PauseDownloads(c *gin.Context) {
+	err := GlobalManager.PauseAllJobs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "All Downlaods Paused."})
+}
+
+
 func ResumeDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
@@ -178,4 +189,16 @@ func DeleteDownload(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNoContent, gin.H{"message": "Download Deleted."})
+}
+
+func DeleteDownloads(c *gin.Context) {
+	filter := c.Query("filter")
+	
+	err := GlobalManager.DeleteJobsByFilter(filter) 
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete jobs"})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, gin.H{"message": "Jobs deleted successfully."})
 }

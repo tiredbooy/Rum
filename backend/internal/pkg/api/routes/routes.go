@@ -10,13 +10,17 @@ func SetupRouter(r *gin.Engine) {
 	v1 := api.Group("/v1")
 	{
 		v1.POST("/downloads", handlers.CreateDownload)
-		v1.POST("/downloads/start-all", handlers.StartDownloads)
 		v1.GET("/downloads", handlers.GetAllJobs)
+		v1.DELETE("/downloads", handlers.DeleteDownloads)
+
+		v1.POST("/downloads/start-all", handlers.StartDownloads)
+		v1.POST("/downloads/pause-all", handlers.PauseDownloads)
+
 		v1.GET("/downloads/:id", handlers.GetDownloadStatus)
 		v1.DELETE("/downloads/:id", handlers.DeleteDownload)
+		
 		v1.POST("/downloads/:id/start", handlers.StartDownload)
 		v1.GET("/downloads/:id/stream", handlers.StreamProgress)
-
 		v1.PUT("/downloads/:id/pause", handlers.PauseDownload)
 		v1.PUT("/downloads/:id/resume", handlers.ResumeDownload)
 

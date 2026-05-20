@@ -1,3 +1,4 @@
+import { usePauseDownload, useStartAllDownloads } from "@/_lib/services/queries/download.queries";
 import { DownloadStatusPage } from "@/features/dashboard/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
@@ -9,6 +10,10 @@ interface Props {
 
 export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
+
+  const startDownloads = useStartAllDownloads();
+  const pauseDownloads = usePauseDownload();
+
   const tabs = [
     {
       value: "all",
@@ -16,9 +21,9 @@ export default function Dashboard({}: Props) {
       content: <DownloadStatusPage status="all" />,
     },
     {
-      value: "active",
+      value: "running",
       label: "Active",
-      content: <DownloadStatusPage status="active" />,
+      content: <DownloadStatusPage status="running" />,
     },
     {
       value: "paused",
@@ -42,6 +47,10 @@ export default function Dashboard({}: Props) {
     },
   ];
 
+  const handleStartAll = () => {
+    startDownloads.mutateAsync()
+  }
+
   return (
     <div className="">
       <DashboardToolbar
@@ -52,7 +61,7 @@ export default function Dashboard({}: Props) {
           dataToday: "12.5",
           failedCount: 12,
         }}
-        onAddDownload={() => console.log("value2:")}
+        onAddDownload={handleStartAll}
         onPauseAll={() => console.log("value2:")}
         onResumeAll={() => console.log("value2:")}
         onRetryFailed={() => console.log("value2:")}

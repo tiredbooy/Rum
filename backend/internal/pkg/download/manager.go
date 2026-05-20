@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
@@ -324,10 +325,25 @@ func (m *JobManager) PauseJob(jobID string) error {
 	return nil
 }
 
+func (m *JobManager) PauseAllJobs() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, job := range m.jobs {
+		if job.Status != StatusRunning {
+		return fmt.Errorf("job %s is not running", job.ID)
+	}
+	if job.CancelFunc != nil {
+		job.CancelFunc()
+	}
+	}
+	return nil
+}
+
 func (m *JobManager) Subscribe(jobID string) <-chan dto.ProgressUpdate {
 	m.subMu.Lock()
 	defer m.subMu.Unlock()
-	ch := make(chan dto.ProgressUpdate, 1024)
+	ch := make(chan dto.ProgressUpdate, 10)
 	m.subscribers[jobID] = append(m.subscribers[jobID], ch)
 	return ch
 }
@@ -384,4 +400,40 @@ func (m *JobManager) DeleteJob(jobID string) error {
 	}
 
 	return nil
+}
+
+
+func (m *JobManager) DeleteJobsByFilter(filter string) error {
+	if filter == "" {
+		filter = "all"
+	}
+
+    m.mu.Lock()
+    defer m.mu.Unlock()
+	
+    var remaining []*Job
+    for _, job := range m.jobs {
+        switch filter {
+        case "completed":
+            if job.Status == StatusCompleted {
+                continue
+            }
+        case "all":
+            continue
+        }
+        remaining = append(remaining, job)
+    }
+
+    if err := filesystem.WriteMetadataFile("jobs.json", remaining); err != nil {
+        return err
+    }
+
+    m.jobs = make(map[string]*Job, len(remaining))
+    for _, job := range remaining {
+        m.jobs[job.ID] = job
+    }
+
+    m.urls = make(map[string]string)
+
+    return nil
 }
