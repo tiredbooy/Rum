@@ -1,14 +1,34 @@
-
-export type DownloadStatus = "active" | "completed" | "failed" | "paused" | "queued" | "pending";
+export type DownloadStatus =
+  | "active"
+  | "completed"
+  | "failed"
+  | "paused"
+  | "queued"
+  | "pending";
 
 export interface Download {
   id: string;
-  fileName: string;
   url: string;
+  filename?: string;
   status: DownloadStatus;
-  progress: number; // 0-100
-  speed: string; // e.g. "2.4 MB/s"
-  size: string; // total size e.g. "1.2 GB"
-  eta: string; // e.g. "3m 12s"
-  addedAt: string; // ISO string
+  progress?: number;
+  downloaded: number;
+  total_size?: number;
+  speed: number;
+  remaining: number;
+  error?: string;
+  created_at?: string;
+  completed_at?: string;
+}
+
+export interface DownloadReq {
+  urls: string[];
+  dest_path?: string;
+  filename?: string;
+  speed_limit?: number;
+  user_agent?: string;
+  referer?: string;
+  group_folder?: string;
+  max_retries?: string;
+  auto_start?: boolean;
 }

@@ -11,7 +11,6 @@ type CreateDownloadRequest struct {
 	Referer     string   `json:"referer"`
 	GroupFolder string   `json:"group_folder"`
 	MaxRetries  int      `json:"max_retries"`
-	Silent      bool     `json:"silent"`
 	AutoStart   bool     `json:"auto_start"`
 }
 type DownloadResponse struct {

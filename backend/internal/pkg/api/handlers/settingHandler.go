@@ -7,12 +7,6 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 )
 
-type SettingRes struct {
-	ConfirmOnExit  bool   `json:"confirm_on_exit"`
-	Silent         bool   `json:"silent"`
-	PreferredTheme string `json:"preferred_theme"`
-}
-
 func GetSettings(c *gin.Context) {
 	var setting config.Setting
 
@@ -22,9 +16,25 @@ func GetSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, &SettingRes{
-		ConfirmOnExit:  setting.ConfirmOnExit,
-		Silent:         setting.Silent,
-		PreferredTheme: setting.PreferredTheme,
-	})
+	c.JSON(http.StatusOK, setting)
+}
+
+func UpdateSetting(c *gin.Context) {
+	var settingReq config.SettingReq
+
+	err := c.ShouldBindJSON(&settingReq)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse request."})
+		return
+	}
+
+	var setting config.Setting
+
+	err = setting.Update(settingReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update setting"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Setting Updated."})
 }

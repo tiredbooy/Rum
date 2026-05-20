@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
 
 var GlobalManager *download.JobManager
@@ -74,36 +75,37 @@ func GetDownloadStatus(c *gin.Context) {
 }
 
 func GetAllJobs(c *gin.Context) {
-	var jobs []dto.DownloadResponse
+	statusFilter := c.Query("status")
 
-	foundJob := GlobalManager.GetAllJobs()
-
-	for _, job := range foundJob {
+	var result []dto.DownloadResponse
+	for _, job := range GlobalManager.GetAllJobs() {
+		if statusFilter == "" || statusFilter == "all" {
+			// include all
+		} else if job.Status != statusFilter {
+			continue
+		}
 
 		j := dto.DownloadResponse{
-			ID:         job.ID,
-			URL:        job.URL,
-			Filename:   job.FileName,
-			Progress:   (int(job.Downloaded) / int(job.TotalSize)) * 100,
-			Status:     job.Status,
-			Downloaded: job.Downloaded,
-			TotalSize:  job.TotalSize,
-			Speed:      job.Speed,
-			Remaining:  int64(job.RemainingTime),
-			// Error:       job.Error.Error(),
+			ID:          job.ID,
+			URL:         job.URL,
+			Filename:    job.FileName,
+			Progress:    utils.GetProgress(job.Downloaded, job.TotalSize),
+			Status:      job.Status,
+			Downloaded:  job.Downloaded,
+			TotalSize:   job.TotalSize,
+			Speed:       job.Speed,
+			Remaining:   int64(job.RemainingTime),
 			CreatedAt:   job.CreatedAt,
 			CompletedAt: job.CompletedAt,
 		}
-
-		jobs = append(jobs, j)
+		result = append(result, j)
 	}
 
-	if len(jobs) <= 0 {
+	if len(result) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "No Job Found"})
 		return
 	}
-
-	c.JSON(http.StatusOK, jobs)
+	c.JSON(http.StatusOK, result)
 }
 
 func StartDownload(c *gin.Context) {

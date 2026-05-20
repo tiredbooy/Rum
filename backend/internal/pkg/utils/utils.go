@@ -20,3 +20,20 @@ func ConvertSizeToInt(size string) int64 {
 
 	return int64(fileSize)
 }
+
+func GetProgress(downloaded, totalSize int64) int {
+	if totalSize <= 0 {
+		return 0
+	}
+
+	return int((downloaded * 100) / totalSize)
+}
+
+func IsTerminal(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}

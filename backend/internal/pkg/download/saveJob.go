@@ -9,58 +9,17 @@ import (
 	"time"
 
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
 
-func toQueueJob(job *Job) *Job {
-	return &Job{
-		ID:         job.ID,
-		URL:        job.URL,
-		Status:     job.Status,
-		OutputPath: job.OutputPath,
-		Downloaded: job.Downloaded,
-		TotalSize:  job.TotalSize,
-	}
-}
-
-func toHistoryJob(job *Job) *Job {
-	return &Job{
-		ID:          job.ID,
-		URL:         job.URL,
-		Status:      job.Status,
-		OutputPath:  job.OutputPath,
-		Downloaded:  job.Downloaded,
-		TotalSize:   job.TotalSize,
-		CompletedAt: job.CompletedAt,
-		CreatedAt:   job.CreatedAt,
-	}
-}
-
 func SaveJobsToDisk(jobs map[string]*Job) error {
-	var activeJobs []*Job
-	var historyJobs []*Job
-
+	allJobs := make([]*Job, 0, len(jobs))
 	for _, job := range jobs {
-		if job.Status == "running" || job.Status == "paused" {
-			activeJobs = append(activeJobs, toQueueJob(job))
-		} else {
-			historyJobs = append(historyJobs, toHistoryJob(job))
-		}
+		allJobs = append(allJobs, job)
 	}
 
-	if len(activeJobs) == 0 {
-		queuePath := filesystem.CreateMetadataFile("queue.json")
-		if err := os.Remove(queuePath); err != nil && !os.IsNotExist(err) {
-			writeErrorLog("Failed to remove queue.json: " + err.Error())
-		}
-	} else {
-		if err := filesystem.WriteMetadataFile("queue.json", activeJobs); err != nil {
-			writeErrorLog("Failed to save queue: " + err.Error())
-			return err
-		}
-	}
-
-	if err := filesystem.WriteMetadataFile("history.json", historyJobs); err != nil {
-		writeErrorLog("Failed to save history: " + err.Error())
+	if err := filesystem.WriteMetadataFile("jobs.json", allJobs); err != nil {
+		writeErrorLog("Failed to save jobs: " + err.Error())
 		return err
 	}
 
@@ -77,22 +36,31 @@ func writeErrorLog(msg string) {
 }
 
 func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
-
-	data, err := filesystem.ReadMetadataFile("queue.json")
+	data, err := filesystem.ReadMetadataFile("jobs.json")
 	if err != nil {
+		if os.IsNotExist(err) {
+			return // no saved state, clean start
+		}
+		log.Printf("Failed to read jobs file: %v", err)
 		return
 	}
 
 	var loaded []*Job
 	if err := json.Unmarshal(data, &loaded); err != nil {
-		log.Printf("Failed to parse saved jobs: %v", err)
+		log.Printf("Failed to parse jobs.json: %v", err)
 		return
 	}
-	fmt.Printf("Found %d incomplete downloads. Resume later from the TUI.\n", len(jobs))
+
+	incomplete := 0
 	for _, job := range loaded {
-		job.Status = "paused"
+		// Only pause jobs that weren't finished/cancelled
+		if !utils.IsTerminal(job.Status) {
+			job.Status = "paused"
+			incomplete++
+		}
 		jobs[job.ID] = job
 		urlToID[job.URL] = job.ID
 	}
-	fmt.Printf("Loaded %d incomplete downloads.\n", len(loaded))
+
+	fmt.Printf("Loaded %d jobs (%d incomplete, paused).\n", len(loaded), incomplete)
 }
