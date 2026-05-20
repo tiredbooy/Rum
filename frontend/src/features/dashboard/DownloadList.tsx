@@ -1,14 +1,15 @@
 import type { Download } from "@/_lib/types/download-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DownloadCard } from "./DownloadCard";
+import { DownloadItemWrapper } from "./DownloadWrapper";
 
 interface DownloadListProps {
   downloads?: Download[];
   isLoading?: boolean;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
-  onCancel: (id: string) => void;
+  onStart: (id: string) => void;
+  onDelete: (id: string) => void;
   onRetry: (id: string) => void;
 }
 
@@ -29,7 +30,8 @@ export function DownloadList({
   isLoading,
   onPause,
   onResume,
-  onCancel,
+  onStart,
+  onDelete,
   onRetry,
 }: DownloadListProps) {
   if (isLoading) {
@@ -54,12 +56,13 @@ export function DownloadList({
     <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
       <div className="space-y-2">
         {downloads?.map((dl) => (
-          <DownloadCard
+          <DownloadItemWrapper
             key={dl.id}
             download={dl}
             onPause={onPause}
             onResume={onResume}
-            onCancel={onCancel}
+            onStart={onStart}
+            onDelete={onDelete}
             onRetry={onRetry}
           />
         ))}

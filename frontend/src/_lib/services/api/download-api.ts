@@ -30,11 +30,15 @@ export async function startDownload(id: string): Promise<void> {
 }
 
 export async function pauseDownload(id: string): Promise<void> {
-  await request(`/api/v1/downloads/${id}/pause`, { method: "POST" });
+  await request(`/api/v1/downloads/${id}/pause`, { method: "PUT" });
 }
 
 export async function resumeDownload(id: string): Promise<void> {
-  await request(`/api/v1/downloads/${id}/resume`, { method: "POST" });
+  await request(`/api/v1/downloads/${id}/resume`, { method: "PUT" });
+}
+
+export async function deleteDownload(id: string): Promise<void> {
+  await request(`/api/v1/downloads/${id}`, { method: "DELETE" });
 }
 
 export async function startAllDownloads(): Promise<void> {

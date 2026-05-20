@@ -42,12 +42,12 @@ func PrepareOutputPath(opt Options, fileName, url string, contentType string) (f
 	return fullPath
 }
 
-func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
+func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, fileName string, outFile *os.File, offset int64, job *Job, progressFn ProgressFunc) error {
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
-	resp, err := downloader.Client.Do(req.WithContext(ctx))
+	resp, err := opt.Downloader.Client.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -75,8 +75,8 @@ func DownloadWithRange(ctx context.Context, downloader *Downloader, req *http.Re
 	}
 
 	var body io.ReadCloser = resp.Body
-	if Opt.SpeedLimit > 0 {
-		limiter := rate.NewLimiter(rate.Limit(Opt.SpeedLimit), Opt.SpeedLimit)
+	if opt.SpeedLimit > 0 {
+		limiter := rate.NewLimiter(rate.Limit(opt.SpeedLimit), opt.SpeedLimit)
 		body = &rateLimitedReader{
 			reader:  resp.Body,
 			limiter: limiter,
@@ -182,7 +182,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	if existsFileSize > 0 {
 		DebugLog("Trying to Resume Exists File")
-		return DownloadWithRange(ctx, opt.Downloader, req, job.FileName, outFile, existsFileSize, job, progressFn)
+		return DownloadWithRange(ctx, opt, req, job.FileName, outFile, existsFileSize, job, progressFn)
 	}
 
 	if existsFileSize > 0 && !job.SupportRange {
@@ -192,5 +192,5 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		}
 	}
 
-	return DownloadWithRange(ctx, opt.Downloader, req, job.FileName, outFile, 0, job, progressFn)
+	return DownloadWithRange(ctx, opt, req, job.FileName, outFile, 0, job, progressFn)
 }

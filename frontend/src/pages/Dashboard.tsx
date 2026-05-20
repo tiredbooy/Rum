@@ -1,4 +1,4 @@
-import { DownloadStatusPage } from "@/features/dashboard/ActiveDownloads";
+import { DownloadStatusPage } from "@/features/dashboard/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
 import { useState } from "react";

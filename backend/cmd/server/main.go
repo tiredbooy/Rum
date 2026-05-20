@@ -42,6 +42,10 @@ func Start() {
 
 	download.InitLogFile()
 
+	if setting.SpeedLimitKB < 0 {
+		setting.SpeedLimitKB = 0
+	}
+
 	opt := &download.Options{
 		SpeedLimit: setting.SpeedLimitKB,
 		Parallel:   setting.MaxParallel,

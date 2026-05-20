@@ -13,6 +13,7 @@ import (
 var GlobalManager *download.JobManager
 
 func InitAPI(opt *download.Options) {
+	opt.Downloader = download.NewDownloader("", "") 
 	GlobalManager = download.NewJobManager(opt)
 }
 

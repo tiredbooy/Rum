@@ -26,7 +26,7 @@ type JobManager struct {
 
 func NewJobManager(opt *Options) *JobManager {
 	if opt == nil {
-		opt = &Options{Parallel: 1}
+		opt = &Options{Parallel: 1, SpeedLimit: 0}
 	}
 	if opt.Parallel < 1 {
 		opt.Parallel = 1
@@ -206,6 +206,9 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	job.SetStatus(StatusPending)
 	m.mu.Unlock()
 
+	bgCtx, cancel := context.WithCancel(context.Background())
+	job.CancelFunc = cancel
+
 	select {
 	case m.sem <- struct{}{}:
 		log.Printf("StartJob: acquired semaphore for %s", jobID)
@@ -215,18 +218,38 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 
 	go func() {
 		defer func() { <-m.sem }()
+		defer cancel()
+
 		log.Printf("StartJob: goroutine running for %s", jobID)
 
 		m.mu.Lock()
 		job.SetStatus(StatusRunning)
 		m.mu.Unlock()
 
+		var (
+			lastDownloaded int64
+			lastTime       time.Time
+		)
+
 		progressFn := func(downloaded, total int64) {
+			now := time.Now()
+
+			var speed int64
+			if !lastTime.IsZero() {
+				elapsed := now.Sub(lastTime).Seconds()
+				if elapsed > 0 {
+					speed = int64(float64(downloaded-lastDownloaded) / elapsed)
+				}
+			}
+
+			lastDownloaded = downloaded
+			lastTime = now
+
 			update := dto.ProgressUpdate{
 				JobID:      jobID,
 				Downloaded: downloaded,
 				TotalSize:  total,
-				Speed:      job.GetSpeed(),
+				Speed:      float64(speed),
 				Status:     string(job.Status),
 			}
 			if total > 0 {
@@ -235,7 +258,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 			m.publishProgress(update)
 		}
 
-		err := DownloadSingleFile(ctx, *m.opt, job, progressFn)
+		err := DownloadSingleFile(bgCtx, *m.opt, job, progressFn)
 
 		finalUpdate := dto.ProgressUpdate{
 			JobID:      jobID,
@@ -251,7 +274,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if ctx.Err() == context.Canceled {
+		if bgCtx.Err() == context.Canceled {
 			job.SetStatus(StatusPaused)
 			log.Printf("Job %s paused", jobID)
 		} else if err == nil {
@@ -289,21 +312,22 @@ func (m *JobManager) PauseJob(jobID string) error {
 	defer m.mu.Unlock()
 	job, exists := m.jobs[jobID]
 	if !exists {
-		return fmt.Errorf("job not found")
+		return fmt.Errorf("job %s not found", jobID)
+	}
+	if job.Status != StatusRunning {
+		return fmt.Errorf("job %s is not running", jobID)
 	}
 	if job.CancelFunc != nil {
 		job.CancelFunc()
-		job.SetStatus(StatusPaused)
-		m.saveToDisk()
-		return nil
 	}
-	return fmt.Errorf("job %s has no active download", jobID)
+
+	return nil
 }
 
 func (m *JobManager) Subscribe(jobID string) <-chan dto.ProgressUpdate {
 	m.subMu.Lock()
 	defer m.subMu.Unlock()
-	ch := make(chan dto.ProgressUpdate, 10)
+	ch := make(chan dto.ProgressUpdate, 1024)
 	m.subscribers[jobID] = append(m.subscribers[jobID], ch)
 	return ch
 }
@@ -338,12 +362,25 @@ func (m *JobManager) publishProgress(update dto.ProgressUpdate) {
 
 func (m *JobManager) DeleteJob(jobID string) error {
 	if jobID == "" {
-		return fmt.Errorf("Job Id is not valid")
+		return fmt.Errorf("job id is not valid")
 	}
 
-	err := DeleteJobFromDisk(jobID)
-	if err != nil {
-		return fmt.Errorf("Failed to delete job: (%v)", err)
+	m.mu.Lock()
+	job, exists := m.jobs[jobID]
+	if !exists {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found", jobID)
+	}
+
+	if job.CancelFunc != nil {
+		job.CancelFunc()
+	}
+
+	delete(m.jobs, jobID)
+	m.mu.Unlock()
+
+	if err := DeleteJobFromDisk(jobID); err != nil {
+		return fmt.Errorf("failed to delete job from disk: %w", err)
 	}
 
 	return nil

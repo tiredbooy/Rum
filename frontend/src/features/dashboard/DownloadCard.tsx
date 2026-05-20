@@ -1,4 +1,3 @@
-// components/DownloadCard.tsx
 import type { Download } from "@/_lib/types/download-types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,7 +18,8 @@ interface DownloadCardProps {
   download: Download;
   onPause?: (id: string) => void;
   onResume?: (id: string) => void;
-  onCancel?: (id: string) => void;
+  onStart?: (id: string) => void;
+  onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
 }
 
@@ -50,7 +50,8 @@ export function DownloadCard({
   download,
   onPause,
   onResume,
-  onCancel,
+  onStart,
+  onDelete,
   onRetry,
 }: DownloadCardProps) {
   const { id, filename, status, progress, speed, total_size, remaining } =
@@ -59,6 +60,7 @@ export function DownloadCard({
 
   return (
     <Card className="group hover:shadow-md transition-shadow p-3 flex gap-3 relative">
+      {/* File extension icon */}
       <div className="shrink-0 h-8 w-8 rounded bg-muted flex items-center justify-center text-[10px] font-mono uppercase text-muted-foreground">
         {filename?.split(".").pop()?.slice(0, 3) ?? "?"}
       </div>
@@ -97,7 +99,33 @@ export function DownloadCard({
         )}
       </div>
 
+      {/* Action buttons – top right, visible on hover */}
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Pending: start + delete */}
+        {status === "pending" && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onStart?.(id)}
+              title="Start"
+            >
+              <Play className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive"
+              onClick={() => onDelete?.(id)}
+              title="Delete"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </>
+        )}
+
+        {/* Running: pause + cancel/delete */}
         {status === "running" && (
           <>
             <Button
@@ -113,33 +141,72 @@ export function DownloadCard({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-destructive"
-              onClick={() => onCancel?.(id)}
-              title="Cancel"
+              onClick={() => onDelete?.(id)}
+              title="Delete"
             >
               <X className="w-4 h-4" />
             </Button>
           </>
         )}
+
+        {/* Paused: resume + delete */}
         {status === "paused" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => onResume?.(id)}
-            title="Resume"
-          >
-            <Play className="w-4 h-4" />
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onResume?.(id)}
+              title="Resume"
+            >
+              <Play className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive"
+              onClick={() => onDelete?.(id)}
+              title="Delete"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </>
         )}
+
+        {/* Failed: retry + delete */}
         {status === "failed" && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onRetry?.(id)}
+              title="Retry"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive"
+              onClick={() => onDelete?.(id)}
+              title="Delete"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </>
+        )}
+
+        {/* Completed: only delete */}
+        {status === "completed" && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
-            onClick={() => onRetry?.(id)}
-            title="Retry"
+            className="h-7 w-7 text-destructive"
+            onClick={() => onDelete?.(id)}
+            title="Delete"
           >
-            <RotateCcw className="w-4 h-4" />
+            <X className="w-4 h-4" />
           </Button>
         )}
       </div>
