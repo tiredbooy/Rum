@@ -29,7 +29,7 @@ type Job struct {
 	RemainingTime time.Duration      `json:"remaining_time"`
 	Error         error              `json:"error"`
 	CancelFunc    context.CancelFunc `json:"-"`
-	CreatedAt     string             `json:"created_at"`
+	CreatedAt     time.Time             `json:"created_at"`
 	CompletedAt   string             `json:"completed_at"`
 }
 
@@ -57,8 +57,8 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
 func (j *Job) SetError(e error) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Error = e }
 
-func (j *Job) GetCreatedAt() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
-func (j *Job) SetCreatedAt(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
+func (j *Job) GetCreatedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
+func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
 
 func (j *Job) GetCompletedAt() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CompletedAt }
 func (j *Job) SetCompletedAt(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CompletedAt = v }

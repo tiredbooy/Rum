@@ -96,7 +96,7 @@ func GetAllJobs(c *gin.Context) {
 			TotalSize:   job.TotalSize,
 			Speed:       job.Speed,
 			Remaining:   int64(job.RemainingTime),
-			CreatedAt:   job.CreatedAt,
+			CreatedAt:   job.CreatedAt.String(),
 			CompletedAt: job.CompletedAt,
 		}
 		result = append(result, j)

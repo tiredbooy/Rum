@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"sort"
 	"sync"
 	"time"
 
@@ -14,6 +15,14 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
+
+var statusPriority = map[string]int{
+    StatusRunning:   1,
+    StatusPending:   2,
+    StatusPaused:    3,
+    StatusCompleted: 4,
+    StatusError:     5,
+}
 
 type JobManager struct {
 	mu          sync.RWMutex
@@ -132,7 +141,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 			ContentType:  res.info.ContentType,
 			SupportRange: res.info.SupportsRange,
 			Status:       StatusPending,
-			CreatedAt:    time.Now().String(),
+			CreatedAt:    time.Now(),
 		}
 		newJobs = append(newJobs, job)
 	}
@@ -180,6 +189,15 @@ func (m *JobManager) GetAllJobs() []*Job {
 	for _, j := range m.jobs {
 		jobs = append(jobs, j)
 	}
+
+	sort.Slice(jobs, func(i, j int) bool {
+		if statusPriority[jobs[i].Status] != statusPriority[jobs[j].Status] {
+			return statusPriority[jobs[i].Status] < statusPriority[jobs[j].Status]
+		}
+
+		return utils.TimeCompare(jobs[i].CreatedAt, jobs[j].CreatedAt)
+	})
+
 	return jobs
 }
 
@@ -354,8 +372,7 @@ func (m *JobManager) UnSubscribe(jobID string, ch <-chan dto.ProgressUpdate) {
 	subscribers := m.subscribers[jobID]
 	for i, sub := range subscribers {
 		if sub == ch {
-			m.subscribers[jobID] = append(m.subscribers[jobID], subscribers[i+1:]...)
-			close(sub)
+			m.subscribers[jobID] = append(subscribers[:i], subscribers[i+1:]...)
 			break
 		}
 	}
