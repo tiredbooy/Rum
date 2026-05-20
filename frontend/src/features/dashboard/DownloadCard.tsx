@@ -1,8 +1,10 @@
+// components/DownloadCard.tsx
 import type { Download } from "@/_lib/types/download-types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { formatBytes, formatSpeed, formatETA } from "@/_lib/utils/format";
 import {
   AlertCircle,
   CheckCircle2,
@@ -25,7 +27,7 @@ const statusConfig: Record<
   Download["status"],
   { icon: React.ElementType; colorClass: string; label: string }
 > = {
-  active: { icon: Clock, colorClass: "text-cyan-400", label: "Downloading" },
+  running: { icon: Clock, colorClass: "text-cyan-400", label: "Downloading" },
   completed: {
     icon: CheckCircle2,
     colorClass: "text-emerald-400",
@@ -37,7 +39,6 @@ const statusConfig: Record<
     label: "Failed",
   },
   paused: { icon: Pause, colorClass: "text-amber-400", label: "Paused" },
-  queued: { icon: Clock, colorClass: "text-muted-foreground", label: "Queued" },
   pending: {
     icon: Clock,
     colorClass: "text-muted-foreground",
@@ -52,18 +53,19 @@ export function DownloadCard({
   onCancel,
   onRetry,
 }: DownloadCardProps) {
-  const { id, fileName, status, progress, speed, size, eta } = download;
+  const { id, filename, status, progress, speed, total_size, remaining } =
+    download;
   const StatusIcon = statusConfig[status].icon;
 
   return (
     <Card className="group hover:shadow-md transition-shadow p-3 flex gap-3 relative">
       <div className="shrink-0 h-8 w-8 rounded bg-muted flex items-center justify-center text-[10px] font-mono uppercase text-muted-foreground">
-        {fileName.split(".").pop()?.slice(0, 3) ?? "?"}
+        {filename?.split(".").pop()?.slice(0, 3) ?? "?"}
       </div>
 
       <div className="flex-1 min-w-0 space-y-1.5 pr-12">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium truncate">{fileName}</p>
+          <p className="text-sm font-medium truncate">{filename}</p>
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border",
@@ -74,20 +76,21 @@ export function DownloadCard({
             <StatusIcon className="w-3 h-3" />
             {statusConfig[status].label}
           </span>
-          {size && (
+          {total_size && (
             <span className="text-[10px] text-muted-foreground hidden sm:inline">
-              {size}
+              {formatBytes(total_size)}
             </span>
           )}
         </div>
 
-        {(status === "active" || status === "paused") && (
+        {(status === "running" || status === "paused") && (
           <div className="space-y-1">
-            <Progress value={progress} className="h-1.5" />
+            <Progress value={progress ?? 0} className="h-1.5" />
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>{progress.toFixed(1)}%</span>
+              <span>{progress?.toFixed(1) ?? 0}%</span>
               <span>
-                {speed} · {eta} left
+                {speed != null ? formatSpeed(speed) : "—"} ·{" "}
+                {remaining != null ? formatETA(remaining) : "—"} left
               </span>
             </div>
           </div>
@@ -95,7 +98,7 @@ export function DownloadCard({
       </div>
 
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {status === "active" && (
+        {status === "running" && (
           <>
             <Button
               variant="ghost"

@@ -1,9 +1,8 @@
 export type DownloadStatus =
-  | "active"
+  | "running"
   | "completed"
   | "failed"
   | "paused"
-  | "queued"
   | "pending";
 
 export interface Download {
@@ -14,7 +13,7 @@ export interface Download {
   progress?: number;
   downloaded: number;
   total_size?: number;
-  speed: number;
+  speed?: number;
   remaining: number;
   error?: string;
   created_at?: string;

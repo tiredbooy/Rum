@@ -4,8 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DownloadCard } from "./DownloadCard";
 
 interface DownloadListProps {
-  downloads: Download[];
-  isLoading: boolean;
+  downloads?: Download[];
+  isLoading?: boolean;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
@@ -42,7 +42,7 @@ export function DownloadList({
     );
   }
 
-  if (downloads.length === 0) {
+  if (downloads?.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <p className="text-sm">No downloads here yet</p>
@@ -53,7 +53,7 @@ export function DownloadList({
   return (
     <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
       <div className="space-y-2">
-        {downloads.map((dl) => (
+        {downloads?.map((dl) => (
           <DownloadCard
             key={dl.id}
             download={dl}

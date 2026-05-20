@@ -1,7 +1,7 @@
 interface DownloadProgressProps {
   progress: number; // 0-100
-  speed: string; // e.g. "8.4 MB/s"
-  eta: string; // e.g. "2m 34s"
+  speed: number; // e.g. "8.4 MB/s"
+  eta?: string; // e.g. "2m 34s"
 }
 
 export function DownloadProgress({

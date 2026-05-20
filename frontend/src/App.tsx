@@ -1,14 +1,17 @@
-import { createBrowserRouter } from "react-router-dom"
-import { router } from "./router"
-import { RouterProvider } from "react-router"
+import { RouterProvider } from "react-router";
+import { router } from "./router";
 
+import { createQueryClient } from "@/_lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
 
+const queryClient = createQueryClient();
 
 function App() {
-
-    return (
-        <RouterProvider router={router} />
-    )
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
-export default App
+export default App;
