@@ -1,4 +1,9 @@
-import { usePauseDownload, useStartAllDownloads } from "@/_lib/services/queries/download.queries";
+import {
+  useDeleteDownloads,
+  usePauseAllDownloads,
+  usePauseDownload,
+  useStartAllDownloads,
+} from "@/_lib/services/queries/download.queries";
 import { DownloadStatusPage } from "@/features/dashboard/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
@@ -12,7 +17,8 @@ export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
 
   const startDownloads = useStartAllDownloads();
-  const pauseDownloads = usePauseDownload();
+  const pauseDownloads = usePauseAllDownloads();
+  const deleteDownloads = useDeleteDownloads();
 
   const tabs = [
     {
@@ -48,8 +54,16 @@ export default function Dashboard({}: Props) {
   ];
 
   const handleStartAll = () => {
-    startDownloads.mutateAsync()
+    startDownloads.mutateAsync();
+  };
+
+  const handlePauseAll = () => {
+    pauseDownloads.mutateAsync()
   }
+
+  const handleDeleteCompleteds = () => {
+    deleteDownloads.mutateAsync("completed");
+  };
 
   return (
     <div className="">
@@ -62,10 +76,10 @@ export default function Dashboard({}: Props) {
           failedCount: 12,
         }}
         onAddDownload={handleStartAll}
-        onPauseAll={() => console.log("value2:")}
-        onResumeAll={() => console.log("value2:")}
+        onPauseAll={handlePauseAll}
+        onResumeAll={handleStartAll}
         onRetryFailed={() => console.log("value2:")}
-        onClearCompleted={() => console.log("value2:")}
+        onClearCompleted={handleDeleteCompleteds}
       />
       <FilterTabs
         tabs={tabs}

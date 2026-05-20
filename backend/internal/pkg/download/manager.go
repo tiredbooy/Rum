@@ -349,7 +349,7 @@ func (m *JobManager) PauseAllJobs() error {
 
 	for _, job := range m.jobs {
 		if job.Status != StatusRunning {
-		return fmt.Errorf("job %s is not running", job.ID)
+		continue
 	}
 	if job.CancelFunc != nil {
 		job.CancelFunc()

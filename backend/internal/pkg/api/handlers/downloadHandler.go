@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -151,6 +152,7 @@ func PauseDownload(c *gin.Context) {
 func PauseDownloads(c *gin.Context) {
 	err := GlobalManager.PauseAllJobs()
 	if err != nil {
+		log.Println("ERROR: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -192,7 +194,7 @@ func DeleteDownload(c *gin.Context) {
 }
 
 func DeleteDownloads(c *gin.Context) {
-	filter := c.Query("filter")
+	filter := c.Query("status")
 	
 	err := GlobalManager.DeleteJobsByFilter(filter) 
 	if err != nil {

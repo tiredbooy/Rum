@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DownloadReq } from "@/_lib/types/download-types";
+import type { DownloadReq, DownloadStatus } from "@/_lib/types/download-types";
 import {
   createDownloads,
   deleteDownload,
+  deleteDownloads,
   getDownloads,
   getDownloadStatus,
+  pauseAllDownloads,
   pauseDownload,
   resumeDownload,
   startAllDownloads,
@@ -82,10 +84,30 @@ export function useDeleteDownload() {
   });
 }
 
+export function useDeleteDownloads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (status: DownloadStatus) => deleteDownloads(status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
 export function useStartAllDownloads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => startAllDownloads(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+export function usePauseAllDownloads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => pauseAllDownloads(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
