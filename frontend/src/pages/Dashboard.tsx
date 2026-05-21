@@ -4,6 +4,7 @@ import {
   usePauseDownload,
   useStartAllDownloads,
 } from "@/_lib/services/queries/download.queries";
+import DownloadDialog from "@/features/dashboard/create-download/DownloadDialog";
 import { DownloadStatusPage } from "@/features/dashboard/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
@@ -58,8 +59,8 @@ export default function Dashboard({}: Props) {
   };
 
   const handlePauseAll = () => {
-    pauseDownloads.mutateAsync()
-  }
+    pauseDownloads.mutateAsync();
+  };
 
   const handleDeleteCompleteds = () => {
     deleteDownloads.mutateAsync("completed");
@@ -67,6 +68,7 @@ export default function Dashboard({}: Props) {
 
   return (
     <div className="">
+      <DownloadDialog />
       <DashboardToolbar
         stats={{
           active: 1,
