@@ -319,6 +319,17 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	}
 	m.mu.RUnlock()
 
+	parallel := len(jobIDs)
+
+	if parallel <= 0 {
+		return
+	}
+
+	
+	m.opt.Parallel = parallel
+	sem := make(chan struct{}, parallel)
+	m.sem = sem
+
 	for _, id := range jobIDs {
 		if err := m.StartJob(ctx, id); err != nil {
 			log.Printf("StartAllJobs: failed to start job %s: %v", id, err)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -129,7 +130,7 @@ func StartDownload(c *gin.Context) {
 }
 
 func StartDownloads(c *gin.Context) {
-	go GlobalManager.StartAllJobs(c.Request.Context())
+	go GlobalManager.StartAllJobs(context.Background())
 	c.JSON(http.StatusAccepted, gin.H{"message": "Starting all pending/paused jobs"})
 }
 

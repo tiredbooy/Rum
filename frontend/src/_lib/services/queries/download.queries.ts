@@ -89,7 +89,10 @@ export function useDeleteDownloads() {
   return useMutation({
     mutationFn: (status: DownloadStatus) => deleteDownloads(status),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+      queryClient.invalidateQueries({
+        queryKey: downloadKeys.all,
+        refetchType: "all",
+      });
     },
   });
 }
@@ -109,7 +112,10 @@ export function usePauseAllDownloads() {
   return useMutation({
     mutationFn: () => pauseAllDownloads(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+      queryClient.invalidateQueries({
+        queryKey: downloadKeys.all,
+        refetchType: "all",
+      });
     },
   });
 }
