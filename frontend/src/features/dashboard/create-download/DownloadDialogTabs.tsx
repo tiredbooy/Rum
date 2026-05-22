@@ -4,6 +4,7 @@ import { Download, FileText, Link } from "lucide-react";
 import { useState } from "react";
 import { SingleDownloadForm } from "./SingleDownloadForm";
 import { BulkDownloadForm } from "./BulkDownloadForm";
+import { LoadFromUrlForm } from "./LoadFromUrlForm";
 
 export function DownloadTabs() {
   const [activeTab, setActiveTab] = useState("single");
@@ -55,10 +56,7 @@ export function DownloadTabs() {
       </TabsContent>
 
       <TabsContent value="url" className="mt-4">
-        {/* Placeholder – will be replaced by <LoadFromUrlForm /> */}
-        <p className="text-sm text-muted-foreground">
-          Load from URL form (coming soon)
-        </p>
+        <LoadFromUrlForm />
       </TabsContent>
     </Tabs>
   );

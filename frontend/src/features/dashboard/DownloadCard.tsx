@@ -1,18 +1,21 @@
 import type { Download } from "@/_lib/types/download-types";
+import { formatBytes, formatETA, formatSpeed } from "@/_lib/utils/format";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { formatBytes, formatSpeed, formatETA } from "@/_lib/utils/format";
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  ClockFadingIcon,
+  HelpCircle,
   Pause,
   Play,
   RotateCcw,
   X,
 } from "lucide-react";
+import { ElementType } from "react";
 
 interface DownloadCardProps {
   download: Download;
@@ -23,9 +26,19 @@ interface DownloadCardProps {
   onRetry?: (id: string) => void;
 }
 
+function getStatusInfo(status: Download["status"]) {
+  return (
+    statusConfig[status] ?? {
+      icon: HelpCircle,
+      colorClass: "text-muted-foreground",
+      label: status,
+    }
+  );
+}
+
 const statusConfig: Record<
   Download["status"],
-  { icon: React.ElementType; colorClass: string; label: string }
+  { icon: ElementType; colorClass: string; label: string }
 > = {
   running: { icon: Clock, colorClass: "text-cyan-400", label: "Downloading" },
   completed: {
@@ -33,14 +46,14 @@ const statusConfig: Record<
     colorClass: "text-emerald-400",
     label: "Completed",
   },
-  failed: {
+  error: {
     icon: AlertCircle,
     colorClass: "text-destructive",
-    label: "Failed",
+    label: "Error",
   },
   paused: { icon: Pause, colorClass: "text-amber-400", label: "Paused" },
   pending: {
-    icon: Clock,
+    icon: ClockFadingIcon,
     colorClass: "text-muted-foreground",
     label: "Pending",
   },
@@ -56,7 +69,12 @@ export function DownloadCard({
 }: DownloadCardProps) {
   const { id, filename, status, progress, speed, total_size, remaining } =
     download;
-  const StatusIcon = statusConfig[status].icon;
+
+  const {
+    icon: StatusIcon,
+    colorClass: statusColor,
+    label: statusLabel,
+  } = getStatusInfo(status);
 
   return (
     <Card className="group hover:shadow-md transition-shadow p-3 flex gap-3 relative">
@@ -71,12 +89,12 @@ export function DownloadCard({
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border",
-              statusConfig[status].colorClass,
+              statusColor,
               "bg-background/50",
             )}
           >
             <StatusIcon className="w-3 h-3" />
-            {statusConfig[status].label}
+            {statusLabel}
           </span>
           {total_size && (
             <span className="text-[10px] text-muted-foreground hidden sm:inline">
@@ -173,8 +191,7 @@ export function DownloadCard({
           </>
         )}
 
-        {/* Failed: retry + delete */}
-        {status === "failed" && (
+        {status === "error" && (
           <>
             <Button
               variant="ghost"

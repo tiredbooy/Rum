@@ -122,6 +122,7 @@ func StartDownload(c *gin.Context) {
 
 	err := GlobalManager.StartJob(c.Request.Context(), jobID)
 	if err != nil {
+		log.Println("ERROR: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to start download %s: ", err.Error())})
 		return
 	}

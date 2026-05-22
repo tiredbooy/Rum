@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Clipboard, CheckSquare, Square } from "lucide-react";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
+import { useDownloadRequestStore } from "@/stores/download-request-store";
 
 interface ParsedLine {
   index: number;
@@ -16,12 +17,15 @@ interface ParsedLine {
 }
 
 export function BulkDownloadForm() {
+  const draft = useDownloadRequestStore((s) => s.draft);
+  const updateDraft = useDownloadRequestStore((s) => s.updateDraft);
+
+  const outputFolder = draft.dest_path ?? "";
+
   const [rawText, setRawText] = useState("");
-  const [outputFolder, setOutputFolder] = useState("");
   const [lines, setLines] = useState<ParsedLine[]>([]);
   const { readRawText } = useClipboardUrl();
 
-  // Parse rawText on every change
   useEffect(() => {
     const textLines = rawText.split("\n");
     const newLines: ParsedLine[] = textLines.map((line, index) => {
@@ -37,39 +41,48 @@ export function BulkDownloadForm() {
     setLines(newLines);
   }, [rawText]);
 
+  useEffect(() => {
+    const selectedUrls = lines
+      .filter((l) => l.selected && l.url)
+      .map((l) => l.url!);
+    updateDraft({ urls: selectedUrls, dest_path: outputFolder });
+  }, [lines, outputFolder, updateDraft]);
+
+  // Statistics
   const totalUrls = lines.filter((l) => l.url).length;
   const selectedCount = lines.filter((l) => l.selected).length;
 
-  const toggleLine = (index: number) =>
+  const toggleLine = (index: number) => {
     setLines((prev) =>
       prev.map((line) =>
         line.index === index ? { ...line, selected: !line.selected } : line,
       ),
     );
+  };
 
-  const selectAll = () =>
+  const selectAll = () => {
     setLines((prev) => prev.map((line) => ({ ...line, selected: true })));
+  };
 
-  const deselectAll = () =>
+  const deselectAll = () => {
     setLines((prev) => prev.map((line) => ({ ...line, selected: false })));
+  };
 
   const handlePaste = async () => {
     const text = await readRawText();
     if (text) setRawText(text);
   };
 
-  // Auto‑paste on first render (only if empty)
   useEffect(() => {
     if (rawText === "") {
       readRawText().then((text) => {
         if (text && text.trim()) setRawText(text);
       });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-4">
-      {/* Output folder (global) */}
       <div className="space-y-2">
         <Label htmlFor="bulk-output" className="text-sm font-medium">
           Save to folder{" "}
@@ -79,15 +92,13 @@ export function BulkDownloadForm() {
           id="bulk-output"
           placeholder="downloads/videos"
           value={outputFolder}
-          onChange={(e) => setOutputFolder(e.target.value)}
+          onChange={(e) => updateDraft({ dest_path: e.target.value })}
           className="bg-background text-foreground"
         />
       </div>
 
-      {/* ===== SELECTABLE URL LIST – now ABOVE the textarea ===== */}
       {totalUrls > 0 && (
         <div className="space-y-3">
-          {/* Header: count + select/deselect buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-sm text-muted-foreground">
               {selectedCount} of {totalUrls} URL{totalUrls !== 1 && "s"}{" "}
@@ -103,7 +114,6 @@ export function BulkDownloadForm() {
             </div>
           </div>
 
-          {/* Scrollable URL list with checkboxes */}
           <div className="max-h-48 overflow-y-auto overflow-x-hidden rounded-md border border-border divide-y divide-border">
             {lines
               .filter((line) => line.url)
@@ -126,14 +136,12 @@ export function BulkDownloadForm() {
         </div>
       )}
 
-      {/* Validation feedback when no valid URLs */}
       {rawText && totalUrls === 0 && (
         <p className="text-sm text-destructive font-medium">
           No valid URLs found. Enter one URL per line.
         </p>
       )}
 
-      {/* ===== RAW TEXTAREA – now BELOW the list ===== */}
       <div className="space-y-2">
         <Label htmlFor="bulk-urls" className="text-sm font-medium">
           Edit raw URLs{" "}

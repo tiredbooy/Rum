@@ -1,7 +1,7 @@
 export type DownloadStatus =
   | "running"
   | "completed"
-  | "failed"
+  | "error"
   | "paused"
   | "pending";
 

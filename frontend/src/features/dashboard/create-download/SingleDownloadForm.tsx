@@ -4,18 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Clipboard } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
+import { useDownloadRequestStore } from "@/stores/download-request-store";
+import { isValidUrl } from "@/_lib/utils/validators";
 
 export function SingleDownloadForm() {
   const { clipboardUrl, pasteValidUrl } = useClipboardUrl();
-  const [url, setUrl] = useState("");
-  const [filename, setFilename] = useState("");
-  const [outputPath, setOutputPath] = useState("");
+
+  const draft = useDownloadRequestStore((s) => s.draft);
+  const updateDraft = useDownloadRequestStore((s) => s.updateDraft);
+
+  const url = draft.urls[0] ?? "";
+  const filename = draft.filename ?? "";
+  const destPath = draft.dest_path ?? "";
+
   const [urlError, setUrlError] = useState("");
 
-  // Pre‑fill URL if clipboard had a valid one on mount
   useEffect(() => {
-    if (clipboardUrl) {
-      setUrl(clipboardUrl);
+    if (clipboardUrl && !draft.urls[0]) {
+      updateDraft({ urls: [clipboardUrl] });
     }
   }, [clipboardUrl]);
 
@@ -24,20 +30,13 @@ export function SingleDownloadForm() {
       setUrlError("URL is required");
       return false;
     }
-    try {
-      new URL(value.trim());
-      setUrlError("");
-      return true;
-    } catch {
-      setUrlError("Please enter a valid URL");
-      return false;
-    }
+    return isValidUrl(value?.trim());
   }, []);
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setUrl(value);
-    if (urlError) validateUrl(value); // clear error as user types
+    updateDraft({ urls: [value] });
+    if (urlError) validateUrl(value);
   };
 
   const handleUrlBlur = () => {
@@ -47,7 +46,7 @@ export function SingleDownloadForm() {
   const handleManualPaste = async () => {
     const pasted = await pasteValidUrl();
     if (pasted) {
-      setUrl(pasted);
+      updateDraft({ urls: [pasted] });
       validateUrl(pasted);
     }
   };
@@ -87,7 +86,6 @@ export function SingleDownloadForm() {
         )}
       </div>
 
-      {/* Optional filename */}
       <div className="space-y-2">
         <Label htmlFor="filename" className="text-sm font-medium">
           Filename <span className="text-muted-foreground">(optional)</span>
@@ -96,12 +94,11 @@ export function SingleDownloadForm() {
           id="filename"
           placeholder="my-video.mp4"
           value={filename}
-          onChange={(e) => setFilename(e.target.value)}
+          onChange={(e) => updateDraft({ filename: e.target.value })}
           className="bg-background text-foreground"
         />
       </div>
 
-      {/* Optional output path */}
       <div className="space-y-2">
         <Label htmlFor="output-path" className="text-sm font-medium">
           Save to folder{" "}
@@ -110,8 +107,8 @@ export function SingleDownloadForm() {
         <Input
           id="output-path"
           placeholder="videos/tutorials"
-          value={outputPath}
-          onChange={(e) => setOutputPath(e.target.value)}
+          value={destPath}
+          onChange={(e) => updateDraft({ dest_path: e.target.value })}
           className="bg-background text-foreground"
         />
       </div>

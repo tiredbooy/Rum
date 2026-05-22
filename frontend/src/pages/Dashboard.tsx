@@ -16,6 +16,7 @@ interface Props {
 
 export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
+  const [open, setOpen] = useState(true);
 
   const startDownloads = useStartAllDownloads();
   const pauseDownloads = usePauseAllDownloads();
@@ -50,9 +51,13 @@ export default function Dashboard({}: Props) {
     {
       value: "failed",
       label: "Failed",
-      content: <DownloadStatusPage status="failed" />,
+      content: <DownloadStatusPage status="error" />,
     },
   ];
+
+  const handleAddDownlad = () => {
+    setOpen((open) => !open);
+  };
 
   const handleStartAll = () => {
     startDownloads.mutateAsync();
@@ -68,7 +73,7 @@ export default function Dashboard({}: Props) {
 
   return (
     <div className="">
-      <DownloadDialog />
+      <DownloadDialog open={open} setOpen={setOpen} />
       <DashboardToolbar
         stats={{
           active: 1,
@@ -77,10 +82,10 @@ export default function Dashboard({}: Props) {
           dataToday: "12.5",
           failedCount: 12,
         }}
-        onAddDownload={handleStartAll}
+        onAddDownload={handleAddDownlad}
         onPauseAll={handlePauseAll}
         onResumeAll={handleStartAll}
-        onRetryFailed={() => console.log("value2:")}
+        onRetryFailed={handleStartAll}
         onClearCompleted={handleDeleteCompleteds}
       />
       <FilterTabs
