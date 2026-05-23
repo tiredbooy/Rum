@@ -114,6 +114,17 @@ export function useDeleteDownload() {
         queryClient.setQueryData(downloadKeys.detail(id), deletedDownloads);
       }
     },
+    onError: async (_, id) => {
+      const downloads = await queryClient.fetchQuery({
+        queryKey: downloadKeys.list("all"),
+        queryFn: () => getDownloads("all"),
+      });
+
+      const deletedDownloads = downloads.find((d) => d.id === id);
+      if (deletedDownloads) {
+        queryClient.setQueryData(downloadKeys.detail(id), deletedDownloads);
+      }
+    },
   });
 }
 

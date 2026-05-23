@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
@@ -40,6 +41,7 @@ type JobManager struct {
 	subscribers    map[string][]chan dto.ProgressUpdate
 	allSubscribers []chan dto.ProgressUpdate
 	sortBy         SortField
+	BatchID        string
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -310,6 +312,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		} else if err == nil {
 			job.SetStatus(StatusCompleted)
 		} else {
+			log.Println("ERROR STARTING: ", err.Error())
 			job.SetStatus(StatusError)
 			job.Error = err
 		}
@@ -329,11 +332,23 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		m.publishProgress(finalUpdate)
 
 		m.saveToDisk()
+
+		var setting config.Setting
+		setting.LoadSettingMetadata()
+
+		if setting.PostDownload.AutoOpenDir && job.GetStatus() == StatusCompleted {
+			if err := filesystem.OpenFolder(job.OutputPath); err != nil {
+				log.Printf("failed to open folder: %v", err)
+			}
+
+		}
+
 	}()
 	return nil
 }
 
 func (m *JobManager) StartAllJobs(ctx context.Context) {
+	batchID := fmt.Sprintf("batch_%d", time.Now().UnixNano())
 	m.mu.RLock()
 
 	var eligible []*Job
@@ -353,24 +368,11 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	})
 
 	for _, job := range eligible {
+		m.BatchID = batchID
 		if err := m.StartJob(ctx, job.ID); err != nil {
 			continue
 		}
 	}
-
-	// var jobIDs []string
-	// for id, job := range m.jobs {
-	// 	if job.Status == StatusPending || job.Status == StatusPaused {
-	// 		jobIDs = append(jobIDs, id)
-	// 	}
-	// }
-	// m.mu.RUnlock()
-
-	// for _, id := range jobIDs {
-	// 	if err := m.StartJob(ctx, id); err != nil {
-	// 		log.Printf("StartAllJobs: failed to start job %s: %v", id, err)
-	// 	}
-	// }
 }
 
 func (m *JobManager) PauseJob(jobID string) error {
@@ -489,7 +491,7 @@ func (m *JobManager) DeleteJob(jobID string) error {
 	m.mu.Unlock()
 
 	if err := DeleteJobFromDisk(jobID); err != nil {
-		return fmt.Errorf("failed to delete job from disk: %w", err)
+		return fmt.Errorf("failed to delete job from disk: %w", err.Error())
 	}
 
 	return nil

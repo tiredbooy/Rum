@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/time/rate"
 
+	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
@@ -18,7 +20,9 @@ import (
 type ProgressFunc func(downloaded, total int64)
 
 func PrepareOutputPath(opt Options, fileName, url string, contentType string) (fullPath string) {
-	defaultDownloadDir := filesystem.GetOrCreateDownloadDirectory()
+	var setting config.Setting
+	setting.LoadSettingMetadata()
+	defaultDownloadDir := setting.OutDir
 
 	var folderName string = ""
 	if opt.Out != defaultDownloadDir {
@@ -74,15 +78,27 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 		offset = 0
 	}
 
+	var setting config.Setting
+	err = setting.LoadSettingMetadata()
+	if err != nil {
+		log.Println("Failed to load setting metadata.")
+	}
+
 	var body io.ReadCloser = resp.Body
-	if opt.SpeedLimit > 0 {
-		limiter := rate.NewLimiter(rate.Limit(opt.SpeedLimit), opt.SpeedLimit)
+	if setting.SpeedLimitKB > 0 {
+		var speedLimit int64
+		if opt.SpeedLimit*1024 > 0 && opt.SpeedLimit == setting.SpeedLimitKB {
+			speedLimit = int64(opt.SpeedLimit)
+		}
+		speedLimit = int64(setting.SpeedLimitKB) * 102
+		limiter := rate.NewLimiter(rate.Limit(speedLimit), int(speedLimit))
 		body = &rateLimitedReader{
 			reader:  resp.Body,
 			limiter: limiter,
 			ctx:     ctx,
 		}
 	}
+
 	resp.Body = body
 
 	return SaveDownloadedFile(ctx, resp, outFile, offset, fileName, job, progressFn)
@@ -135,6 +151,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
 	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
+	job.OutputPath = fullPath
 
 	var existsFileSize int64 = 0
 	if filesystem.IsFileExists(fullPath) {

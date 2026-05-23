@@ -3,6 +3,10 @@ package filesystem
 import (
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
+
+	"runtime"
 )
 
 func GetExistsFileSize(path string) (int64, error) {
@@ -28,4 +32,19 @@ func IsFileExists(path string) bool {
 	}
 
 	return true
+}
+
+func OpenFolder(fullFilePath string) error {
+	dir := filepath.Dir(fullFilePath)
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", dir)
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	default:
+		cmd = exec.Command("xdg-open", dir)
+	}
+
+	return cmd.Run()
 }

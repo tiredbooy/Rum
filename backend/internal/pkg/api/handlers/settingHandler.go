@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,8 @@ func UpdateSetting(c *gin.Context) {
         Silent: setting.Silent,
         MaxRetries: setting.MaxRetries,
     }
+
+    log.Println("NEW OPT: ", opt)
 
     download.LoadOptions(opt)
 

@@ -114,7 +114,6 @@ func (s *Setting) Update(req SettingReq) error {
 		s.Proxy = *req.Proxy
 	}
 
-	// Nested PostDownload fields (each pointer separately)
 	if req.PostDownload.Action != nil {
 		s.PostDownload.Action = *req.PostDownload.Action
 	}
