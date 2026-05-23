@@ -34,6 +34,7 @@ export function AllProgressStream() {
               speed: update.speed ?? old.speed,
               progress: update.progress ?? old.progress,
               status: update.status ?? old.status,
+              eta: update.eta ?? old.eta,
             };
           },
         );

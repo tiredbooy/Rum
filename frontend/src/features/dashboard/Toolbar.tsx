@@ -109,24 +109,6 @@ export function DashboardToolbar({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRetryFailed}
-            disabled={stats.failedCount === 0}
-            className="gap-1.5 h-9 hover:text-foreground text-foreground/80"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Retry failed</span>
-            {stats.failedCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="ml-1 px-1.5 py-0 text-xs leading-none"
-              >
-                {stats.failedCount}
-              </Badge>
-            )}
-          </Button>
 
           <Button
             variant="outline"

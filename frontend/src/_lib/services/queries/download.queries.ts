@@ -76,11 +76,14 @@ export function usePauseAllDownloads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => pauseAllDownloads(),
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ["downloads", "detail"] });
-      queryClient.invalidateQueries({
-        queryKey: downloadKeys.all,
-        refetchType: "all",
+    onSuccess: async () => {
+      const downloads = await queryClient.fetchQuery({
+        queryKey: downloadKeys.list("all"),
+        queryFn: () => getDownloads("all"),
+      });
+
+      downloads.forEach((download) => {
+        queryClient.setQueryData(downloadKeys.detail(download.id), download);
       });
     },
   });
@@ -100,8 +103,16 @@ export function useDeleteDownload() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteDownload(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    onSuccess: async (_, id) => {
+      const downloads = await queryClient.fetchQuery({
+        queryKey: downloadKeys.list("all"),
+        queryFn: () => getDownloads("all"),
+      });
+
+      const deletedDownloads = downloads.find((d) => d.id === id);
+      if (deletedDownloads) {
+        queryClient.setQueryData(downloadKeys.detail(id), deletedDownloads);
+      }
     },
   });
 }
@@ -110,10 +121,14 @@ export function useDeleteDownloads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (status: DownloadStatus) => deleteDownloads(status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: downloadKeys.all,
-        refetchType: "all",
+    onSuccess: async () => {
+      const downloads = await queryClient.fetchQuery({
+        queryKey: downloadKeys.list("all"),
+        queryFn: () => getDownloads("all"),
+      });
+
+      downloads.forEach((download) => {
+        queryClient.setQueryData(downloadKeys.detail(download.id), download);
       });
     },
   });

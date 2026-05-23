@@ -7,4 +7,5 @@ type ProgressUpdate struct {
 	Speed      float64 `json:"speed"`
 	Status     string  `json:"status"`
 	Progress   int     `json:"progress"`
+	ETA        int64   `json:"eta"`
 }

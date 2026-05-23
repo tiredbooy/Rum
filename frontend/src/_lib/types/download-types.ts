@@ -13,6 +13,7 @@ export interface Download {
   progress?: number;
   downloaded: number;
   total_size?: number;
+  eta?: number;
   speed?: number;
   remaining: number;
   error?: string;

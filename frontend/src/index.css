@@ -307,4 +307,8 @@
     border-radius: 9999px;
     transition: width 0.3s ease;
   }
+
+  .eta-text {
+    transition: opacity 0.2s;
+  }
 }

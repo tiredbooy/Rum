@@ -29,7 +29,7 @@ type Setting struct {
 		Action      string `json:"action"` // "none", "shutdown", "sleep"
 		AutoOpenDir bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
-	FileConflict string `json:"file_conflict"` // "rename", "overwrite", "skip"
+	FileConflict string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        string `json:"proxy,omitempty"`
 	LogLevel     string `json:"log_level"` // "info", "debug"
 }
@@ -53,7 +53,7 @@ type SettingReq struct {
 		Action      *string `json:"action"` // "none", "shutdown", "sleep"
 		AutoOpenDir *bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
-	FileConflict *string `json:"file_conflict"` // "rename", "overwrite", "skip"
+	FileConflict *string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        *string `json:"proxy,omitempty"`
 }
 

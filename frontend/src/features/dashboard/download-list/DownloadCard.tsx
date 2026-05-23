@@ -67,8 +67,7 @@ export function DownloadCard({
   onDelete,
   onRetry,
 }: DownloadCardProps) {
-  const { id, filename, status, progress, speed, total_size, remaining } =
-    download;
+  const { id, filename, status, progress, speed, total_size, eta } = download;
 
   const {
     icon: StatusIcon,
@@ -110,7 +109,7 @@ export function DownloadCard({
               <span>{progress?.toFixed(1) ?? 0}%</span>
               <span>
                 {speed != null ? formatSpeed(speed) : "—"} ·{" "}
-                {remaining != null ? formatETA(remaining) : "—"} left
+                {formatETA(eta ?? 0) ?? "—"}
               </span>
             </div>
           </div>

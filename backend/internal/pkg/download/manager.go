@@ -247,8 +247,6 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		defer func() { <-m.sem }()
 		defer cancel()
 
-		log.Printf("StartJob: goroutine running for %s", jobID)
-
 		m.mu.Lock()
 		job.SetStatus(StatusRunning)
 		m.mu.Unlock()
@@ -256,31 +254,46 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		var (
 			lastDownloaded int64
 			lastTime       time.Time
+			smoothSpeed    float64
 		)
 
 		progressFn := func(downloaded, total int64) {
 			now := time.Now()
 
-			var speed int64
+			var instantSpeed float64
 			if !lastTime.IsZero() {
 				elapsed := now.Sub(lastTime).Seconds()
 				if elapsed > 0 {
-					speed = int64(float64(downloaded-lastDownloaded) / elapsed)
+					instantSpeed = float64(downloaded-lastDownloaded) / elapsed
 				}
 			}
 
 			lastDownloaded = downloaded
 			lastTime = now
 
+			const alpha = 0.3
+			if smoothSpeed == 0 {
+				smoothSpeed = instantSpeed
+			} else {
+				smoothSpeed = alpha*instantSpeed + (1-alpha)*smoothSpeed
+			}
+
+			var eta int64
+			if smoothSpeed > 0 && total > 0 {
+				remaining := total - downloaded
+				if remaining > 0 {
+					eta = int64(float64(remaining) / float64(smoothSpeed))
+				}
+			}
+
 			update := dto.ProgressUpdate{
 				JobID:      jobID,
 				Downloaded: downloaded,
 				TotalSize:  total,
-				Speed:      float64(speed),
+				Speed:      float64(smoothSpeed),
 				Status:     string(job.Status),
-			}
-			if total > 0 {
-				update.Progress = int(float64(downloaded) / float64(total) * 100)
+				Progress:   int(float64(downloaded) / float64(total) * 100),
+				ETA:        eta,
 			}
 			m.publishProgress(update)
 		}
@@ -310,9 +323,8 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 			TotalSize:  totalSize,
 			Speed:      0,
 			Status:     finalStatus,
-		}
-		if totalSize > 0 {
-			finalUpdate.Progress = int(float64(job.GetDownloaded()) / float64(job.GetTotalSize()) * 100)
+			Progress:   int(float64(downloaded) / float64(totalSize) * 100),
+			ETA:        0,
 		}
 		m.publishProgress(finalUpdate)
 
