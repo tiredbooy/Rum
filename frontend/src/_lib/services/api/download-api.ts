@@ -11,7 +11,9 @@ export async function getDownloads(
   return Array.isArray(data) ? data : [];
 }
 
-export async function getDownloadStatus(id: string): Promise<Download> {
+
+
+export async function fetchDownloadProgress(id: string): Promise<Download> {
   return request<Download>(`/api/v1/downloads/${id}`);
 }
 
@@ -59,5 +61,3 @@ export async function startAllDownloads(): Promise<void> {
 export async function pauseAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/pause-all", { method: "POST" });
 }
-
-

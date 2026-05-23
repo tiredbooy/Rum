@@ -17,21 +17,22 @@ import (
 )
 
 var statusPriority = map[string]int{
-    StatusRunning:   1,
-    StatusPending:   2,
-    StatusPaused:    3,
-    StatusCompleted: 4,
-    StatusError:     5,
+	StatusRunning:   1,
+	StatusPending:   2,
+	StatusPaused:    3,
+	StatusCompleted: 4,
+	StatusError:     5,
 }
 
 type JobManager struct {
-	mu          sync.RWMutex
-	jobs        map[string]*Job
-	urls        map[string]string
-	sem         chan struct{}
-	opt         *Options
-	subscribers map[string][]chan dto.ProgressUpdate
-	subMu       sync.RWMutex
+	mu             sync.RWMutex
+	jobs           map[string]*Job
+	urls           map[string]string
+	sem            chan struct{}
+	opt            *Options
+	subMu          sync.RWMutex
+	subscribers    map[string][]chan dto.ProgressUpdate
+	allSubscribers []chan dto.ProgressUpdate
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -325,7 +326,6 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 		return
 	}
 
-	
 	m.opt.Parallel = parallel
 	sem := make(chan struct{}, parallel)
 	m.sem = sem
@@ -360,11 +360,11 @@ func (m *JobManager) PauseAllJobs() error {
 
 	for _, job := range m.jobs {
 		if job.Status != StatusRunning {
-		continue
-	}
-	if job.CancelFunc != nil {
-		job.CancelFunc()
-	}
+			continue
+		}
+		if job.CancelFunc != nil {
+			job.CancelFunc()
+		}
 	}
 	return nil
 }
@@ -393,6 +393,26 @@ func (m *JobManager) UnSubscribe(jobID string, ch <-chan dto.ProgressUpdate) {
 	}
 }
 
+func (m *JobManager) SubscribeAll() <-chan dto.ProgressUpdate {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	ch := make(chan dto.ProgressUpdate, 20)
+	m.allSubscribers = append(m.allSubscribers, ch)
+	return ch
+}
+
+func (m *JobManager) UnSubscribeAll(ch <-chan dto.ProgressUpdate) {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	for i, sub := range m.allSubscribers {
+		if sub == ch {
+			m.allSubscribers = append(m.allSubscribers[:i], m.allSubscribers[i+1:]...)
+			close(sub)
+			break
+		}
+	}
+}
+
 func (m *JobManager) publishProgress(update dto.ProgressUpdate) {
 	m.subMu.RLock()
 	defer m.subMu.RUnlock()
@@ -400,6 +420,15 @@ func (m *JobManager) publishProgress(update dto.ProgressUpdate) {
 		select {
 		case ch <- update:
 		default:
+		}
+	}
+
+	// All Downloads
+	for _, ch := range m.allSubscribers {
+		select {
+		case ch <- update:
+		default:
+
 		}
 	}
 }
@@ -430,38 +459,37 @@ func (m *JobManager) DeleteJob(jobID string) error {
 	return nil
 }
 
-
 func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	if filter == "" {
 		filter = "all"
 	}
 
-    m.mu.Lock()
-    defer m.mu.Unlock()
-	
-    var remaining []*Job
-    for _, job := range m.jobs {
-        switch filter {
-        case "completed":
-            if job.Status == StatusCompleted {
-                continue
-            }
-        case "all":
-            continue
-        }
-        remaining = append(remaining, job)
-    }
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-    if err := filesystem.WriteMetadataFile("jobs.json", remaining); err != nil {
-        return err
-    }
+	var remaining []*Job
+	for _, job := range m.jobs {
+		switch filter {
+		case "completed":
+			if job.Status == StatusCompleted {
+				continue
+			}
+		case "all":
+			continue
+		}
+		remaining = append(remaining, job)
+	}
 
-    m.jobs = make(map[string]*Job, len(remaining))
-    for _, job := range remaining {
-        m.jobs[job.ID] = job
-    }
+	if err := filesystem.WriteMetadataFile("jobs.json", remaining); err != nil {
+		return err
+	}
 
-    m.urls = make(map[string]string)
+	m.jobs = make(map[string]*Job, len(remaining))
+	for _, job := range remaining {
+		m.jobs[job.ID] = job
+	}
 
-    return nil
+	m.urls = make(map[string]string)
+
+	return nil
 }

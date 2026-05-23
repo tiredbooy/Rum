@@ -16,7 +16,7 @@ interface Props {
 
 export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const startDownloads = useStartAllDownloads();
   const pauseDownloads = usePauseAllDownloads();

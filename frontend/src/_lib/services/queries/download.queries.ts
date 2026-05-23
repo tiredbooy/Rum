@@ -5,7 +5,7 @@ import {
   deleteDownload,
   deleteDownloads,
   getDownloads,
-  getDownloadStatus,
+  fetchDownloadProgress,
   pauseAllDownloads,
   pauseDownload,
   resumeDownload,
@@ -29,7 +29,7 @@ export function useDownloads(status?: Parameters<typeof getDownloads>[0]) {
 export function useDownload(id: string) {
   return useQuery({
     queryKey: downloadKeys.detail(id),
-    queryFn: () => getDownloadStatus(id),
+    queryFn: () => fetchDownloadProgress(id),
     enabled: !!id,
   });
 }
