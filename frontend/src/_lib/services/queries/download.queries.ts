@@ -58,8 +58,30 @@ export function usePauseDownload() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => pauseDownload(id),
+    onSuccess: async (_, id) => {
+      const downloads = await queryClient.fetchQuery({
+        queryKey: downloadKeys.list("all"),
+        queryFn: () => getDownloads("all"),
+      });
+
+      const pausedJob = downloads.find((d) => d.id === id);
+      if (pausedJob) {
+        queryClient.setQueryData(downloadKeys.detail(id), pausedJob);
+      }
+    },
+  });
+}
+
+export function usePauseAllDownloads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => pauseAllDownloads(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+      queryClient.removeQueries({ queryKey: ["downloads", "detail"] });
+      queryClient.invalidateQueries({
+        queryKey: downloadKeys.all,
+        refetchType: "all",
+      });
     },
   });
 }
@@ -103,19 +125,6 @@ export function useStartAllDownloads() {
     mutationFn: () => startAllDownloads(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
-    },
-  });
-}
-
-export function usePauseAllDownloads() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => pauseAllDownloads(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: downloadKeys.all,
-        refetchType: "all",
-      });
     },
   });
 }

@@ -16,13 +16,19 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
 
-var statusPriority = map[string]int{
-	StatusRunning:   1,
-	StatusPending:   2,
-	StatusPaused:    3,
-	StatusCompleted: 4,
-	StatusError:     5,
-}
+type SortField string
+
+var (
+	statusPriority = map[string]int{
+		StatusRunning:   1,
+		StatusPending:   2,
+		StatusPaused:    3,
+		StatusCompleted: 4,
+		StatusError:     5,
+	}
+	SortByName      SortField = "name"
+	SortByCreatedAt SortField = "created_at"
+)
 
 type JobManager struct {
 	mu             sync.RWMutex
@@ -33,6 +39,7 @@ type JobManager struct {
 	subMu          sync.RWMutex
 	subscribers    map[string][]chan dto.ProgressUpdate
 	allSubscribers []chan dto.ProgressUpdate
+	sortBy         SortField
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -280,31 +287,35 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 
 		err := DownloadSingleFile(bgCtx, *m.opt, job, progressFn)
 
+		m.mu.Lock()
+
+		downloaded := job.GetDownloaded()
+		totalSize := job.TotalSize
+
+		if bgCtx.Err() == context.Canceled {
+			job.SetStatus(StatusPaused)
+		} else if err == nil {
+			job.SetStatus(StatusCompleted)
+		} else {
+			job.SetStatus(StatusError)
+			job.Error = err
+		}
+
+		finalStatus := string(job.Status)
+		m.mu.Unlock()
+
 		finalUpdate := dto.ProgressUpdate{
 			JobID:      jobID,
-			Downloaded: job.GetDownloaded(),
-			TotalSize:  job.TotalSize,
+			Downloaded: downloaded,
+			TotalSize:  totalSize,
 			Speed:      0,
-			Status:     string(job.Status),
+			Status:     finalStatus,
 		}
-		if job.TotalSize > 0 {
+		if totalSize > 0 {
 			finalUpdate.Progress = int(float64(job.GetDownloaded()) / float64(job.GetTotalSize()) * 100)
 		}
 		m.publishProgress(finalUpdate)
 
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if bgCtx.Err() == context.Canceled {
-			job.SetStatus(StatusPaused)
-			log.Printf("Job %s paused", jobID)
-		} else if err == nil {
-			job.SetStatus(StatusCompleted)
-			log.Printf("Job %s completed", jobID)
-		} else {
-			job.SetStatus(StatusError)
-			job.Error = err
-			log.Printf("Job %s error: %v", jobID, err)
-		}
 		m.saveToDisk()
 	}()
 	return nil
@@ -312,29 +323,42 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 
 func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.mu.RLock()
-	var jobIDs []string
-	for id, job := range m.jobs {
+
+	var eligible []*Job
+	for _, job := range m.jobs {
 		if job.Status == StatusPending || job.Status == StatusPaused {
-			jobIDs = append(jobIDs, id)
+			eligible = append(eligible, job)
 		}
 	}
 	m.mu.RUnlock()
 
-	parallel := len(jobIDs)
+	sort.Slice(eligible, func(i, j int) bool {
+		if m.sortBy == "created_at" {
+			return utils.TimeCompare(eligible[i].CreatedAt, eligible[j].CreatedAt)
+		}
 
-	if parallel <= 0 {
-		return
-	}
+		return eligible[i].FileName < eligible[j].FileName
+	})
 
-	m.opt.Parallel = parallel
-	sem := make(chan struct{}, parallel)
-	m.sem = sem
-
-	for _, id := range jobIDs {
-		if err := m.StartJob(ctx, id); err != nil {
-			log.Printf("StartAllJobs: failed to start job %s: %v", id, err)
+	for _, job := range eligible {
+		if err := m.StartJob(ctx, job.ID); err != nil {
+			continue
 		}
 	}
+
+	// var jobIDs []string
+	// for id, job := range m.jobs {
+	// 	if job.Status == StatusPending || job.Status == StatusPaused {
+	// 		jobIDs = append(jobIDs, id)
+	// 	}
+	// }
+	// m.mu.RUnlock()
+
+	// for _, id := range jobIDs {
+	// 	if err := m.StartJob(ctx, id); err != nil {
+	// 		log.Printf("StartAllJobs: failed to start job %s: %v", id, err)
+	// 	}
+	// }
 }
 
 func (m *JobManager) PauseJob(jobID string) error {
@@ -359,9 +383,9 @@ func (m *JobManager) PauseAllJobs() error {
 	defer m.mu.Unlock()
 
 	for _, job := range m.jobs {
-		if job.Status != StatusRunning {
-			continue
-		}
+		// if job.Status != StatusRunning {
+		// 	continue
+		// }
 		if job.CancelFunc != nil {
 			job.CancelFunc()
 		}

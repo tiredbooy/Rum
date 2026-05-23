@@ -11,17 +11,16 @@ interface DownloadItemWrapperProps {
   onRetry: (id: string) => void;
 }
 
-export function DownloadItemWrapper({
-  download,
-  ...actions
-}: DownloadItemWrapperProps) {
+export function DownloadItemWrapper({ download, ...actions }: DownloadItemWrapperProps) {
   const isRunning = download.status === "running";
-  const { progress: liveData } = useJobProgress(
-    isRunning ? download.id : undefined,
+
+  const { data: liveData } = useJobProgress(
+    download.id,          
+    download,         
+    isRunning        
   );
 
-  const merged =
-    isRunning && liveData ? { ...download, ...liveData } : download;
+  const merged = liveData ?? download;
 
   return <DownloadCard download={merged} {...actions} />;
 }
