@@ -134,7 +134,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.err == nil {
 				m.autoScroll = true
 				job.SetStatus(download.StatusCompleted)
-				job.SetCompletedAt(time.Now().String())
+				job.SetCompletedAt(time.Now())
 			} else if msg.err == context.Canceled {
 				job.SetStatus(download.StatusPaused)
 			} else {

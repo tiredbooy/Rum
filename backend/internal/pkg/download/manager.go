@@ -18,6 +18,21 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
 
+type JobManager struct {
+	mu             sync.RWMutex
+	jobs           map[string]*Job
+	urls           map[string]string
+	sem            chan struct{}
+	opt            *Options
+	subMu          sync.RWMutex
+	subscribers    map[string][]chan dto.ProgressUpdate
+	allSubscribers []chan dto.ProgressUpdate
+	sortBy         SortField
+	batchCounters  map[string]int32
+	batchMu        sync.Mutex
+	config         config.Setting
+}
+
 type SortField string
 
 var (
@@ -32,19 +47,11 @@ var (
 	SortByCreatedAt SortField = "created_at"
 )
 
-type JobManager struct {
-	mu             sync.RWMutex
-	jobs           map[string]*Job
-	urls           map[string]string
-	sem            chan struct{}
-	opt            *Options
-	subMu          sync.RWMutex
-	subscribers    map[string][]chan dto.ProgressUpdate
-	allSubscribers []chan dto.ProgressUpdate
-	sortBy         SortField
-	batchCounters  map[string]int32
-	batchMu        sync.Mutex
-	config         config.Setting
+type DashboardStats struct {
+	ActiveDownloads  int     `json:"active_downloads"`
+	CompletedToday   int     `json:"completed_today"`
+	DownloadedTodayGB  float64 `json:"download_today_gb"`
+	CurrentSpeedMBps float64 `json:"current_speed_mbps"`
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -348,6 +355,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		job.SetStatus(StatusPaused)
 	} else if err == nil {
 		job.SetStatus(StatusCompleted)
+		job.SetCompletedAt(time.Now())
 	} else {
 		log.Println("ERROR STARTING: ", err.Error())
 		job.SetStatus(StatusError)
@@ -609,5 +617,37 @@ func (m *JobManager) completionOperations(job *Job) {
 	if !m.config.Silent {
 		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		beeep.Notify("Downlods Completed", "All Jobs Finished", "")
+	}
+}
+
+func (m *JobManager) GetDashboardStats() DashboardStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	var active int
+	var completedToday int
+	var todayBytes int64
+	var totalSpeed float64
+
+	for _, job := range m.jobs {
+		if job.Status == StatusRunning {
+			active++
+			totalSpeed += job.Speed
+		}
+
+		if job.Status == StatusCompleted && job.CompletedAt.After(todayStart) {
+			completedToday++
+			todayBytes += job.TotalSize
+		}
+	}
+
+	return DashboardStats{
+		ActiveDownloads:   active,
+		CompletedToday:    completedToday,
+		DownloadedTodayGB: float64(todayBytes) / (1024 * 1024 * 1024),
+		CurrentSpeedMBps:  totalSpeed / (1024 * 1024), // convert bytes/sec to MB/s
 	}
 }

@@ -15,7 +15,7 @@ import (
 var GlobalManager *download.JobManager
 
 func InitAPI(opt *download.Options) {
-	opt.Downloader = download.NewDownloader("", "") 
+	opt.Downloader = download.NewDownloader("", "")
 	GlobalManager = download.NewJobManager(opt)
 }
 
@@ -99,7 +99,7 @@ func GetAllJobs(c *gin.Context) {
 			Speed:       job.Speed,
 			Remaining:   int64(job.RemainingTime),
 			CreatedAt:   job.CreatedAt.String(),
-			CompletedAt: job.CompletedAt,
+			CompletedAt: job.CompletedAt.String(),
 		}
 		result = append(result, j)
 	}
@@ -162,7 +162,6 @@ func PauseDownloads(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"message": "All Downlaods Paused."})
 }
 
-
 func ResumeDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
@@ -197,12 +196,17 @@ func DeleteDownload(c *gin.Context) {
 
 func DeleteDownloads(c *gin.Context) {
 	filter := c.Query("status")
-	
-	err := GlobalManager.DeleteJobsByFilter(filter) 
+
+	err := GlobalManager.DeleteJobsByFilter(filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete jobs"})
 		return
 	}
 
 	c.JSON(http.StatusNoContent, gin.H{"message": "Jobs deleted successfully."})
+}
+
+func GetDownloadsStats(c *gin.Context) {
+	dashboardStats := GlobalManager.GetDashboardStats()
+	c.JSON(http.StatusOK, dashboardStats)
 }
