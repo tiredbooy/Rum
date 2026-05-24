@@ -18,6 +18,8 @@ func SetQuitFunc(f func()) {
 }
 
 func Start() {
+	download.InitLogFile()
+	
 	var setting config.Setting
 	err := setting.LoadSettingMetadata()
 	if err != nil {
@@ -25,7 +27,6 @@ func Start() {
 		return
 	}
 
-	download.InitLogFile()
 
 	if setting.SpeedLimitKB < 0 {
 		setting.SpeedLimitKB = 0

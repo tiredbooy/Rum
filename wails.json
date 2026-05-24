@@ -9,5 +9,17 @@
   "author": {
     "name": "tiredbooy",
     "email": "mahdykazemyo1i2@gmail.com"
+  },
+  "info": {
+    "companyName": "tiredbooy",
+    "productName": "Rum",
+    "productVersion": "1..0",
+    "copyright": "Copyright © 2026 tiredbooy",
+    "comments": "Rum Is a Fast & Modern Download manager"
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "categories": "Office;Utility;",
+    "mimeTypes": []
   }
 }
