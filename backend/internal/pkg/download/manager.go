@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gen2brain/beeep"
 	"github.com/google/uuid"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
@@ -41,7 +42,9 @@ type JobManager struct {
 	subscribers    map[string][]chan dto.ProgressUpdate
 	allSubscribers []chan dto.ProgressUpdate
 	sortBy         SortField
-	BatchID        string
+	batchCounters  map[string]int32
+	batchMu        sync.Mutex
+	config         config.Setting
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -52,12 +55,17 @@ func NewJobManager(opt *Options) *JobManager {
 		opt.Parallel = 1
 	}
 
+	var setting config.Setting
+	setting.LoadSettingMetadata()
+
 	m := &JobManager{
-		jobs:        make(map[string]*Job),
-		urls:        make(map[string]string),
-		sem:         make(chan struct{}, opt.Parallel),
-		opt:         opt,
-		subscribers: make(map[string][]chan dto.ProgressUpdate),
+		jobs:          make(map[string]*Job),
+		urls:          make(map[string]string),
+		sem:           make(chan struct{}, opt.Parallel),
+		opt:           opt,
+		subscribers:   make(map[string][]chan dto.ProgressUpdate),
+		batchCounters: make(map[string]int32),
+		config:        setting,
 	}
 
 	m.mu.Lock()
@@ -245,133 +253,124 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		return ctx.Err()
 	}
 
-	go func() {
-		defer func() { <-m.sem }()
-		defer cancel()
+	go m.runDownload(bgCtx, jobID, cancel)
+	return nil
+}
 
-		m.mu.Lock()
-		job.SetStatus(StatusRunning)
-		m.mu.Unlock()
+func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel context.CancelFunc) {
+	defer func() { <-m.sem }()
+	defer cancel()
 
-		var (
-			lastDownloaded int64
-			lastTime       time.Time
-			smoothSpeed    float64
-		)
+	m.mu.Lock()
+	job := m.jobs[jobID]
+	job.SetStatus(StatusRunning)
+	m.mu.Unlock()
 
-		progressFn := func(downloaded, total int64) {
-			now := time.Now()
+	var lastDownloaded int64
+	var lastTime time.Time
+	var smoothSpeed float64
 
-			var instantSpeed float64
-			if !lastTime.IsZero() {
-				elapsed := now.Sub(lastTime).Seconds()
-				if elapsed > 0 {
-					instantSpeed = float64(downloaded-lastDownloaded) / elapsed
-				}
+	progressFn := func(downloaded, total int64) {
+		now := time.Now()
+
+		var instantSpeed float64
+		if !lastTime.IsZero() {
+			elapsed := now.Sub(lastTime).Seconds()
+			if elapsed > 0 {
+				instantSpeed = float64(downloaded-lastDownloaded) / elapsed
 			}
-
-			lastDownloaded = downloaded
-			lastTime = now
-
-			const alpha = 0.3
-			if smoothSpeed == 0 {
-				smoothSpeed = instantSpeed
-			} else {
-				smoothSpeed = alpha*instantSpeed + (1-alpha)*smoothSpeed
-			}
-
-			var eta int64
-			if smoothSpeed > 0 && total > 0 {
-				remaining := total - downloaded
-				if remaining > 0 {
-					eta = int64(float64(remaining) / float64(smoothSpeed))
-				}
-			}
-
-			update := dto.ProgressUpdate{
-				JobID:      jobID,
-				Downloaded: downloaded,
-				TotalSize:  total,
-				Speed:      float64(smoothSpeed),
-				Status:     string(job.Status),
-				Progress:   int(float64(downloaded) / float64(total) * 100),
-				ETA:        eta,
-			}
-			m.publishProgress(update)
 		}
 
-		err := DownloadSingleFile(bgCtx, *m.opt, job, progressFn)
+		lastDownloaded = downloaded
+		lastTime = now
 
-		m.mu.Lock()
-
-		downloaded := job.GetDownloaded()
-		totalSize := job.TotalSize
-
-		if bgCtx.Err() == context.Canceled {
-			job.SetStatus(StatusPaused)
-		} else if err == nil {
-			job.SetStatus(StatusCompleted)
+		const alpha = 0.3
+		if smoothSpeed == 0 {
+			smoothSpeed = instantSpeed
 		} else {
-			log.Println("ERROR STARTING: ", err.Error())
-			job.SetStatus(StatusError)
-			job.Error = err
+			smoothSpeed = alpha*instantSpeed + (1-alpha)*smoothSpeed
 		}
 
-		finalStatus := string(job.Status)
-		m.mu.Unlock()
+		var eta int64
+		if smoothSpeed > 0 && total > 0 {
+			remaining := total - downloaded
+			if remaining > 0 {
+				eta = int64(float64(remaining) / smoothSpeed)
+			}
+		}
 
-		finalUpdate := dto.ProgressUpdate{
+		update := dto.ProgressUpdate{
 			JobID:      jobID,
 			Downloaded: downloaded,
-			TotalSize:  totalSize,
-			Speed:      0,
-			Status:     finalStatus,
-			Progress:   int(float64(downloaded) / float64(totalSize) * 100),
-			ETA:        0,
+			TotalSize:  total,
+			Speed:      smoothSpeed,
+			Status:     string(job.Status),
+			Progress:   int(float64(downloaded) / float64(total) * 100),
+			ETA:        eta,
 		}
-		m.publishProgress(finalUpdate)
+		m.publishProgress(update)
+	}
 
-		m.saveToDisk()
+	err := DownloadSingleFile(ctx, *m.opt, job, progressFn)
 
-		var setting config.Setting
-		setting.LoadSettingMetadata()
+	m.mu.Lock()
+	if ctx.Err() == context.Canceled {
+		job.SetStatus(StatusPaused)
+	} else if err == nil {
+		job.SetStatus(StatusCompleted)
+	} else {
+		log.Println("ERROR STARTING: ", err.Error())
+		job.SetStatus(StatusError)
+		job.Error = err
+	}
+	downloaded := job.GetDownloaded()
+	totalSize := job.TotalSize
+	finalStatus := string(job.Status)
+	m.mu.Unlock()
 
-		if setting.PostDownload.AutoOpenDir && job.GetStatus() == StatusCompleted {
-			if err := filesystem.OpenFolder(job.OutputPath); err != nil {
-				log.Printf("failed to open folder: %v", err)
-			}
+	finalUpdate := dto.ProgressUpdate{
+		JobID:      jobID,
+		Downloaded: downloaded,
+		TotalSize:  totalSize,
+		Speed:      0,
+		Status:     finalStatus,
+		Progress:   int(float64(downloaded) / float64(totalSize) * 100),
+		ETA:        0,
+	}
+	m.publishProgress(finalUpdate)
 
-		}
+	m.saveToDisk()
 
-	}()
-	return nil
+	m.onJobFinished(job)
 }
 
 func (m *JobManager) StartAllJobs(ctx context.Context) {
 	batchID := fmt.Sprintf("batch_%d", time.Now().UnixNano())
+	var eligibleJobs []*Job
 	m.mu.RLock()
 
-	var eligible []*Job
 	for _, job := range m.jobs {
 		if job.Status == StatusPending || job.Status == StatusPaused {
-			eligible = append(eligible, job)
+			eligibleJobs = append(eligibleJobs, job)
 		}
 	}
 	m.mu.RUnlock()
 
-	sort.Slice(eligible, func(i, j int) bool {
+	m.batchMu.Lock()
+	m.batchCounters[batchID] = int32(len(eligibleJobs))
+	m.batchMu.Unlock()
+
+	sort.Slice(eligibleJobs, func(i, j int) bool {
 		if m.sortBy == "created_at" {
-			return utils.TimeCompare(eligible[i].CreatedAt, eligible[j].CreatedAt)
+			return utils.TimeCompare(eligibleJobs[i].CreatedAt, eligibleJobs[j].CreatedAt)
 		}
 
-		return eligible[i].FileName < eligible[j].FileName
+		return eligibleJobs[i].FileName < eligibleJobs[j].FileName
 	})
 
-	for _, job := range eligible {
-		m.BatchID = batchID
-		if err := m.StartJob(ctx, job.ID); err != nil {
-			continue
-		}
+	for _, job := range eligibleJobs {
+		job.BatchID = batchID
+		m.StartJob(ctx, job.ID)
 	}
 }
 
@@ -530,4 +529,55 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	m.urls = make(map[string]string)
 
 	return nil
+}
+
+func (m *JobManager) onJobFinished(job *Job) {
+	if job.BatchID != "" {
+		m.batchMu.Lock()
+		remaining := m.batchCounters[job.BatchID] - 1
+		if remaining == 0 {
+			delete(m.batchCounters, job.BatchID)
+			m.batchMu.Unlock()
+			m.handleBatchCompletion(job.BatchID, job)
+		} else {
+			m.batchCounters[job.BatchID] = remaining
+			m.batchMu.Unlock()
+		}
+	} else {
+		m.completionOperations(job)
+	}
+
+}
+
+func (m *JobManager) handleBatchCompletion(batchID string, job *Job) {
+	m.completionOperations(job)
+	m.batchMu.Lock()
+	delete(m.batchCounters, batchID)
+	m.batchMu.Unlock()
+}
+
+func (m *JobManager) completionOperations(job *Job) {
+	var setting config.Setting
+	setting.LoadSettingMetadata()
+	m.config = setting
+
+	if m.config.PostDownload.AutoOpenDir {
+		filesystem.OpenFolder(job.OutputPath)
+	}
+
+	switch m.config.PostDownload.Action {
+	case "shutdown":
+		if err := utils.ShutdownPC(); err != nil {
+			log.Printf("Shutdown failed: %v", err)
+		}
+	case "sleep":
+		if err := utils.SleepPC(); err != nil {
+			log.Printf("Sleep failed: %v", err)
+		}
+	}
+
+	if !m.config.Silent {
+		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+		beeep.Notify("Downlods Completed", "All Jobs Finished", "")
+	}
 }

@@ -28,8 +28,9 @@ type Job struct {
 	Speed         float64            `json:"speed"`
 	RemainingTime time.Duration      `json:"remaining_time"`
 	Error         error              `json:"error"`
+	BatchID       string             `json:"batch_id"`
 	CancelFunc    context.CancelFunc `json:"-"`
-	CreatedAt     time.Time             `json:"created_at"`
+	CreatedAt     time.Time          `json:"created_at"`
 	CompletedAt   string             `json:"completed_at"`
 }
 

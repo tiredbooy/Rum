@@ -35,7 +35,12 @@ func IsFileExists(path string) bool {
 }
 
 func OpenFolder(fullFilePath string) error {
-	dir := filepath.Dir(fullFilePath)
+	var dir string
+	finfo, err := os.Stat(fullFilePath)
+	
+	if err == nil && !finfo.IsDir() {
+		dir = filepath.Dir(fullFilePath)
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
