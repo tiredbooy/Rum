@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ import pkg from "../../../package.json";
 const version = pkg.version;
 
 export function AppSidebar() {
+  const location = useLocation();
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       {/* ---- Branding ---- */}
@@ -39,24 +40,29 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-            Library
-          </SidebarGroupLabel>
+          <SidebarGroupLabel className="…">Library</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-0.5">
               {mainNavItems
                 .filter((item) => item.to !== "/settings")
                 .map((item) => {
+                  // Reactive isActive – exactly like your original code
                   const isActive =
                     item.to === "/"
                       ? location.pathname === "/"
-                      : location.pathname.startsWith(item.to); // partial for others
+                      : location.pathname.startsWith(item.to);
 
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild tooltip={item.title}>
+                      {/* Set isActive={false} to prevent the button’s own active style */}
+                      <SidebarMenuButton
+                        asChild
+                        tooltip={item.title}
+                        isActive={false}
+                      >
                         <NavLink
                           to={item.to}
+                          // Plain string – no callback
                           className={`flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-200 border-l-2 ${
                             isActive
                               ? "border-sidebar-primary bg-sidebar-primary/10 text-sidebar-primary"
@@ -74,11 +80,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* System group – same pattern */}
+        {/* System group – same pattern, just remove the ‘end’ and callback */}
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-            System
-          </SidebarGroupLabel>
+          <SidebarGroupLabel className="…">System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-0.5">
               {mainNavItems
@@ -87,7 +91,11 @@ export function AppSidebar() {
                   const isActive = location.pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild tooltip={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        tooltip={item.title}
+                        isActive={false}
+                      >
                         <NavLink
                           to={item.to}
                           className={`flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-200 border-l-2 ${
