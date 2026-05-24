@@ -91,12 +91,10 @@ func (m *JobManager) GetJobIDByURL(url string) (string, bool) {
 
 func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("No URLs Provided")
+		return nil, fmt.Errorf("no URLs provided")
 	}
 
-	// ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-	// 1. Filter out already known URLs
+	// 1. Filter already known URLs
 	m.mu.RLock()
 	var toHead []string
 	for _, u := range urls {
@@ -110,19 +108,22 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		return nil, nil
 	}
 
-	// 2. Prepare downloader with current user agent (use random if empty)
+	// 2. Prepare downloader with current user agent
 	userAgent := m.opt.UserAgent
 	if userAgent == "" {
 		userAgent = utils.GetRandomUserAgent()
 	}
-
 	downloader := NewDownloader(userAgent, m.opt.Referer)
 
-	// 3. Run HEAD requests concurrently
-	maxConcurrent := m.opt.Parallel
+	// 3. Run HEAD requests with timeout and concurrency control
+	var maxConcurrent int = 5
+	if m.opt.Parallel > 5 {
+		maxConcurrent = m.opt.Parallel
+	}
 	if maxConcurrent < 1 {
 		maxConcurrent = 5
 	}
+	timeout := 60 * time.Second
 
 	sem := make(chan struct{}, maxConcurrent)
 	type headRes struct {
@@ -131,31 +132,55 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		err  error
 	}
 	resCh := make(chan headRes, len(toHead))
+
 	for _, url := range toHead {
 		sem <- struct{}{}
 		go func(u string) {
 			defer func() { <-sem }()
-			info, err := downloader.HeadWithFallback(u)
-			resCh <- headRes{url: u, info: info, err: err}
+			result := make(chan headRes, 1)
+
+			// Run HEAD in a goroutine
+			go func() {
+				info, err := downloader.HeadWithFallback(u)
+				result <- headRes{url: u, info: info, err: err}
+			}()
+
+			// Wait with timeout
+			select {
+			case res := <-result:
+				resCh <- res
+			case <-time.After(timeout):
+				resCh <- headRes{url: u, info: nil, err: fmt.Errorf("timeout after %v", timeout)}
+			}
 		}(url)
 	}
 
-	// 4. Build jobs from successfull HEAD resposnes
+	// 4. Build jobs from successful HEAD responses
 	var newJobs []*Job
 	for i := 0; i < len(toHead); i++ {
 		res := <-resCh
 		if res.err != nil {
-			log.Printf("Head failed for %s: %v", res.url, res.err)
+			log.Printf("HEAD failed for %s: %v", res.url, res.err)
+			continue
+		}
+		if res.info == nil {
+			log.Printf("HEAD returned nil info for %s", res.url)
 			continue
 		}
 
 		fileName := m.extractFileName(res.url, res.info)
+		totalSize := utils.ConvertSizeToInt(res.info.ContentSize)
+		if totalSize == 0 && !res.info.SupportsRange {
+			// Might be a streaming URL – handle accordingly
+			log.Printf("Warning: %s has zero size and no range support", res.url)
+		}
+
 		job := &Job{
 			ID:           uuid.New().String(),
 			URL:          res.url,
-			OutputPath:   m.opt.Out,
+			OutputPath:   "",
 			FileName:     fileName,
-			TotalSize:    utils.ConvertSizeToInt(res.info.ContentSize),
+			TotalSize:    totalSize,
 			ContentType:  res.info.ContentType,
 			SupportRange: res.info.SupportsRange,
 			Status:       StatusPending,
@@ -164,7 +189,11 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		newJobs = append(newJobs, job)
 	}
 
-	// 5. Add new jobs to manager
+	if len(newJobs) == 0 {
+		return nil, fmt.Errorf("no valid jobs could be created from %d URLs", len(toHead))
+	}
+
+	// 5. Add all new jobs atomically
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, job := range newJobs {
@@ -172,6 +201,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		m.urls[job.URL] = job.ID
 	}
 	m.saveToDisk()
+
 	return newJobs, nil
 }
 
