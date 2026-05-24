@@ -25,7 +25,7 @@ export function AllProgressStream() {
 
         queryClient.setQueryData<Download>(
           downloadKeys.detail(update.id),
-          (old) => {
+          (old: Download | undefined) => {
             if (!old) return old;
             return {
               ...old,

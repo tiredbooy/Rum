@@ -48,10 +48,10 @@ var (
 )
 
 type DashboardStats struct {
-	ActiveDownloads  int     `json:"active_downloads"`
-	CompletedToday   int     `json:"completed_today"`
-	DownloadedTodayGB  float64 `json:"downloaded_today_gb"`
-	CurrentSpeedMBps float64 `json:"current_speed_mbps"`
+	ActiveDownloads   int     `json:"active_downloads"`
+	CompletedToday    int     `json:"completed_today"`
+	DownloadedTodayGB float64 `json:"downloaded_today_gb"`
+	CurrentSpeedMBps  float64 `json:"current_speed_mbps"`
 }
 
 func NewJobManager(opt *Options) *JobManager {
@@ -436,9 +436,6 @@ func (m *JobManager) PauseAllJobs() error {
 	defer m.mu.Unlock()
 
 	for _, job := range m.jobs {
-		// if job.Status != StatusRunning {
-		// 	continue
-		// }
 		if job.CancelFunc != nil {
 			job.CancelFunc()
 		}
@@ -614,6 +611,10 @@ func (m *JobManager) completionOperations(job *Job) {
 		if err := utils.SleepPC(); err != nil {
 			log.Printf("Sleep failed: %v", err)
 		}
+	case "close":
+		if quitFunc != nil {
+			quitFunc()
+		}
 	}
 
 	if !m.config.Silent && job.GetStatus() == StatusCompleted {
@@ -635,21 +636,21 @@ func (m *JobManager) GetDashboardStats() DashboardStats {
 	var totalSpeed float64
 
 	for _, job := range m.jobs {
-    status := job.GetStatus()
-    completedAt := job.GetCompletedAt()
-    totalSize := job.GetTotalSize()
-    speed := job.GetSpeed()
+		status := job.GetStatus()
+		completedAt := job.GetCompletedAt()
+		totalSize := job.GetTotalSize()
+		speed := job.GetSpeed()
 
-    if status == StatusRunning {
-        active++
-        totalSpeed += speed
-    }
+		if status == StatusRunning {
+			active++
+			totalSpeed += speed
+		}
 
-    if status == StatusCompleted && completedAt.After(todayStart) {
-        completedToday++
-        todayBytes += totalSize
-    }
-}
+		if status == StatusCompleted && completedAt.After(todayStart) {
+			completedToday++
+			todayBytes += totalSize
+		}
+	}
 
 	return DashboardStats{
 		ActiveDownloads:   active,

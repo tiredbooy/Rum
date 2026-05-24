@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"log"
@@ -11,26 +11,11 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
 )
 
-// func main() {
-// 	// cfg := config.Load()
-// download.InitLogFile()
+var AppQuitFunc func()
 
-// opt := &download.Options{
-// 	Parallel:   1,
-// 	Out:        filesystem.GetOrCreateDirectory(),
-// 	MaxRetries: 3,
-// 	Silent:     false,
-// }
-// opt.Downloader = download.NewDownloader("", "")
-
-// handlers.InitAPI(opt)
-
-// r := gin.Default()
-// middlewares.SetupMiddlewares(r)
-// routes.SetupRouter(r)
-
-// r.Run(":8080")
-// }
+func SetQuitFunc(f func()) {
+	AppQuitFunc = f
+}
 
 func Start() {
 	var setting config.Setting
@@ -55,6 +40,8 @@ func Start() {
 	}
 	opt.Downloader = download.NewDownloader("", "")
 
+	download.SetQuitFunc(AppQuitFunc)
+
 	handlers.InitAPI(opt)
 
 	r := gin.Default()
@@ -64,6 +51,6 @@ func Start() {
 	r.Run(":8080")
 }
 
-func main() {
-	Start()
-}
+// func main() {
+// 	Start()
+// }

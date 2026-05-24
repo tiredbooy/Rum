@@ -300,11 +300,12 @@ export function SettingsForm() {
               { value: "none", label: "Nothing" },
               { value: "shutdown", label: "Shutdown" },
               { value: "sleep", label: "Sleep" },
+              { value: "close", label: "Close App" },
             ]}
             onValueChange={(v) =>
               updatePost(
                 "action",
-                v as "none" | "shutdown" | "sleep" | undefined,
+                v as "none" | "shutdown" | "sleep" | "close" | undefined,
               )
             }
             onBlur={() =>

@@ -26,7 +26,7 @@ type Setting struct {
 	// Advanced (customizable)
 	BandwidthSchedule []SpeedRule `json:"bandwidth_schedule,omitempty"`
 	PostDownload      struct {
-		Action      string `json:"action"` // "none", "shutdown", "sleep"
+		Action      string `json:"action"` // "none", "shutdown", "sleep", "close"
 		AutoOpenDir bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
 	FileConflict string `json:"file_confilict"` // "rename", "overwrite", "skip"
@@ -50,7 +50,7 @@ type SettingReq struct {
 	PreferredTheme *string `json:"preferred_theme"`
 
 	PostDownload struct {
-		Action      *string `json:"action"` // "none", "shutdown", "sleep"
+		Action      *string `json:"action"` // "none", "shutdown", "sleep", "close"
 		AutoOpenDir *bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
 	FileConflict *string `json:"file_confilict"` // "rename", "overwrite", "skip"

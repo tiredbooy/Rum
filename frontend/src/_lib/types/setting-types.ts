@@ -11,7 +11,7 @@ export interface Setting {
 export interface SettingReq extends Partial<Setting> {
   post_download: {
     auto_open_dir?: boolean;
-    action?: "none" | "shutdown" | "sleep";
+    action?: "none" | "shutdown" | "sleep" | "close";
   };
   file_confilict?: "rename" | "overwrite" | "skip";
   proxy?: string;
