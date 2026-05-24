@@ -1,25 +1,35 @@
 {
-  "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "Rum",
   "outputfilename": "Rum",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
-  "frontend:dev:watcher": "npm run dev",
-  "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "tiredbooy",
-    "email": "mahdykazemyo1i2@gmail.com"
+    "email": "mahdykazemyo1i2@email.com"
   },
   "info": {
     "companyName": "tiredbooy",
     "productName": "Rum",
-    "productVersion": "1..0",
+    "productVersion": "1.0.0",
     "copyright": "Copyright © 2026 tiredbooy",
-    "comments": "Rum Is a Fast & Modern Download manager"
+    "comments": "Rum Is a Fast & Modern Download Manager Written In golang"
   },
   "linux": {
     "icon": "build/icon.png",
-    "categories": "Office;Utility;",
-    "mimeTypes": []
+    "categories": "Office;Utility;Internet;"
+  },
+  "windows": {
+    "icon": "build/windows/icon.ico"
+  },
+  "nfpm": {
+    "vendor": "tiredbooy",
+    "homepage": "https:/tiredbooy.ir",
+    "maintainer": "tiredbooy <mahdykazemyo1i2@gmail.com>",
+    "description": "Rum Is a Fast & Modern Download Manager Written In golang.",
+    "formats": ["deb"],
+    "dependencies": [],
+    "recommends": [],
+    "suggests": [],
+    "conflicts": []
   }
 }
