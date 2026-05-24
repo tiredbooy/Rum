@@ -11,7 +11,9 @@ import {
   resumeDownload,
   startAllDownloads,
   startDownload,
+  fetchDashboardStats,
 } from "../api/download-api";
+import { useVisibilityChange } from "@/hooks/useVisibilityChange";
 
 export const downloadKeys = {
   all: ["downloads"] as const,
@@ -154,3 +156,13 @@ export function useStartAllDownloads() {
     },
   });
 }
+
+export const useDashboardStats = (enabled: boolean = true) => {
+  const isVisible = useVisibilityChange();
+  return useQuery({
+    queryKey: ["dashboardStats"],
+    queryFn: fetchDashboardStats,
+    refetchInterval: isVisible ? 5000 : false,
+    enabled,
+  });
+};

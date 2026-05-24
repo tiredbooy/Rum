@@ -23,3 +23,21 @@ export function formatETA(seconds: number): string {
 
   return parts.join(" ");
 }
+
+export function formatDataSize(gb: number): { value: string; unit: string } {
+  const bytes = gb * 1024 * 1024 * 1024; // convert GB to bytes
+
+  if (bytes === 0) return { value: "0", unit: "B" };
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+
+  // Format with up to 2 decimal places, remove trailing .00
+  const formatted = size % 1 === 0 ? size.toString() : size.toFixed(2);
+  return { value: formatted, unit: units[unitIndex] };
+}

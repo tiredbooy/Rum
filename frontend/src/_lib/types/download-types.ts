@@ -32,3 +32,11 @@ export interface DownloadReq {
   max_retries?: string;
   auto_start?: boolean;
 }
+
+export interface DashboardStats {
+  active_downloads: number;
+  completed_today: number;
+  downloaded_today_gb: number;
+  current_speed_mbps: number;
+  timestamp?: string; // optional, if you added it
+}

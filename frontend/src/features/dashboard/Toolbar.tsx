@@ -13,6 +13,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import StatCard from "./StatsCard";
+import StatsCards from "./StatsCards";
 
 interface Stats {
   active: number;
@@ -43,35 +44,7 @@ export function DashboardToolbar({
     <div className="sticky top-0 z-10 pb-8 space-y-5">
       <div className="absolute inset-0 bg-background/70 backdrop-blur-2xl -z-10" />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
-        <StatCard
-          icon={<Activity className="w-5 h-5" />}
-          label="Active"
-          value={stats.active}
-          suffix="now"
-          colorClass="text-cyan-400"
-        />
-        <StatCard
-          icon={<CheckCircle2 className="w-5 h-5" />}
-          label="Completed Today"
-          value={stats.completedToday}
-          colorClass="text-emerald-400"
-        />
-        <StatCard
-          icon={<Gauge className="w-5 h-5" />}
-          label="Speed"
-          value={stats.speed}
-          suffix="MB/s"
-          colorClass="text-violet-400"
-        />
-        <StatCard
-          icon={<HardDrive className="w-5 h-5" />}
-          label="Today's Data"
-          value={stats.dataToday}
-          suffix="GB"
-          colorClass="text-amber-400"
-        />
-      </div>
+      <StatsCards />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -109,7 +82,6 @@ export function DashboardToolbar({
         </div>
 
         <div className="flex items-center gap-2">
-
           <Button
             variant="outline"
             size="sm"

@@ -50,7 +50,7 @@ var (
 type DashboardStats struct {
 	ActiveDownloads  int     `json:"active_downloads"`
 	CompletedToday   int     `json:"completed_today"`
-	DownloadedTodayGB  float64 `json:"download_today_gb"`
+	DownloadedTodayGB  float64 `json:"downloaded_today_gb"`
 	CurrentSpeedMBps float64 `json:"current_speed_mbps"`
 }
 
@@ -336,6 +336,8 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 			}
 		}
 
+		job.SetSpeed(smoothSpeed)
+
 		update := dto.ProgressUpdate{
 			JobID:      jobID,
 			Downloaded: downloaded,
@@ -614,7 +616,7 @@ func (m *JobManager) completionOperations(job *Job) {
 		}
 	}
 
-	if !m.config.Silent {
+	if !m.config.Silent && job.GetStatus() == StatusCompleted {
 		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		beeep.Notify("Downlods Completed", "All Jobs Finished", "")
 	}
@@ -633,16 +635,21 @@ func (m *JobManager) GetDashboardStats() DashboardStats {
 	var totalSpeed float64
 
 	for _, job := range m.jobs {
-		if job.Status == StatusRunning {
-			active++
-			totalSpeed += job.Speed
-		}
+    status := job.GetStatus()
+    completedAt := job.GetCompletedAt()
+    totalSize := job.GetTotalSize()
+    speed := job.GetSpeed()
 
-		if job.Status == StatusCompleted && job.CompletedAt.After(todayStart) {
-			completedToday++
-			todayBytes += job.TotalSize
-		}
-	}
+    if status == StatusRunning {
+        active++
+        totalSpeed += speed
+    }
+
+    if status == StatusCompleted && completedAt.After(todayStart) {
+        completedToday++
+        todayBytes += totalSize
+    }
+}
 
 	return DashboardStats{
 		ActiveDownloads:   active,

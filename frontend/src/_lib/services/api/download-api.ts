@@ -1,4 +1,4 @@
-import { Download, DownloadReq } from "@/_lib/types/download-types";
+import { DashboardStats, Download, DownloadReq } from "@/_lib/types/download-types";
 import { request } from "./api";
 
 export async function getDownloads(
@@ -10,8 +10,6 @@ export async function getDownloads(
   );
   return Array.isArray(data) ? data : [];
 }
-
-
 
 export async function fetchDownloadProgress(id: string): Promise<Download> {
   return request<Download>(`/api/v1/downloads/${id}`);
@@ -60,4 +58,8 @@ export async function startAllDownloads(): Promise<void> {
 
 export async function pauseAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/pause-all", { method: "POST" });
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  return request<DashboardStats>("/api/v1/downloads/stats");
 }

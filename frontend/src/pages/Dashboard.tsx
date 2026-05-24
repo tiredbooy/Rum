@@ -1,14 +1,12 @@
 import {
   useDeleteDownloads,
   usePauseAllDownloads,
-  usePauseDownload,
-  useStartAllDownloads,
+  useStartAllDownloads
 } from "@/_lib/services/queries/download.queries";
 import DownloadDialog from "@/features/dashboard/create-download/DownloadDialog";
 import { DownloadStatusPage } from "@/features/dashboard/download-list/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
-import { AllProgressStream } from "@/hooks/useAllProgressStream";
 import { useState } from "react";
 
 interface Props {
@@ -74,7 +72,6 @@ export default function Dashboard({}: Props) {
 
   return (
     <div className="">
-      <AllProgressStream />
       <DownloadDialog open={open} setOpen={setOpen} />
       <DashboardToolbar
         stats={{
