@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { mainNavItems } from "@/_lib/config/navigations";
 import {
   Sidebar,
   SidebarContent,
@@ -11,9 +11,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { mainNavItems } from "@/_lib/config/navigations";
-import { PackageOpen } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
 import pkg from "../../../package.json";
+import icon from "../../assets/tray-icon.png"
 
 const version = pkg.version;
 
@@ -24,8 +24,8 @@ export function AppSidebar() {
       {/* ---- Branding ---- */}
       <SidebarHeader className="px-3 pt-4 pb-2 mb-2 border-b border-sidebar-border/40">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sidebar-primary to-sidebar-primary/70 text-sidebar-primary-foreground shadow-sm">
-            <PackageOpen className="h-5 w-5" />
+          <div className="flex h-10 w-10 items-center justify-center text-sidebar-primary-foreground ">
+            <img src={icon} className="w-8 h-8 object-cover" />
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
