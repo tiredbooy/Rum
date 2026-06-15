@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+/* =============================================
+   Design Tokens (Tailwind @theme inline)
+   ============================================= */
+@theme inline {
+  /* --- Core Surfaces --- */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* --- Brand & Semantic --- */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* --- Feedback & Status --- */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* --- Interactive States --- */
+  --color-disabled: var(--disabled);
+  --color-disabled-foreground: var(--disabled-foreground);
+  --color-overlay: var(--overlay);
+  --color-tooltip: var(--tooltip);
+  --color-tooltip-foreground: var(--tooltip-foreground);
+  --color-focus-ring: var(--focus-ring);
+
+  /* --- Sidebar (HSL – required by shadcn) --- */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* --- Alternative Surface Tokens --- */
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-surface-hover: var(--surface-hover);
+
+  /* --- Borders & Inputs --- */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* --- Charts --- */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* --- Border Radius Scale --- */
+  --radius-xs: calc(var(--radius) - 6px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 4px);
+
+  /* --- Shadows (layered, modern) --- */
+  --shadow-2xs: var(--shadow-2xs-value);
+  --shadow-xs: var(--shadow-xs-value);
+  --shadow-sm: var(--shadow-sm-value);
+  --shadow-md: var(--shadow-md-value);
+  --shadow-lg: var(--shadow-lg-value);
+  --shadow-xl: var(--shadow-xl-value);
+}
+
+/* =============================================
+   Light Theme (default)
+   ============================================= */
+:root {
+  /* ---- Base surfaces ---- */
+  --background: oklch(98.5% 0.002 255);
+  --foreground: oklch(14.5% 0.005 255);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(14.5% 0.005 255);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(14.5% 0.005 255);
+
+  /* ---- Brand & Semantic ---- */
+  --primary: oklch(53% 0.2 265);
+  --primary-foreground: oklch(98% 0 0);
+  --secondary: oklch(95% 0.005 255);
+  --secondary-foreground: oklch(25% 0.01 255);
+  --muted: oklch(94% 0.003 255);
+  --muted-foreground: oklch(45% 0.01 255);
+  --accent: oklch(72% 0.15 190);
+  --accent-foreground: oklch(20% 0.03 190);
+  --destructive: oklch(55% 0.2 25);
+  --destructive-foreground: oklch(98% 0 0);
+
+  /* ---- Status ---- */
+  --success: oklch(62% 0.19 145);
+  --success-foreground: oklch(98% 0 0);
+  --warning: oklch(75% 0.15 85);
+  --warning-foreground: oklch(20% 0.03 85);
+  --info: oklch(65% 0.15 250);
+  --info-foreground: oklch(98% 0 0);
+
+  /* ---- Interactive states ---- */
+  --disabled: oklch(90% 0.005 255);
+  --disabled-foreground: oklch(55% 0.01 255);
+  --overlay: oklch(14.5% 0.005 255 / 0.6);
+  --tooltip: oklch(20% 0.01 255);
+  --tooltip-foreground: oklch(98% 0 0);
+  --focus-ring: oklch(53% 0.2 265);
+
+  /* ---- Alternative surfaces (useful for cards & containers) ---- */
+  --surface: oklch(96% 0.003 255);
+  --surface-alt: oklch(99% 0.001 255);
+  --surface-hover: oklch(93% 0.004 255);
+
+  /* ---- Borders & inputs ---- */
+  --border: oklch(88% 0.005 255);
+  --input: oklch(88% 0.005 255);
+  --ring: oklch(53% 0.2 265);
+
+  /* ---- Radius ---- */
+  --radius: 0.75rem;
+
+  /* ---- Shadows (light) ---- */
+  --shadow-2xs-value: 0 1px 2px oklch(0% 0 0 / 0.03);
+  --shadow-xs-value: 0 1px 3px oklch(0% 0 0 / 0.04);
+  --shadow-sm-value:
+    0 1px 4px oklch(0% 0 0 / 0.06), 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md-value:
+    0 4px 12px oklch(0% 0 0 / 0.06), 0 2px 4px oklch(0% 0 0 / 0.04);
+  --shadow-lg-value:
+    0 8px 24px oklch(0% 0 0 / 0.07), 0 2px 6px oklch(0% 0 0 / 0.04);
+  --shadow-xl-value:
+    0 16px 32px oklch(0% 0 0 / 0.08), 0 4px 8px oklch(0% 0 0 / 0.04);
+
+  /* ---- Charts ---- */
+  --chart-1: oklch(62% 0.19 145);
+  --chart-2: oklch(72% 0.15 190);
+  --chart-3: oklch(53% 0.2 265);
+  --chart-4: oklch(75% 0.15 85);
+  --chart-5: oklch(55% 0.2 25);
+
+  /* ---- Sidebar (HSL) – lighter & distinct from main bg ---- */
+  --sidebar: hsl(220 20% 97%);
+  --sidebar-foreground: hsl(220 8% 20%);
+  --sidebar-primary: hsl(210 80% 45%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(220 20% 92%);
+  --sidebar-accent-foreground: hsl(220 8% 20%);
+  --sidebar-border: hsl(220 20% 88%);
+  --sidebar-ring: hsl(210 80% 45%);
+}
+
+/* =============================================
+   Dark Theme
+   ============================================= */
+.dark {
+  /* ---- Base surfaces ---- */
+  --background: oklch(14% 0.005 255);
+  --foreground: oklch(92% 0.002 255);
+  --card: oklch(17% 0.005 255);
+  --card-foreground: oklch(92% 0.002 255);
+  --popover: oklch(17% 0.005 255);
+  --popover-foreground: oklch(92% 0.002 255);
+
+  /* ---- Brand & Semantic ---- */
+  --primary: oklch(68% 0.18 265);
+  --primary-foreground: oklch(10% 0.02 265);
+  --secondary: oklch(20% 0.008 255);
+  --secondary-foreground: oklch(92% 0.002 255);
+  --muted: oklch(19% 0.006 255);
+  --muted-foreground: oklch(60% 0.01 255);
+  --accent: oklch(78% 0.12 190);
+  --accent-foreground: oklch(12% 0.03 190);
+  --destructive: oklch(48% 0.19 25);
+  --destructive-foreground: oklch(98% 0 0);
+
+  /* ---- Status ---- */
+  --success: oklch(65% 0.17 145);
+  --success-foreground: oklch(10% 0.02 145);
+  --warning: oklch(78% 0.13 85);
+  --warning-foreground: oklch(12% 0.02 85);
+  --info: oklch(70% 0.13 250);
+  --info-foreground: oklch(10% 0.02 250);
+
+  /* ---- Interactive states ---- */
+  --disabled: oklch(25% 0.005 255);
+  --disabled-foreground: oklch(45% 0.01 255);
+  --overlay: oklch(0% 0 0 / 0.7);
+  --tooltip: oklch(92% 0.002 255);
+  --tooltip-foreground: oklch(14% 0.005 255);
+  --focus-ring: oklch(68% 0.18 265);
+
+  /* ---- Alternative surfaces ---- */
+  --surface: oklch(18% 0.005 255);
+  --surface-alt: oklch(16% 0.005 255);
+  --surface-hover: oklch(22% 0.006 255);
+
+  /* ---- Borders & inputs ---- */
+  --border: oklch(24% 0.005 255);
+  --input: oklch(24% 0.005 255);
+  --ring: oklch(68% 0.18 265);
+
+  /* ---- Radius (same) ---- */
+  --radius: 0.75rem;
+
+  /* ---- Shadows (dark mode – deeper) ---- */
+  --shadow-2xs-value: 0 1px 2px oklch(0% 0 0 / 0.2);
+  --shadow-xs-value: 0 1px 3px oklch(0% 0 0 / 0.25);
+  --shadow-sm-value:
+    0 1px 4px oklch(0% 0 0 / 0.3), 0 1px 2px oklch(0% 0 0 / 0.25);
+  --shadow-md-value:
+    0 4px 12px oklch(0% 0 0 / 0.35), 0 2px 4px oklch(0% 0 0 / 0.25);
+  --shadow-lg-value:
+    0 8px 24px oklch(0% 0 0 / 0.4), 0 2px 6px oklch(0% 0 0 / 0.25);
+  --shadow-xl-value:
+    0 16px 32px oklch(0% 0 0 / 0.45), 0 4px 8px oklch(0% 0 0 / 0.25);
+
+  /* ---- Charts ---- */
+  --chart-1: oklch(68% 0.17 145);
+  --chart-2: oklch(78% 0.12 190);
+  --chart-3: oklch(68% 0.18 265);
+  --chart-4: oklch(78% 0.13 85);
+  --chart-5: oklch(60% 0.18 25);
+
+  /* ---- Sidebar (HSL) – deeper, stands out from main bg ---- */
+  --sidebar: hsl(220 10% 10%);
+  --sidebar-foreground: hsl(220 10% 90%);
+  --sidebar-primary: hsl(210 90% 65%);
+  --sidebar-primary-foreground: hsl(220 10% 5%);
+  --sidebar-accent: hsl(220 10% 16%);
+  --sidebar-accent-foreground: hsl(220 10% 90%);
+  --sidebar-border: hsl(220 10% 16%);
+  --sidebar-ring: hsl(210 90% 65%);
+}
+
+/* =============================================
+   Base Styles & Utilities
+   ============================================= */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition:
+      background-color 0.25s ease,
+      color 0.25s ease;
+  }
+
+  /* Modern minimal scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(70% 0.01 255 / 0.5);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(60% 0.01 255 / 0.7);
+  }
+
+  /* Glass utility for overlays/modals */
+  .glass {
+    background: oklch(from var(--background) l c h / 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid oklch(from var(--border) l c h / 0.5);
+  }
+
+  /* Smooth progress bar animation */
+  progress {
+    @apply h-2 w-full rounded-full overflow-hidden;
+  }
+  progress::-webkit-progress-bar {
+    background-color: var(--secondary);
+    border-radius: 9999px;
+  }
+  progress::-webkit-progress-value {
+    background-color: var(--primary);
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+  }
+
+  .eta-text {
+    transition: opacity 0.2s;
+  }
+}
