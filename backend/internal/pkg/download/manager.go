@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,6 +114,12 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	m.mu.RLock()
 	var toHead []string
 	for _, u := range urls {
+		// Reject unsupported schemes / malformed URLs at the edge (http/https
+		// only). This blocks file://, data:, etc. before any network or disk work.
+		if err := ValidateURL(u); err != nil {
+			log.Printf("skipping invalid URL %q: %v", u, err)
+			continue
+		}
 		if _, exists := m.urls[u]; !exists {
 			toHead = append(toHead, u)
 		}
@@ -404,7 +411,13 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.batchCounters[batchID] = int32(len(eligibleJobs))
 	m.batchMu.Unlock()
 
-	sort.Slice(eligibleJobs, func(i, j int) bool {
+	// Start higher-priority jobs first; fall back to the configured sort within
+	// the same priority level.
+	sort.SliceStable(eligibleJobs, func(i, j int) bool {
+		pi, pj := priorityRank(eligibleJobs[i].GetPriority()), priorityRank(eligibleJobs[j].GetPriority())
+		if pi != pj {
+			return pi > pj
+		}
 		if m.sortBy == "created_at" {
 			return utils.TimeCompare(eligibleJobs[i].CreatedAt, eligibleJobs[j].CreatedAt)
 		}
@@ -433,6 +446,68 @@ func (m *JobManager) PauseJob(jobID string) error {
 	}
 
 	return nil
+}
+
+// normalizePriority maps any input to one of the three valid levels, defaulting
+// to "normal". Validation of client input happens at the API edge (dto layer);
+// this is the engine-side safety net.
+func normalizePriority(p string) string {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	default:
+		return "normal"
+	}
+}
+
+// priorityRank gives a sortable weight (higher = scheduled sooner).
+func priorityRank(p string) int {
+	switch normalizePriority(p) {
+	case "high":
+		return 2
+	case "low":
+		return 0
+	default:
+		return 1
+	}
+}
+
+// SetJobPriority updates a job's scheduling priority. The new priority takes
+// effect the next time the job is (re)started via StartAllJobs.
+func (m *JobManager) SetJobPriority(id, priority string) error {
+	m.mu.Lock()
+	job, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	job.SetPriority(normalizePriority(priority))
+	m.mu.Unlock()
+	m.saveToDisk()
+	return nil
+}
+
+// RetryJob restarts a failed/paused job. Any partial progress on disk is
+// preserved, so the retry resumes rather than re-downloading from zero. A
+// running job is a conflict (pause it first).
+func (m *JobManager) RetryJob(ctx context.Context, id string) error {
+	m.mu.Lock()
+	job, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.GetStatus() == StatusRunning {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s is already running: %w", id, ErrConflict)
+	}
+	job.SetError(nil)
+	job.SetStatus(StatusPending)
+	m.mu.Unlock()
+
+	return m.StartJob(ctx, id)
 }
 
 func (m *JobManager) PauseAllJobs() error {

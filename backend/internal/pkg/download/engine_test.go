@@ -239,13 +239,13 @@ func TestResolveConnections(t *testing.T) {
 		total     int64
 		want      int
 	}{
-		{0, 100 << 20, 1},  // 0 => single stream
-		{1, 100 << 20, 1},  // 1 => single stream
-		{4, 100 << 20, 4},  // plenty of size
-		{8, 100 << 20, 8},  // plenty of size
+		{0, 100 << 20, 1},                // 0 => single stream
+		{1, 100 << 20, 1},                // 1 => single stream
+		{4, 100 << 20, 4},                // plenty of size
+		{8, 100 << 20, 8},                // plenty of size
 		{100, 100 << 20, maxConnections}, // capped at maxConnections
-		{4, 0, 1},          // unknown size => single
-		{8, 2 << 20, 2},    // 2 MiB with 1 MiB min segment => 2 segments
+		{4, 0, 1},                        // unknown size => single
+		{8, 2 << 20, 2},                  // 2 MiB with 1 MiB min segment => 2 segments
 	}
 	for _, c := range cases {
 		if got := resolveConnections(c.requested, c.total); got != c.want {

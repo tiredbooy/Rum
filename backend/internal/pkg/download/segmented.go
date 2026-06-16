@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -191,6 +192,13 @@ func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn Pr
 		return DownloadSingleFile(ctx, opt, job, progressFn)
 	}
 
+	// Fail fast if the destination filesystem clearly cannot hold the file,
+	// instead of allocating, downloading partway, and dying with ENOSPC. Degrades
+	// to a no-op on platforms where free space can't be determined.
+	if err := PreflightDiskSpace(filepath.Dir(fullPath), totalSize); err != nil {
+		return err
+	}
+
 	// Open the output file and pre-size it so WriteAt at any offset is valid.
 	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -304,6 +312,13 @@ func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn Pr
 
 	if syncErr := outFile.Sync(); syncErr != nil {
 		return syncErr
+	}
+
+	// Verify integrity before we declare success and remove resume state. A
+	// mismatch keeps the sidecar so the user can retry. No-op when no checksum
+	// was supplied.
+	if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+		return err
 	}
 
 	// Success: drop the sidecar, finalize progress.

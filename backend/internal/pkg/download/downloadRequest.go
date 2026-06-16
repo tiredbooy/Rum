@@ -40,16 +40,21 @@ type RequestHeaders struct {
 
 func NewDownloader(userAgent, referer string) *Downloader {
 	jar, _ := cookiejar.New(nil)
+	baseTransport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxConnsPerHost:     maxConnsPerHost,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	client := &http.Client{
 		Jar: jar,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			MaxConnsPerHost:     maxConnsPerHost,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
+		// SecureTransport enforces a TLS 1.2 floor and stall timeouts;
+		// RedirectPolicy caps the redirect chain and strips credentials on
+		// cross-host redirects (both defined in security.go).
+		Transport:     SecureTransport(baseTransport),
+		CheckRedirect: RedirectPolicy,
 	}
 
 	headers := map[string]string{

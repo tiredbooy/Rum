@@ -36,6 +36,12 @@ type Options struct {
 	// unset.
 	Connections int
 
+	// Checksum, when non-empty, is verified against the assembled file after a
+	// successful download. ChecksumAlgo selects the hash ("sha256" or "md5").
+	// Empty Checksum skips verification (VerifyChecksum is then a no-op).
+	Checksum     string
+	ChecksumAlgo string
+
 	Downloader *Downloader
 }
 
@@ -54,7 +60,7 @@ type DownloadTargets struct {
 }
 
 type HeadResult struct {
-	Index    int 
+	Index    int
 	URL      string
 	FileInfo *HeaderInfo
 	Err      error
