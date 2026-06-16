@@ -19,12 +19,16 @@ APP="rum"
 ASSUME_YES=0
 UNINSTALL=0
 PREFIX="${PREFIX:-}"
+MIRROR=""
+DEFAULT_MIRROR="https://go.devneeds.ir/"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) PREFIX="${2:?--prefix needs a directory}"; shift 2 ;;
     --prefix=*) PREFIX="${1#*=}"; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
+    --mirror) MIRROR="$DEFAULT_MIRROR"; shift ;;
+    --mirror=*) MIRROR="${1#*=}"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -39,6 +43,24 @@ BACKEND_DIR="$REPO_ROOT/backend"
 info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m✓\033[0m %s\n' "$*"; }
 err()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; }
+
+# On restricted networks Go's default servers can return 403/timeouts. Offer a
+# Go module proxy mirror (set GOPROXY). GOSUMDB is disabled because the checksum
+# database (sum.golang.org) is usually blocked on the same networks.
+configure_goproxy() {
+  if [[ -z "$MIRROR" && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
+    read -rp "Use a Go module mirror? Helps if downloads fail with 403/timeouts (e.g. in Iran) [y/N]: " ans
+    if [[ "$ans" =~ ^[Yy] ]]; then
+      read -rp "Mirror URL [$DEFAULT_MIRROR]: " url
+      MIRROR="${url:-$DEFAULT_MIRROR}"
+    fi
+  fi
+  if [[ -n "$MIRROR" ]]; then
+    export GOPROXY="$MIRROR"
+    export GOSUMDB=off
+    ok "Using Go module mirror: $GOPROXY"
+  fi
+}
 
 choose_bindir() {
   if [[ -n "$PREFIX" ]]; then echo "$PREFIX/bin"; return; fi
@@ -74,6 +96,8 @@ if [[ ! -d "$BACKEND_DIR/cmd/rum" ]]; then
   err "Cannot find $BACKEND_DIR/cmd/rum — run this from a clean checkout."
   exit 1
 fi
+
+configure_goproxy
 
 # --- Build ---
 info "Building $APP (this may take a moment)…"

@@ -19,11 +19,17 @@ set -euo pipefail
 APP="Rum"
 PREFIX="${PREFIX:-$HOME/.local}"
 UNINSTALL=0
+ASSUME_YES=0
+MIRROR=""
+DEFAULT_MIRROR="https://go.devneeds.ir/"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) PREFIX="${2:?}"; shift 2 ;;
     --prefix=*) PREFIX="${1#*=}"; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --mirror) MIRROR="$DEFAULT_MIRROR"; shift ;;
+    --mirror=*) MIRROR="${1#*=}"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -44,6 +50,24 @@ info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m✓\033[0m %s\n' "$*"; }
 err()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; }
 
+# On restricted networks Go's default servers can return 403/timeouts. Offer a
+# Go module proxy mirror (GOPROXY). GOSUMDB is disabled because the checksum
+# database (sum.golang.org) is usually blocked on the same networks.
+configure_goproxy() {
+  if [[ -z "$MIRROR" && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
+    read -rp "Use a Go module mirror? Helps if downloads fail with 403/timeouts (e.g. in Iran) [y/N]: " ans
+    if [[ "$ans" =~ ^[Yy] ]]; then
+      read -rp "Mirror URL [$DEFAULT_MIRROR]: " url
+      MIRROR="${url:-$DEFAULT_MIRROR}"
+    fi
+  fi
+  if [[ -n "$MIRROR" ]]; then
+    export GOPROXY="$MIRROR"
+    export GOSUMDB=off
+    ok "Using Go module mirror: $GOPROXY"
+  fi
+}
+
 if [[ "$UNINSTALL" -eq 1 ]]; then
   rm -f "$TARGET" "$ICON_TARGET" "$DESKTOP_TARGET"
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
@@ -55,6 +79,9 @@ fi
 command -v go   >/dev/null 2>&1 || { err "Go 1.25+ required: https://go.dev/doc/install"; exit 1; }
 command -v npm  >/dev/null 2>&1 || { err "Node.js + npm required: https://nodejs.org"; exit 1; }
 ok "Found $(go version)"
+
+# Set the mirror (if requested) BEFORE any 'go install' / 'wails build' downloads.
+configure_goproxy
 
 if ! command -v wails >/dev/null 2>&1; then
   info "Wails CLI not found — installing it with 'go install'…"

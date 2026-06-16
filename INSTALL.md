@@ -125,9 +125,25 @@ The project maintainer can run the script once and produce that file:
 
 Then anyone can install it **without** any of the one-time tools above.
 
-**Something went wrong.** Re-read the message the script printed — it usually
-names exactly what's missing and the command to fix it. The most common cause is
-skipping the one-time tools in Step 1.
+**Downloads fail with "403 Forbidden" or time out (restricted networks).**
+Your network may be blocking Go's default download servers (common in Iran).
+Every installer can use a **mirror** instead — just answer **y** when it asks
+"Use a Go module mirror?", or pass the flag up front:
+
+```bash
+# Linux
+./installers/gui/install-linux.sh --mirror          # uses the default mirror
+./installers/cli/install-linux.sh --mirror=https://your-mirror.example/   # custom
+```
+```powershell
+# Windows
+.\installers\gui\install-windows.ps1 -Mirror https://go.devneeds.ir/
+```
+The default mirror is `https://go.devneeds.ir/`; you can supply any Go proxy URL.
+
+**Something else went wrong.** Re-read the message the script printed — it
+usually names exactly what's missing and the command to fix it. The most common
+cause is skipping the one-time tools in Step 1.
 
 ---
 

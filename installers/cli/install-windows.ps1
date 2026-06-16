@@ -15,14 +15,34 @@
 #>
 param(
     [string]$Prefix = (Join-Path $env:LOCALAPPDATA "Programs\Rum"),
+    [string]$Mirror = "",
     [switch]$Uninstall
 )
 
 $ErrorActionPreference = "Stop"
+$DefaultMirror = "https://go.devneeds.ir/"
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "OK  $m" -ForegroundColor Green }
 function Fail($m) { Write-Host "ERR $m" -ForegroundColor Red }
+
+# On restricted networks Go's default servers can return 403/timeouts. Offer a
+# Go module proxy mirror (GOPROXY); disable GOSUMDB since sum.golang.org is
+# usually blocked too.
+function Set-GoProxy {
+    if (-not $Mirror) {
+        $ans = Read-Host "Use a Go module mirror? Helps if downloads fail with 403/timeouts (e.g. in Iran) [y/N]"
+        if ($ans -match '^[Yy]') {
+            $url = Read-Host "Mirror URL [$DefaultMirror]"
+            $script:Mirror = if ([string]::IsNullOrWhiteSpace($url)) { $DefaultMirror } else { $url }
+        }
+    }
+    if ($Mirror) {
+        $env:GOPROXY = $Mirror
+        $env:GOSUMDB = "off"
+        Ok "Using Go module mirror: $env:GOPROXY"
+    }
+}
 
 # Resolve repo root from this script: installers\cli\ -> repo
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -62,6 +82,8 @@ if (-not (Test-Path (Join-Path $BackendDir "cmd\rum"))) {
     Fail "Cannot find $BackendDir\cmd\rum — run this from a clean checkout."
     exit 1
 }
+
+Set-GoProxy
 
 # --- Build ---
 Info "Building rum.exe (this may take a moment)..."
