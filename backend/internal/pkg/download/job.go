@@ -21,6 +21,7 @@ type Job struct {
 	FileName      string             `json:"file_name"`
 	OutputPath    string             `json:"output_path"`
 	Status        string             `json:"status"`
+	Priority      string             `json:"priority"`
 	Downloaded    int64              `json:"downloaded"`
 	TotalSize     int64              `json:"total_size"`
 	ContentType   string             `json:"content_type"`
@@ -31,13 +32,15 @@ type Job struct {
 	BatchID       string             `json:"batch_id"`
 	CancelFunc    context.CancelFunc `json:"-"`
 	CreatedAt     time.Time          `json:"created_at"`
-	CompletedAt   time.Time             `json:"completed_at"`
+	CompletedAt   time.Time          `json:"completed_at"`
 }
 
 func (j *Job) GetFileName() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.FileName }
 func (j *Job) SetFileName(name string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.FileName = name }
 func (j *Job) GetStatus() string       { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Status }
 func (j *Job) SetStatus(s string)      { j.Mu.Lock(); defer j.Mu.Unlock(); j.Status = s }
+func (j *Job) GetPriority() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Priority }
+func (j *Job) SetPriority(p string)    { j.Mu.Lock(); defer j.Mu.Unlock(); j.Priority = p }
 func (j *Job) GetURL() string          { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.URL }
 func (j *Job) GetDownloaded() int64    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Downloaded }
 func (j *Job) SetDownloaded(v int64)   { j.Mu.Lock(); defer j.Mu.Unlock(); j.Downloaded = v }
@@ -63,3 +66,14 @@ func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Cr
 
 func (j *Job) GetCompletedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CompletedAt }
 func (j *Job) SetCompletedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CompletedAt = v }
+
+func (j *Job) GetCancelFunc() context.CancelFunc {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.CancelFunc
+}
+func (j *Job) SetCancelFunc(c context.CancelFunc) {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.CancelFunc = c
+}

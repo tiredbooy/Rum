@@ -5,6 +5,8 @@ export type DownloadStatus =
   | "paused"
   | "pending";
 
+export type DownloadPriority = "low" | "normal" | "high";
+
 export interface Download {
   id: string;
   url: string;
@@ -17,6 +19,8 @@ export interface Download {
   speed?: number;
   remaining: number;
   error?: string;
+  priority?: DownloadPriority;
+  dest_path?: string;
   created_at?: string;
   completed_at?: string;
 }

@@ -1,6 +1,7 @@
 package download
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -8,8 +9,14 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strings"
 	"time"
 )
+
+// maxConnsPerHost bounds the number of TCP connections the shared client keeps
+// open to a single host. Segmented downloads open several connections to the
+// same host concurrently, so the old value of 2 throttled throughput badly.
+const maxConnsPerHost = 16
 
 type HeaderInfo struct {
 	ContentSize        string
@@ -33,16 +40,21 @@ type RequestHeaders struct {
 
 func NewDownloader(userAgent, referer string) *Downloader {
 	jar, _ := cookiejar.New(nil)
+	baseTransport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxConnsPerHost:     maxConnsPerHost,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	client := &http.Client{
 		Jar: jar,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			MaxConnsPerHost:     2,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
+		// SecureTransport enforces a TLS 1.2 floor and stall timeouts;
+		// RedirectPolicy caps the redirect chain and strips credentials on
+		// cross-host redirects (both defined in security.go).
+		Transport:     SecureTransport(baseTransport),
+		CheckRedirect: RedirectPolicy,
 	}
 
 	headers := map[string]string{
@@ -50,8 +62,13 @@ func NewDownloader(userAgent, referer string) *Downloader {
 		// "Referer":         referer,
 		"Accept":          "*/*",
 		"Accept-Language": "en-US,en;q=0.5",
-		"Accept-Encoding": "gzip, deflate, br",
-		"Connection":      "keep-alive",
+		// NOTE: deliberately do NOT set Accept-Encoding here. When a request
+		// sets Accept-Encoding manually, Go's stdlib disables its transparent
+		// decompression, which makes Content-Length and resume byte offsets
+		// unreliable (the body is then compressed and offsets no longer map to
+		// file positions). Leaving it unset lets net/http negotiate gzip and
+		// decompress transparently, so byte offsets are always raw file bytes.
+		"Connection": "keep-alive",
 	}
 
 	if referer != "" {
@@ -99,9 +116,17 @@ func GetHeader(url string) (*http.Response, error) {
 }
 
 func (d *Downloader) HeadWithFallback(url string) (*HeaderInfo, error) {
+	return d.HeadWithFallbackContext(context.Background(), url)
+}
+
+// HeadWithFallbackContext probes a URL for size/range/content metadata, honoring
+// the provided context. Because the request itself is bound to ctx, cancelling
+// or timing out ctx makes the in-flight HTTP call return promptly instead of
+// leaking a goroutine that blocks on the network indefinitely.
+func (d *Downloader) HeadWithFallbackContext(ctx context.Context, url string) (*HeaderInfo, error) {
 	// Try HEAD first
 	headReq, _ := d.NewRequest("HEAD", url)
-	resp, err := d.Client.Do(headReq)
+	resp, err := d.Client.Do(headReq.WithContext(ctx))
 	if err == nil && resp.StatusCode < 400 {
 		defer resp.Body.Close()
 		return ParseHeaderInfo(resp), nil
@@ -109,19 +134,24 @@ func (d *Downloader) HeadWithFallback(url string) (*HeaderInfo, error) {
 	if resp != nil {
 		resp.Body.Close()
 	}
+	if ctx.Err() != nil {
+		return &HeaderInfo{}, ctx.Err()
+	}
 
 	// Fallback: GET with Range: bytes=0-0
 	req, _ := d.NewRequest("GET", url)
 	req.Header.Set("Range", "bytes=0-0")
-	resp, err = d.Client.Do(req)
+	resp, err = d.Client.Do(req.WithContext(ctx))
 	if err == nil {
 		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusPartialContent || resp.StatusCode == http.StatusOK {
-			return ParseHeaderInfo(resp), nil
-		}
+		// Drain a small body so the connection can be reused.
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
 		return ParseHeaderInfo(resp), nil
 	}
 
+	if ctx.Err() != nil {
+		return &HeaderInfo{}, ctx.Err()
+	}
 	return &HeaderInfo{}, nil
 }
 
@@ -159,7 +189,7 @@ func GetHTTPClient(timeout time.Duration) *http.Client {
 				KeepAlive: 30 * time.Second,
 				DualStack: true,
 			}).DialContext,
-			MaxConnsPerHost:     2,
+			MaxConnsPerHost:     maxConnsPerHost,
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
@@ -167,11 +197,27 @@ func GetHTTPClient(timeout time.Duration) *http.Client {
 
 func ParseHeaderInfo(resp *http.Response) *HeaderInfo {
 	acceptRange := resp.Header.Get("Accept-Ranges")
+	// A 206 Partial Content response (e.g. to our "bytes=0-0" probe) is itself
+	// proof the server honors Range requests, even if it omits Accept-Ranges.
+	supportsRange := (acceptRange != "" && acceptRange != "none") ||
+		resp.StatusCode == http.StatusPartialContent
+
+	contentSize := resp.Header.Get("Content-Length")
+	// When the probe used Range, Content-Length describes only the returned
+	// slice (1 byte). The real total lives in Content-Range: "bytes 0-0/12345".
+	if cr := resp.Header.Get("Content-Range"); cr != "" {
+		if idx := strings.LastIndex(cr, "/"); idx != -1 {
+			if total := strings.TrimSpace(cr[idx+1:]); total != "" && total != "*" {
+				contentSize = total
+			}
+		}
+	}
+
 	return &HeaderInfo{
-		ContentSize:        resp.Header.Get("Content-Length"),
+		ContentSize:        contentSize,
 		ContentType:        resp.Header.Get("Content-Type"),
 		ContentDisposition: resp.Header.Get("Content-Disposition"),
-		SupportsRange:      acceptRange != "",
+		SupportsRange:      supportsRange,
 	}
 }
 

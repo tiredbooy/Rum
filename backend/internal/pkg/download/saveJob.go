@@ -91,4 +91,3 @@ func readJobsFile() []*Job {
 
 	return loaded
 }
-

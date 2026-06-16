@@ -1,16 +1,22 @@
-import type { Download } from "@/_lib/types/download-types";
+import type { Download, DownloadPriority } from "@/_lib/types/download-types";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle } from "lucide-react";
 import { DownloadItemWrapper } from "./DownloadWrapper";
 
 interface DownloadListProps {
   downloads?: Download[];
   isLoading?: boolean;
+  isError?: boolean;
+  error?: unknown;
+  onRetryFetch?: () => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onStart: (id: string) => void;
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
+  onSetPriority: (id: string, priority: DownloadPriority) => void;
 }
 
 function SkeletonItem() {
@@ -28,11 +34,15 @@ function SkeletonItem() {
 export function DownloadList({
   downloads,
   isLoading,
+  isError,
+  error,
+  onRetryFetch,
   onPause,
   onResume,
   onStart,
   onDelete,
   onRetry,
+  onSetPriority,
 }: DownloadListProps) {
   if (isLoading) {
     return (
@@ -44,7 +54,23 @@ export function DownloadList({
     );
   }
 
-  if (downloads?.length === 0) {
+  if (isError) {
+    const message =
+      error instanceof Error ? error.message : "Failed to load downloads";
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <p className="text-sm">{message}</p>
+        {onRetryFetch && (
+          <Button variant="outline" size="sm" onClick={onRetryFetch}>
+            Try again
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (!downloads || downloads.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <p className="text-sm">No downloads here yet</p>
@@ -64,6 +90,7 @@ export function DownloadList({
             onStart={onStart}
             onDelete={onDelete}
             onRetry={onRetry}
+            onSetPriority={onSetPriority}
           />
         ))}
       </div>

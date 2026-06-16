@@ -34,7 +34,8 @@ func FormatRemainingTime(remainingTimeSeconds float64) string {
 	}
 	hours := math.Floor(remainingTimeSeconds / 3600)
 	minutes := math.Floor(math.Mod(remainingTimeSeconds, 3600) / 60)
-	seconds := math.Floor(remainingTimeSeconds) / 60
+	// Bug fix: seconds is the remainder within the minute, not value/60.
+	seconds := math.Floor(math.Mod(remainingTimeSeconds, 60))
 
 	if hours > 0 {
 		return fmt.Sprintf("%02.fh %02.fm %02.fs", hours, minutes, seconds)

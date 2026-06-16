@@ -3,6 +3,7 @@ package download
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
@@ -29,6 +30,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 	referer := fs.String("rE", "", "Custom Referer")
 	groupFolder := fs.String("group", "", "Create Group Folder")
 	retry := fs.Int("retry", 3, "Max retries on failure")
+	connections := fs.Int("c", 0, "Connections per file for segmented downloading (0/1 = single stream; default 4 for large range-capable files)")
 	silent := fs.Bool("silent", false, "Suppress notifications")
 
 	if err := fs.Parse(args); err != nil {
@@ -51,6 +53,7 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 		UserAgent:       *userAgent,
 		Referer:         *referer,
 		MaxRetries:      *retry,
+		Connections:     *connections,
 		Silent:          *silent,
 		WantGroupFolder: *groupFolder != "",
 		GroupFolder:     *groupFolder,
@@ -66,21 +69,26 @@ func RunProgram(args []string) (map[string]*Job, []string, *Options, error) {
 		}
 		urls = append(urls, fileURLs...)
 
-		// Interactive group folder prompt
-		var want string
-		fmt.Print("Do you want a Group Folder? (Y/N): ")
-		fmt.Scanln(&want)
-		want = strings.TrimSpace(strings.ToUpper(want))
-		if want == "Y" {
-			var name string
-			fmt.Print("Enter folder name: ")
-			fmt.Scanln(&name)
-			name = strings.TrimSpace(name)
-			if name == "" {
-				name = "Downloads"
+		// Interactive group folder prompt — skipped in non-interactive mode
+		// (RUM_NONINTERACTIVE set by the CLI's --yes/--non-interactive flag or
+		// CI) or when a --group name was already provided on the command line.
+		nonInteractive := os.Getenv("RUM_NONINTERACTIVE") != ""
+		if !nonInteractive && opt.GroupFolder == "" {
+			var want string
+			fmt.Print("Do you want a Group Folder? (Y/N): ")
+			fmt.Scanln(&want)
+			want = strings.TrimSpace(strings.ToUpper(want))
+			if want == "Y" {
+				var name string
+				fmt.Print("Enter folder name: ")
+				fmt.Scanln(&name)
+				name = strings.TrimSpace(name)
+				if name == "" {
+					name = "Downloads"
+				}
+				opt.WantGroupFolder = true
+				opt.GroupFolder = name
 			}
-			opt.WantGroupFolder = true
-			opt.GroupFolder = name
 		}
 	}
 

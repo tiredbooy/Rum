@@ -1,9 +1,10 @@
-import type { Download } from "@/_lib/types/download-types";
+import type { Download, DownloadPriority } from "@/_lib/types/download-types";
 import { formatBytes, formatETA, formatSpeed } from "@/_lib/utils/format";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useSpeedHistory } from "@/hooks/useSpeedHistory";
 import {
   AlertCircle,
   CheckCircle2,
@@ -16,6 +17,9 @@ import {
   X,
 } from "lucide-react";
 import { ElementType } from "react";
+import { SpeedSparkline } from "./SpeedSparkline";
+import { PriorityBadge } from "./PriorityBadge";
+import { CardActionsMenu } from "./CardActionsMenu";
 
 interface DownloadCardProps {
   download: Download;
@@ -24,6 +28,7 @@ interface DownloadCardProps {
   onStart?: (id: string) => void;
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
+  onSetPriority?: (id: string, priority: DownloadPriority) => void;
 }
 
 function getStatusInfo(status: Download["status"]) {
@@ -66,14 +71,37 @@ export function DownloadCard({
   onStart,
   onDelete,
   onRetry,
+  onSetPriority,
 }: DownloadCardProps) {
-  const { id, filename, status, progress, speed, total_size, eta } = download;
+  const {
+    id,
+    filename,
+    status,
+    progress,
+    speed,
+    total_size,
+    eta,
+    error,
+    priority,
+  } = download;
 
   const {
     icon: StatusIcon,
     colorClass: statusColor,
     label: statusLabel,
   } = getStatusInfo(status);
+
+  // Live speed history for the sparkline (only while actively downloading).
+  const speedSamples = useSpeedHistory(speed, status === "running");
+
+  // Backend may emit bogus progress (negative, or >100 when total size is
+  // unknown / -1). Clamp to [0, 100] so the bar never overflows or goes blank.
+  const safeProgress = Math.min(
+    100,
+    Math.max(0, Number.isFinite(progress) ? (progress as number) : 0),
+  );
+  // total_size is only meaningful when > 0; the backend uses -1/0 for unknown.
+  const hasKnownSize = typeof total_size === "number" && total_size > 0;
 
   return (
     <Card className="group hover:shadow-md transition-shadow p-3 flex gap-3 relative">
@@ -95,29 +123,53 @@ export function DownloadCard({
             <StatusIcon className="w-3 h-3" />
             {statusLabel}
           </span>
-          {total_size && (
+          {hasKnownSize ? (
             <span className="text-[10px] text-muted-foreground hidden sm:inline">
-              {formatBytes(total_size)}
+              {formatBytes(total_size as number)}
             </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              Unknown size
+            </span>
+          )}
+          {status !== "completed" && (
+            <PriorityBadge priority={priority} className="hidden sm:inline-flex" />
           )}
         </div>
 
         {(status === "running" || status === "paused") && (
           <div className="space-y-1">
-            <Progress value={progress ?? 0} className="h-1.5" />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>{progress?.toFixed(1) ?? 0}%</span>
-              <span>
-                {speed != null ? formatSpeed(speed) : "—"} ·{" "}
-                {formatETA(eta ?? 0) ?? "—"}
-              </span>
+            <Progress value={safeProgress} className="h-1.5" />
+            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <span>{hasKnownSize ? `${safeProgress.toFixed(1)}%` : "—"}</span>
+              <div className="flex items-center gap-2">
+                {status === "running" && speedSamples.length > 1 && (
+                  <SpeedSparkline samples={speedSamples} />
+                )}
+                <span>
+                  {speed != null ? formatSpeed(speed) : "—"} ·{" "}
+                  {formatETA(eta ?? 0)}
+                </span>
+              </div>
             </div>
           </div>
+        )}
+
+        {status === "error" && error && (
+          <p
+            className="text-[10px] text-destructive truncate"
+            title={error}
+          >
+            {error}
+          </p>
         )}
       </div>
 
       {/* Action buttons – top right, visible on hover */}
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Overflow menu: priority + copy link / open folder */}
+        <CardActionsMenu download={download} onSetPriority={onSetPriority} />
+
         {/* Pending: start + delete */}
         {status === "pending" && (
           <>
@@ -126,6 +178,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onStart?.(id)}
+              aria-label="Start"
               title="Start"
             >
               <Play className="w-4 h-4" />
@@ -135,6 +188,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -150,6 +204,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onPause?.(id)}
+              aria-label="Pause"
               title="Pause"
             >
               <Pause className="w-4 h-4" />
@@ -159,6 +214,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -174,6 +230,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onResume?.(id)}
+              aria-label="Resume"
               title="Resume"
             >
               <Play className="w-4 h-4" />
@@ -183,6 +240,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -197,6 +255,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onRetry?.(id)}
+              aria-label="Retry"
               title="Retry"
             >
               <RotateCcw className="w-4 h-4" />
@@ -206,6 +265,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -220,7 +280,8 @@ export function DownloadCard({
             size="icon"
             className="h-7 w-7 text-destructive"
             onClick={() => onDelete?.(id)}
-            title="Delete"
+            aria-label="Delete"
+              title="Delete"
           >
             <X className="w-4 h-4" />
           </Button>

@@ -10,13 +10,9 @@ func CreateGroupFolder(folderPath string) {
 		return
 	}
 
-	_, err := os.Stat(folderPath)
-
-	if os.IsNotExist(err) {
-		err := os.MkdirAll(folderPath, 0755)
-		if err != nil {
-			log.Println("Failed to Create Directory")
-			return
-		}
+	// MkdirAll is a no-op if the directory already exists, so we can call it
+	// unconditionally and surface any real error (permissions, file-in-the-way).
+	if err := os.MkdirAll(folderPath, 0o755); err != nil {
+		log.Printf("filesystem: failed to create directory %s: %v", folderPath, err)
 	}
 }

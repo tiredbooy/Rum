@@ -6,4 +6,12 @@ cmd/rum/Rum
 cmd/rum/build.sh
 frontend/dist
 frontend/node_modules
-build
+
+# Ignore Wails build output, but keep the committed icon/metadata source assets
+# so a fresh clone builds with the real app icon (not the Wails default).
+/build/*
+!/build/appicon.png
+!/build/icon.png
+!/build/windows
+/build/windows/*
+!/build/windows/icon.ico

@@ -7,7 +7,8 @@ import DownloadDialog from "@/features/dashboard/create-download/DownloadDialog"
 import { DownloadStatusPage } from "@/features/dashboard/download-list/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
-import { useState } from "react";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useRef, useState } from "react";
 
 interface Props {
   // props here
@@ -16,6 +17,7 @@ interface Props {
 export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
   const [open, setOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   const startDownloads = useStartAllDownloads();
   const pauseDownloads = usePauseAllDownloads();
@@ -70,6 +72,21 @@ export default function Dashboard({}: Props) {
     deleteDownloads.mutateAsync("completed");
   };
 
+  const focusFilter = () => {
+    // Focus the first filter tab trigger so arrow keys can navigate filters.
+    const firstTab = filterRef.current?.querySelector<HTMLElement>(
+      "[role='tab']",
+    );
+    firstTab?.focus();
+  };
+
+  useKeyboardShortcuts({
+    onNewDownload: () => setOpen(true),
+    onFocusFilter: focusFilter,
+    onPauseAll: handlePauseAll,
+    onStartAll: handleStartAll,
+  });
+
   return (
     <div className="">
       <DownloadDialog open={open} setOpen={setOpen} />
@@ -87,12 +104,14 @@ export default function Dashboard({}: Props) {
         onRetryFailed={handleStartAll}
         onClearCompleted={handleDeleteCompleteds}
       />
-      <FilterTabs
-        tabs={tabs}
-        defaultValue="all"
-        onTabChange={setActiveTab}
-        className="mt-4"
-      />
+      <div ref={filterRef}>
+        <FilterTabs
+          tabs={tabs}
+          defaultValue="all"
+          onTabChange={setActiveTab}
+          className="mt-4"
+        />
+      </div>
     </div>
   );
 }

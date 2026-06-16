@@ -15,9 +15,13 @@ func getHomeDir() string {
 	if home := os.Getenv("USERPROFILE"); home != "" {
 		return home
 	}
-
-	log.Fatal("Could not find user's home directory")
-	return ""
+	// Last resort: Go's portable lookup. Never fatal — killing the process here
+	// would take down the engine/api/tui that depend on this package.
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home
+	}
+	log.Println("filesystem: could not determine home directory; using current directory")
+	return "."
 }
 
 func GetOrCreateDownloadDirectory() string {
@@ -25,13 +29,11 @@ func GetOrCreateDownloadDirectory() string {
 	appName := "Rum"
 	downloadDir := path.Join(homeDir, "Downloads", appName)
 
-	_, err := os.Stat(downloadDir)
-	if os.IsNotExist(err) {
-		err := os.MkdirAll(downloadDir, 0755)
-		if err != nil {
-			log.Println("Failed to Create Directory")
-			return ""
-		}
+	// MkdirAll is idempotent; call unconditionally so a stat error doesn't hide a
+	// missing dir.
+	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
+		log.Printf("filesystem: failed to create download directory %s: %v", downloadDir, err)
+		return ""
 	}
 
 	return downloadDir

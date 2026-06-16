@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
@@ -63,6 +64,13 @@ type SpeedRule struct {
 	LimitKBps int `json:"limit_kbps"` // 0 = unlimited
 }
 
+// validActions / validConflicts / validLogLevels define the accepted enum values.
+var (
+	validActions   = map[string]bool{"none": true, "shutdown": true, "sleep": true, "close": true}
+	validConflicts = map[string]bool{"rename": true, "overwrite": true, "skip": true}
+	validLogLevels = map[string]bool{"info": true, "debug": true, "warn": true, "error": true}
+)
+
 func (s *Setting) LoadSettingMetadata() error {
 	data, err := filesystem.ReadMetadataFile("settings.json")
 	if err != nil {
@@ -70,16 +78,77 @@ func (s *Setting) LoadSettingMetadata() error {
 			s.setDefaults()
 			return s.Save()
 		}
-		return fmt.Errorf("Read settings: %w", err)
+		// Don't crash the app on an unreadable config: fall back to defaults and
+		// rewrite a clean file.
+		s.setDefaults()
+		_ = s.Save()
+		return fmt.Errorf("read settings (using defaults): %w", err)
 	}
 
 	if err := json.Unmarshal(data, s); err != nil {
-		return fmt.Errorf("Parse settings: %w", err)
+		// Corrupt/partial config: recover with defaults instead of failing hard.
+		s.setDefaults()
+		_ = s.Save()
+		return fmt.Errorf("parse settings (using defaults): %w", err)
 	}
 
 	s.applyMissingDefaults()
+	s.Validate() // clamp out-of-range values to safe defaults
 	return nil
+}
 
+// Validate clamps every field to a sane range and replaces invalid enum values
+// with safe defaults. It mutates the receiver and is safe to call repeatedly.
+func (s *Setting) Validate() {
+	if s.SpeedLimitKB < 0 {
+		s.SpeedLimitKB = 0 // 0 = unlimited
+	}
+	if s.MaxParallel < 1 {
+		s.MaxParallel = 1
+	}
+	if s.MaxParallel > 64 {
+		s.MaxParallel = 64
+	}
+	if s.MaxRetries < 0 {
+		s.MaxRetries = 0
+	}
+	if s.MaxRetries > 100 {
+		s.MaxRetries = 100
+	}
+	if strings.TrimSpace(s.OutDir) == "" {
+		s.OutDir = filesystem.GetOrCreateDownloadDirectory()
+	}
+	if !validActions[s.PostDownload.Action] {
+		s.PostDownload.Action = "none"
+	}
+	if !validConflicts[s.FileConflict] {
+		s.FileConflict = "rename"
+	}
+	if !validLogLevels[s.LogLevel] {
+		s.LogLevel = "info"
+	}
+	if s.PreferredTheme == "" {
+		s.PreferredTheme = "system"
+	}
+	// Clamp bandwidth schedule hours/limits.
+	for i := range s.BandwidthSchedule {
+		r := &s.BandwidthSchedule[i]
+		if r.StartHour < 0 {
+			r.StartHour = 0
+		}
+		if r.StartHour > 23 {
+			r.StartHour = 23
+		}
+		if r.EndHour < 0 {
+			r.EndHour = 0
+		}
+		if r.EndHour > 23 {
+			r.EndHour = 23
+		}
+		if r.LimitKBps < 0 {
+			r.LimitKBps = 0
+		}
+	}
 }
 
 func (s *Setting) Update(req SettingReq) error {
@@ -121,12 +190,14 @@ func (s *Setting) Update(req SettingReq) error {
 		s.PostDownload.AutoOpenDir = *req.PostDownload.AutoOpenDir
 	}
 
+	s.Validate()
+
 	path := filesystem.CreateMetadataFile("settings.json")
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := filesystem.AtomicWriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("Write setting: %w", err)
 	}
 
@@ -134,13 +205,16 @@ func (s *Setting) Update(req SettingReq) error {
 }
 
 func (s *Setting) Save() error {
+	s.Validate()
+
 	path := filesystem.CreateMetadataFile("settings.json")
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	// Atomic write so a crash during save cannot corrupt settings.json.
+	return filesystem.AtomicWriteFile(path, data, 0o644)
 }
 
 func (s *Setting) setDefaults() {

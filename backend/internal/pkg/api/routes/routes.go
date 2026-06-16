@@ -25,8 +25,11 @@ func SetupRouter(r *gin.Engine) {
 		v1.GET("/downloads/:id/stream", handlers.StreamProgress)
 		v1.PUT("/downloads/:id/pause", handlers.PauseDownload)
 		v1.PUT("/downloads/:id/resume", handlers.ResumeDownload)
+		v1.POST("/downloads/:id/retry", handlers.RetryDownload)
+		v1.PATCH("/downloads/:id/priority", handlers.SetDownloadPriority)
 
 		v1.GET("/settings", handlers.GetSettings)
 		v1.PATCH("/settings", handlers.UpdateSetting)
+		v1.PUT("/settings/speed-limit", handlers.UpdateSpeedLimit)
 	}
 }

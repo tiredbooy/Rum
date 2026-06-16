@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DownloadReq, DownloadStatus } from "@/_lib/types/download-types";
+import type {
+  Download,
+  DownloadPriority,
+  DownloadReq,
+  DownloadStatus,
+} from "@/_lib/types/download-types";
 import {
   createDownloads,
   deleteDownload,
@@ -9,11 +14,14 @@ import {
   pauseAllDownloads,
   pauseDownload,
   resumeDownload,
+  retryDownload,
+  setDownloadPriority,
   startAllDownloads,
   startDownload,
   fetchDashboardStats,
 } from "../api/download-api";
 import { useVisibilityChange } from "@/hooks/useVisibilityChange";
+import { toast } from "@/lib/toast";
 
 export const downloadKeys = {
   all: ["downloads"] as const,
@@ -97,6 +105,86 @@ export function useResumeDownload() {
     mutationFn: (id: string) => resumeDownload(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+/**
+ * Patch a single download across every cached query (detail + any list) so the
+ * UI reflects an optimistic change immediately, mirroring the SSE applyPatch.
+ */
+function patchDownloadInCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: string,
+  patch: Partial<Download>,
+) {
+  queryClient.setQueryData<Download>(
+    downloadKeys.detail(id),
+    (old: Download | undefined) => (old ? { ...old, ...patch } : old),
+  );
+  queryClient
+    .getQueriesData<Download[]>({ queryKey: downloadKeys.all })
+    .forEach(([key, list]) => {
+      if (!Array.isArray(list)) return;
+      let changed = false;
+      const next = list.map((dl) => {
+        if (dl.id !== id) return dl;
+        changed = true;
+        return { ...dl, ...patch };
+      });
+      if (changed) queryClient.setQueryData(key, next);
+    });
+}
+
+export function useRetryDownload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => retryDownload(id),
+    onMutate: (id) => {
+      // Optimistic: clear the error and flip to pending so the card stops
+      // showing the failed state right away.
+      patchDownloadInCaches(queryClient, id, {
+        status: "pending",
+        error: undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Download retry started");
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err, id) => {
+      // Roll back to the errored state on failure.
+      patchDownloadInCaches(queryClient, id, { status: "error" });
+      toast.error(
+        err instanceof Error ? err.message : "Failed to retry download",
+      );
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+export function useSetDownloadPriority() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: DownloadPriority }) =>
+      setDownloadPriority(id, priority),
+    onMutate: ({ id, priority }) => {
+      const prev = queryClient.getQueryData<Download>(downloadKeys.detail(id));
+      patchDownloadInCaches(queryClient, id, { priority });
+      return { prevPriority: prev?.priority };
+    },
+    onSuccess: (_data, { priority }) => {
+      const label = priority.charAt(0).toUpperCase() + priority.slice(1);
+      toast.success(`Priority set to ${label}`);
+    },
+    onError: (err, { id }, ctx) => {
+      // Roll back to the previous priority on failure.
+      patchDownloadInCaches(queryClient, id, {
+        priority: ctx?.prevPriority,
+      });
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update priority",
+      );
     },
   });
 }

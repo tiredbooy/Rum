@@ -1,7 +1,14 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/handlers"
@@ -19,14 +26,13 @@ func SetQuitFunc(f func()) {
 
 func Start() {
 	download.InitLogFile()
-	
+
 	var setting config.Setting
 	err := setting.LoadSettingMetadata()
 	if err != nil {
 		log.Println("Error Opening setting: ", err.Error())
 		return
 	}
-
 
 	if setting.SpeedLimitKB < 0 {
 		setting.SpeedLimitKB = 0
@@ -49,7 +55,34 @@ func Start() {
 	middlewares.SetupMiddlewares(r)
 	routes.SetupRouter(r)
 
-	r.Run(":8080")
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		// WriteTimeout intentionally 0: the SSE progress streams are long-lived
+		// and a write deadline would sever them.
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
+	log.Println("Rum API server listening on :8080")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+	}
 }
 
 // func main() {

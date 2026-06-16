@@ -6,8 +6,11 @@ import (
 	"log"
 	"mime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/gen2brain/beeep"
 	"github.com/google/uuid"
@@ -61,6 +64,12 @@ func NewJobManager(opt *Options) *JobManager {
 	if opt.Parallel < 1 {
 		opt.Parallel = 1
 	}
+	// Enable segmented (multi-connection) downloads by default when the caller
+	// did not specify a connection count. Setting Connections to 1 explicitly
+	// keeps the legacy single-stream behavior.
+	if opt.Connections == 0 {
+		opt.Connections = defaultConnections
+	}
 
 	var setting config.Setting
 	setting.LoadSettingMetadata()
@@ -105,6 +114,12 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	m.mu.RLock()
 	var toHead []string
 	for _, u := range urls {
+		// Reject unsupported schemes / malformed URLs at the edge (http/https
+		// only). This blocks file://, data:, etc. before any network or disk work.
+		if err := ValidateURL(u); err != nil {
+			log.Printf("skipping invalid URL %q: %v", u, err)
+			continue
+		}
 		if _, exists := m.urls[u]; !exists {
 			toHead = append(toHead, u)
 		}
@@ -122,7 +137,13 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	}
 	downloader := NewDownloader(userAgent, m.opt.Referer)
 
-	// 3. Run HEAD requests with timeout and concurrency control
+	// 3. Run HEAD requests with bounded concurrency and a per-request timeout.
+	//
+	// The timeout is enforced via context.WithTimeout on the HTTP request
+	// itself (HeadWithFallbackContext), so a slow/hung probe makes the
+	// underlying Do() return promptly. The previous implementation raced an
+	// inner goroutine against time.After, leaking the goroutine (and its TCP
+	// connection) whenever the probe hung past the timeout.
 	var maxConcurrent int = 5
 	if m.opt.Parallel > 5 {
 		maxConcurrent = m.opt.Parallel
@@ -130,42 +151,32 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	if maxConcurrent < 1 {
 		maxConcurrent = 5
 	}
-	timeout := 60 * time.Second
+	const perRequestTimeout = 60 * time.Second
 
-	sem := make(chan struct{}, maxConcurrent)
 	type headRes struct {
 		url  string
 		info *HeaderInfo
 		err  error
 	}
-	resCh := make(chan headRes, len(toHead))
+	results := make([]headRes, len(toHead))
 
-	for _, url := range toHead {
-		sem <- struct{}{}
-		go func(u string) {
-			defer func() { <-sem }()
-			result := make(chan headRes, 1)
-
-			// Run HEAD in a goroutine
-			go func() {
-				info, err := downloader.HeadWithFallback(u)
-				result <- headRes{url: u, info: info, err: err}
-			}()
-
-			// Wait with timeout
-			select {
-			case res := <-result:
-				resCh <- res
-			case <-time.After(timeout):
-				resCh <- headRes{url: u, info: nil, err: fmt.Errorf("timeout after %v", timeout)}
-			}
-		}(url)
+	g, gctx := errgroup.WithContext(context.Background())
+	g.SetLimit(maxConcurrent)
+	for i, u := range toHead {
+		i, u := i, u
+		g.Go(func() error {
+			reqCtx, cancel := context.WithTimeout(gctx, perRequestTimeout)
+			defer cancel()
+			info, err := downloader.HeadWithFallbackContext(reqCtx, u)
+			results[i] = headRes{url: u, info: info, err: err}
+			return nil // probe failures are per-URL, never abort the group
+		})
 	}
+	_ = g.Wait()
 
 	// 4. Build jobs from successful HEAD responses
 	var newJobs []*Job
-	for i := 0; i < len(toHead); i++ {
-		res := <-resCh
+	for _, res := range results {
 		if res.err != nil {
 			log.Printf("HEAD failed for %s: %v", res.url, res.err)
 			continue
@@ -281,7 +292,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.mu.Unlock()
 
 	bgCtx, cancel := context.WithCancel(context.Background())
-	job.CancelFunc = cancel
+	job.SetCancelFunc(cancel)
 
 	select {
 	case m.sem <- struct{}{}:
@@ -344,13 +355,13 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 			TotalSize:  total,
 			Speed:      smoothSpeed,
 			Status:     string(job.Status),
-			Progress:   int(float64(downloaded) / float64(total) * 100),
+			Progress:   progressPercent(downloaded, total),
 			ETA:        eta,
 		}
 		m.publishProgress(update)
 	}
 
-	err := DownloadSingleFile(ctx, *m.opt, job, progressFn)
+	err := DownloadSegmented(ctx, *m.opt, job, progressFn)
 
 	m.mu.Lock()
 	if ctx.Err() == context.Canceled {
@@ -374,7 +385,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		TotalSize:  totalSize,
 		Speed:      0,
 		Status:     finalStatus,
-		Progress:   int(float64(downloaded) / float64(totalSize) * 100),
+		Progress:   progressPercent(downloaded, totalSize),
 		ETA:        0,
 	}
 	m.publishProgress(finalUpdate)
@@ -400,7 +411,13 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.batchCounters[batchID] = int32(len(eligibleJobs))
 	m.batchMu.Unlock()
 
-	sort.Slice(eligibleJobs, func(i, j int) bool {
+	// Start higher-priority jobs first; fall back to the configured sort within
+	// the same priority level.
+	sort.SliceStable(eligibleJobs, func(i, j int) bool {
+		pi, pj := priorityRank(eligibleJobs[i].GetPriority()), priorityRank(eligibleJobs[j].GetPriority())
+		if pi != pj {
+			return pi > pj
+		}
 		if m.sortBy == "created_at" {
 			return utils.TimeCompare(eligibleJobs[i].CreatedAt, eligibleJobs[j].CreatedAt)
 		}
@@ -424,11 +441,73 @@ func (m *JobManager) PauseJob(jobID string) error {
 	if job.Status != StatusRunning {
 		return fmt.Errorf("job %s is not running", jobID)
 	}
-	if job.CancelFunc != nil {
-		job.CancelFunc()
+	if cancel := job.GetCancelFunc(); cancel != nil {
+		cancel()
 	}
 
 	return nil
+}
+
+// normalizePriority maps any input to one of the three valid levels, defaulting
+// to "normal". Validation of client input happens at the API edge (dto layer);
+// this is the engine-side safety net.
+func normalizePriority(p string) string {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	default:
+		return "normal"
+	}
+}
+
+// priorityRank gives a sortable weight (higher = scheduled sooner).
+func priorityRank(p string) int {
+	switch normalizePriority(p) {
+	case "high":
+		return 2
+	case "low":
+		return 0
+	default:
+		return 1
+	}
+}
+
+// SetJobPriority updates a job's scheduling priority. The new priority takes
+// effect the next time the job is (re)started via StartAllJobs.
+func (m *JobManager) SetJobPriority(id, priority string) error {
+	m.mu.Lock()
+	job, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	job.SetPriority(normalizePriority(priority))
+	m.mu.Unlock()
+	m.saveToDisk()
+	return nil
+}
+
+// RetryJob restarts a failed/paused job. Any partial progress on disk is
+// preserved, so the retry resumes rather than re-downloading from zero. A
+// running job is a conflict (pause it first).
+func (m *JobManager) RetryJob(ctx context.Context, id string) error {
+	m.mu.Lock()
+	job, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.GetStatus() == StatusRunning {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s is already running: %w", id, ErrConflict)
+	}
+	job.SetError(nil)
+	job.SetStatus(StatusPending)
+	m.mu.Unlock()
+
+	return m.StartJob(ctx, id)
 }
 
 func (m *JobManager) PauseAllJobs() error {
@@ -436,8 +515,8 @@ func (m *JobManager) PauseAllJobs() error {
 	defer m.mu.Unlock()
 
 	for _, job := range m.jobs {
-		if job.CancelFunc != nil {
-			job.CancelFunc()
+		if cancel := job.GetCancelFunc(); cancel != nil {
+			cancel()
 		}
 	}
 	return nil
@@ -519,15 +598,15 @@ func (m *JobManager) DeleteJob(jobID string) error {
 		return fmt.Errorf("job %s not found", jobID)
 	}
 
-	if job.CancelFunc != nil {
-		job.CancelFunc()
+	if cancel := job.GetCancelFunc(); cancel != nil {
+		cancel()
 	}
 
 	delete(m.jobs, jobID)
 	m.mu.Unlock()
 
 	if err := DeleteJobFromDisk(jobID); err != nil {
-		return fmt.Errorf("failed to delete job from disk: %w", err.Error())
+		return fmt.Errorf("failed to delete job from disk: %w", err)
 	}
 
 	return nil
@@ -546,10 +625,14 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 		switch filter {
 		case "completed":
 			if job.Status == StatusCompleted {
-				continue
+				continue // drop completed
+			}
+		case "error", "failed":
+			if job.Status == StatusError {
+				continue // drop errored/failed
 			}
 		case "all":
-			continue
+			continue // drop everything
 		}
 		remaining = append(remaining, job)
 	}
@@ -559,11 +642,14 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	}
 
 	m.jobs = make(map[string]*Job, len(remaining))
+	// Rebuild the URL dedup index from the surviving jobs. Previously this was
+	// reset to an empty map and never repopulated, corrupting URL dedup so
+	// re-adding a still-present URL would create a duplicate job.
+	m.urls = make(map[string]string, len(remaining))
 	for _, job := range remaining {
 		m.jobs[job.ID] = job
+		m.urls[job.URL] = job.ID
 	}
-
-	m.urls = make(map[string]string)
 
 	return nil
 }

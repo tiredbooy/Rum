@@ -49,10 +49,12 @@ func (m *model) Init() tea.Cmd {
 			continue
 		}
 		if job.Status == download.StatusPending || job.Status == download.StatusPaused {
-			cmds = append(cmds, startDownloadCmd(job, m.opt, m.program))
+			cmds = append(cmds, startDownloadCmd(m, job, m.opt, m.program))
 		}
 	}
 	m.mu.RUnlock()
+	// Start the periodic tick so the manual/auto-scroll timeout works.
+	cmds = append(cmds, tickCmd())
 	return tea.Batch(cmds...)
 }
 
@@ -174,7 +176,7 @@ func (m *model) resumePaused() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, job := range m.jobs {
 		if job.GetStatus() == download.StatusPaused {
-			cmds = append(cmds, startDownloadCmd(job, m.opt, m.program))
+			cmds = append(cmds, startDownloadCmd(m, job, m.opt, m.program))
 		}
 	}
 	return tea.Batch(cmds...)

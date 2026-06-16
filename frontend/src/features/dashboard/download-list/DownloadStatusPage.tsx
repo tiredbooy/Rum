@@ -1,14 +1,17 @@
-import { useState, useEffect, useMemo } from "react";
 import { DownloadList } from "./DownloadList";
-import type { Download, DownloadStatus } from "@/_lib/types/download-types";
+import type {
+  Download,
+  DownloadPriority,
+} from "@/_lib/types/download-types";
 import {
   useDeleteDownload,
   useDownloads,
   usePauseDownload,
   useResumeDownload,
+  useRetryDownload,
+  useSetDownloadPriority,
   useStartDownload,
 } from "@/_lib/services/queries/download.queries";
-import { toast } from "sonner";
 
 interface DownloadStatusPageProps {
   status: Download["status"] | "all";
@@ -16,11 +19,14 @@ interface DownloadStatusPageProps {
 }
 
 export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
-  const { data: downloads, isLoading } = useDownloads(status);
+  const { data: downloads, isLoading, isError, error, refetch } =
+    useDownloads(status);
   const startDownload = useStartDownload();
   const pauseDownload = usePauseDownload();
   const resumeDownload = useResumeDownload();
   const deleteDownload = useDeleteDownload();
+  const retryDownload = useRetryDownload();
+  const setPriority = useSetDownloadPriority();
 
   const handleStart = (id: string) => {
     startDownload.mutateAsync(id);
@@ -35,7 +41,10 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
     deleteDownload.mutateAsync(id);
   };
   const handleRetry = (id: string) => {
-    resumeDownload.mutateAsync(id);
+    retryDownload.mutate(id);
+  };
+  const handleSetPriority = (id: string, priority: DownloadPriority) => {
+    setPriority.mutate({ id, priority });
   };
 
   const displayTitle =
@@ -50,11 +59,15 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
       <DownloadList
         downloads={downloads}
         isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetryFetch={() => refetch()}
         onStart={handleStart}
         onPause={handlePause}
         onResume={handleResume}
         onDelete={handleDelete}
         onRetry={handleRetry}
+        onSetPriority={handleSetPriority}
       />
     </div>
   );

@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"golang.org/x/time/rate"
-
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
@@ -19,7 +17,31 @@ import (
 
 type ProgressFunc func(downloaded, total int64)
 
+// progressPercent computes a download completion percentage clamped to [0,100].
+// When total <= 0 the size is unknown ("indeterminate") and this returns -1 so
+// callers can detect that case instead of producing NaN/garbage from a divide
+// by zero or negative total. A non-negative total always yields a value in
+// [0,100].
+func progressPercent(downloaded, total int64) int {
+	if total <= 0 {
+		return -1 // indeterminate
+	}
+	pct := int(float64(downloaded) / float64(total) * 100)
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}
+
 func PrepareOutputPath(opt Options, fileName, url string, contentType string) (fullPath string) {
+	// Sanitize the remote-derived filename to prevent path traversal: a name
+	// like "../../etc/passwd" (from a URL path or Content-Disposition) must not
+	// escape the download directory.
+	fileName = filesystem.SanitizeFileName(fileName)
+
 	var setting config.Setting
 	setting.LoadSettingMetadata()
 	defaultDownloadDir := setting.OutDir
@@ -65,7 +87,7 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 			job.SetStatus(StatusCompleted)
 			return nil
 		}
-		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return &httpStatusError{code: resp.StatusCode}
 	}
 
 	if offset > 0 && resp.StatusCode == http.StatusOK {
@@ -85,13 +107,13 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 	}
 
 	var body io.ReadCloser = resp.Body
-	if setting.SpeedLimitKB > 0 {
-		var speedLimit int64
-		if opt.SpeedLimit*1024 > 0 && opt.SpeedLimit == setting.SpeedLimitKB {
-			speedLimit = int64(opt.SpeedLimit)
-		}
-		speedLimit = int64(setting.SpeedLimitKB) * 102
-		limiter := rate.NewLimiter(rate.Limit(speedLimit), int(speedLimit))
+	// Per-job override (opt.SpeedLimit, in KB/s) takes precedence when set;
+	// otherwise fall back to the global setting (setting.SpeedLimitKB, KB/s).
+	limitKB := setting.SpeedLimitKB
+	if opt.SpeedLimit > 0 {
+		limitKB = opt.SpeedLimit
+	}
+	if limiter := newSpeedLimiter(limitKB); limiter != nil {
 		body = &rateLimitedReader{
 			reader:  resp.Body,
 			limiter: limiter,
@@ -182,32 +204,52 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		job.SetTotalSize(-1)
 	}
 
+	// Wrap the actual transfer in retry-with-backoff. Each attempt re-stats the
+	// partial file and resumes from its current size, so a transient failure
+	// mid-stream resumes where it left off instead of restarting. Permanent
+	// errors (HTTP 4xx) and context cancellation are not retried.
+	cfg := newRetryConfig(opt.MaxRetries)
+	return retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
+		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
+	})
+}
+
+// downloadSingleAttempt performs one single-stream download attempt, resuming
+// from whatever bytes are already on disk.
+func downloadSingleAttempt(ctx context.Context, opt Options, job *Job, url, fullPath string, progressFn ProgressFunc) error {
+	var existsFileSize int64 = 0
+	if filesystem.IsFileExists(fullPath) {
+		if sz, err := filesystem.GetExistsFileSize(fullPath); err == nil {
+			existsFileSize = sz
+		}
+	}
+
 	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
-
 	defer outFile.Close()
 
 	req, err := opt.Downloader.NewRequest("GET", url)
-
 	if err != nil {
 		return err
 	}
-
 	req = req.WithContext(ctx)
-
-	if existsFileSize > 0 {
-		DebugLog("Trying to Resume Exists File")
-		return DownloadWithRange(ctx, opt, req, job.FileName, outFile, existsFileSize, job, progressFn)
-	}
 
 	if existsFileSize > 0 && !job.SupportRange {
 		fmt.Println("Server does not support range. Starting over...")
 		if err := outFile.Truncate(0); err != nil {
 			return err
 		}
+		if _, err := outFile.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		existsFileSize = 0
 	}
 
-	return DownloadWithRange(ctx, opt, req, job.FileName, outFile, 0, job, progressFn)
+	if existsFileSize > 0 {
+		DebugLog("Trying to Resume Exists File")
+	}
+
+	return DownloadWithRange(ctx, opt, req, job.FileName, outFile, existsFileSize, job, progressFn)
 }
