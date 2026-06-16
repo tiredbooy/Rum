@@ -67,6 +67,19 @@ if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
 }
 Ok "Found wails"
 
+# --- Ensure YOUR app icon is wired into the build (not the Wails default) ---
+$appicon = Join-Path $RepoRoot "build\appicon.png"
+if (-not (Test-Path $appicon)) {
+    $src = @((Join-Path $RepoRoot "build\icon.png"), (Join-Path $RepoRoot "icon.png")) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($src) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $appicon) | Out-Null
+        Copy-Item -Force $src $appicon
+        Info "Wired $src as the app icon."
+    } else {
+        Info "No source icon found; the build will use the default Wails icon."
+    }
+}
+
 # --- Build ---
 Info "Building the Rum desktop app for Windows (wails build)..."
 Push-Location $RepoRoot

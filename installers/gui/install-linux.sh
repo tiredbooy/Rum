@@ -64,6 +64,41 @@ if ! command -v wails >/dev/null 2>&1; then
 fi
 ok "Found wails: $(wails version 2>/dev/null | head -1 || echo present)"
 
+# --- System libraries (GTK + WebKit) needed by the Wails GUI ---
+if command -v pkg-config >/dev/null 2>&1; then
+  if ! pkg-config --exists gtk+-3.0 2>/dev/null || \
+     ! { pkg-config --exists webkit2gtk-4.1 2>/dev/null || pkg-config --exists webkit2gtk-4.0 2>/dev/null; }; then
+    err "Missing GTK3 / WebKit2GTK system libraries (required to build the GUI). Install them, then re-run:"
+    echo "  Debian/Ubuntu : sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
+    echo "  Fedora        : sudo dnf install gcc pkg-config gtk3-devel webkit2gtk4.1-devel"
+    echo "  Arch          : sudo pacman -S --needed base-devel gtk3 webkit2gtk-4.1"
+    exit 1
+  fi
+  ok "Found GTK3 + WebKit2GTK"
+else
+  info "pkg-config not found; skipping GTK/WebKit check (Wails may still fail without them)."
+fi
+
+# --- Ensure YOUR app icon is wired into the build (not the Wails default) ---
+ensure_icons() {
+  local appicon="$REPO_ROOT/build/appicon.png"
+  [[ -f "$appicon" ]] && return 0
+  local src=""
+  for s in "$REPO_ROOT/build/icon.png" "$REPO_ROOT/icon.png"; do [[ -f "$s" ]] && { src="$s"; break; }; done
+  [[ -z "$src" ]] && { info "No source icon found; the build will use the default Wails icon."; return 0; }
+  mkdir -p "$REPO_ROOT/build/windows"
+  if command -v magick >/dev/null 2>&1; then
+    magick "$src" -resize 512x512 -background none -gravity center -extent 512x512 "$appicon"
+    cp "$appicon" "$REPO_ROOT/build/icon.png"
+    magick "$appicon" -background none -define icon:auto-resize=256,128,64,48,32,16 "$REPO_ROOT/build/windows/icon.ico" 2>/dev/null || true
+    ok "Generated app icon from $src"
+  else
+    cp "$src" "$appicon"; cp "$src" "$REPO_ROOT/build/icon.png"
+    info "Wired $src as the app icon (install ImageMagick for a properly squared icon)."
+  fi
+}
+ensure_icons
+
 # --- Build ---
 info "Building the Rum desktop app (wails build)…"
 ( cd "$REPO_ROOT" && wails build -clean )
@@ -77,8 +112,8 @@ mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_DIR"
 install -m 0755 "$BUILT_BIN" "$TARGET"
 ok "Installed binary to $TARGET"
 
-# Icon: prefer build/icon.png, fall back to repo icon.png
-for ico in "$REPO_ROOT/build/icon.png" "$REPO_ROOT/icon.png"; do
+# Menu icon: prefer the squared appicon, then build/icon.png, then repo icon.png
+for ico in "$REPO_ROOT/build/appicon.png" "$REPO_ROOT/build/icon.png" "$REPO_ROOT/icon.png"; do
   if [[ -f "$ico" ]]; then install -m 0644 "$ico" "$ICON_TARGET"; ok "Installed icon"; break; fi
 done
 
