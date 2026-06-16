@@ -1,9 +1,10 @@
-import type { Download } from "@/_lib/types/download-types";
+import type { Download, DownloadPriority } from "@/_lib/types/download-types";
 import { formatBytes, formatETA, formatSpeed } from "@/_lib/utils/format";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useSpeedHistory } from "@/hooks/useSpeedHistory";
 import {
   AlertCircle,
   CheckCircle2,
@@ -16,6 +17,9 @@ import {
   X,
 } from "lucide-react";
 import { ElementType } from "react";
+import { SpeedSparkline } from "./SpeedSparkline";
+import { PriorityBadge } from "./PriorityBadge";
+import { CardActionsMenu } from "./CardActionsMenu";
 
 interface DownloadCardProps {
   download: Download;
@@ -24,6 +28,7 @@ interface DownloadCardProps {
   onStart?: (id: string) => void;
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
+  onSetPriority?: (id: string, priority: DownloadPriority) => void;
 }
 
 function getStatusInfo(status: Download["status"]) {
@@ -66,15 +71,28 @@ export function DownloadCard({
   onStart,
   onDelete,
   onRetry,
+  onSetPriority,
 }: DownloadCardProps) {
-  const { id, filename, status, progress, speed, total_size, eta, error } =
-    download;
+  const {
+    id,
+    filename,
+    status,
+    progress,
+    speed,
+    total_size,
+    eta,
+    error,
+    priority,
+  } = download;
 
   const {
     icon: StatusIcon,
     colorClass: statusColor,
     label: statusLabel,
   } = getStatusInfo(status);
+
+  // Live speed history for the sparkline (only while actively downloading).
+  const speedSamples = useSpeedHistory(speed, status === "running");
 
   // Backend may emit bogus progress (negative, or >100 when total size is
   // unknown / -1). Clamp to [0, 100] so the bar never overflows or goes blank.
@@ -114,17 +132,25 @@ export function DownloadCard({
               Unknown size
             </span>
           )}
+          {status !== "completed" && (
+            <PriorityBadge priority={priority} className="hidden sm:inline-flex" />
+          )}
         </div>
 
         {(status === "running" || status === "paused") && (
           <div className="space-y-1">
             <Progress value={safeProgress} className="h-1.5" />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
               <span>{hasKnownSize ? `${safeProgress.toFixed(1)}%` : "—"}</span>
-              <span>
-                {speed != null ? formatSpeed(speed) : "—"} ·{" "}
-                {formatETA(eta ?? 0)}
-              </span>
+              <div className="flex items-center gap-2">
+                {status === "running" && speedSamples.length > 1 && (
+                  <SpeedSparkline samples={speedSamples} />
+                )}
+                <span>
+                  {speed != null ? formatSpeed(speed) : "—"} ·{" "}
+                  {formatETA(eta ?? 0)}
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -141,6 +167,9 @@ export function DownloadCard({
 
       {/* Action buttons – top right, visible on hover */}
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Overflow menu: priority + copy link / open folder */}
+        <CardActionsMenu download={download} onSetPriority={onSetPriority} />
+
         {/* Pending: start + delete */}
         {status === "pending" && (
           <>

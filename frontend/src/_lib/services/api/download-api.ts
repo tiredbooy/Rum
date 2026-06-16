@@ -1,4 +1,9 @@
-import { DashboardStats, Download, DownloadReq } from "@/_lib/types/download-types";
+import {
+  DashboardStats,
+  Download,
+  DownloadPriority,
+  DownloadReq,
+} from "@/_lib/types/download-types";
 import { request } from "./api";
 
 export async function getDownloads(
@@ -50,6 +55,20 @@ export async function resumeDownload(id: string): Promise<void> {
 
 export async function deleteDownload(id: string): Promise<void> {
   await request(`/api/v1/downloads/${id}`, { method: "DELETE" });
+}
+
+export async function retryDownload(id: string): Promise<void> {
+  await request(`/api/v1/downloads/${id}/retry`, { method: "POST" });
+}
+
+export async function setDownloadPriority(
+  id: string,
+  priority: DownloadPriority,
+): Promise<void> {
+  await request(`/api/v1/downloads/${id}/priority`, {
+    method: "PATCH",
+    body: JSON.stringify({ priority }),
+  });
 }
 
 export async function startAllDownloads(): Promise<void> {

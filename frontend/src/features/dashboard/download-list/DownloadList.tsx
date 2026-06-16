@@ -1,4 +1,4 @@
-import type { Download } from "@/_lib/types/download-types";
+import type { Download, DownloadPriority } from "@/_lib/types/download-types";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ interface DownloadListProps {
   onStart: (id: string) => void;
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
+  onSetPriority: (id: string, priority: DownloadPriority) => void;
 }
 
 function SkeletonItem() {
@@ -41,6 +42,7 @@ export function DownloadList({
   onStart,
   onDelete,
   onRetry,
+  onSetPriority,
 }: DownloadListProps) {
   if (isLoading) {
     return (
@@ -88,6 +90,7 @@ export function DownloadList({
             onStart={onStart}
             onDelete={onDelete}
             onRetry={onRetry}
+            onSetPriority={onSetPriority}
           />
         ))}
       </div>
