@@ -2,15 +2,18 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
+
+// maxCreateBodyBytes caps the request body for create-download so a client
+// can't exhaust memory by streaming an enormous JSON body (go-api-design).
+const maxCreateBodyBytes = 1 << 20 // 1 MiB
 
 var GlobalManager *download.JobManager
 
@@ -20,26 +23,33 @@ func InitAPI(opt *download.Options) {
 }
 
 func CreateDownload(c *gin.Context) {
-	var req dto.CreateDownloadRequest
+	// Cap body size before decoding.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCreateBodyBytes)
 
+	var req dto.CreateDownloadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
+		return
+	}
+
+	if fields := req.Validate(); fields != nil {
+		writeFieldErrors(c, "validation failed", fields)
 		return
 	}
 
 	jobs, err := GlobalManager.CreateJobsFromURLs(req.URLs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeServiceError(c, err)
 		return
 	}
 
-	for _, job := range jobs {
-		if req.AutoStart {
-			go GlobalManager.StartJob(c.Request.Context(), job.ID)
+	if req.AutoStart {
+		for _, job := range jobs {
+			go GlobalManager.StartJob(context.Background(), job.ID)
 		}
 	}
 
-	var jobInfos []dto.JobInfo
+	jobInfos := make([]dto.JobInfo, 0, len(jobs))
 	for _, job := range jobs {
 		jobInfos = append(jobInfos, dto.JobInfo{
 			ID:     job.ID,
@@ -47,6 +57,7 @@ func CreateDownload(c *gin.Context) {
 			Status: string(job.Status),
 		})
 	}
+	// Backward-compatible success shape: { "jobs": [...] }.
 	c.JSON(http.StatusCreated, gin.H{"jobs": jobInfos})
 }
 
@@ -54,76 +65,100 @@ func GetDownloadStatus(c *gin.Context) {
 	jobID := c.Param("id")
 	job, ok := GlobalManager.GetJob(jobID)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+		writeError(c, http.StatusNotFound, dto.CodeNotFound, "job not found")
 		return
 	}
 
-	progress := 0
-	if job.TotalSize > 0 {
-		progress = int(float64(job.Downloaded) / float64(job.TotalSize) * 100)
-	}
-
-	resp := dto.DownloadResponse{
-		ID:         job.ID,
-		URL:        job.URL,
-		Filename:   job.FileName,
-		Status:     string(job.Status),
-		Progress:   progress,
-		Downloaded: job.Downloaded,
-		TotalSize:  job.TotalSize,
-		Speed:      job.GetSpeed(),
-		// CreatedAt:  job.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	}
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, toDownloadResponse(job))
 }
 
+// GetAllJobs returns downloads, optionally filtered by ?status=.
+//
+// Backward-compatible by default: returns a bare JSON array (what the frontend
+// expects). Pagination is OPT-IN: it is only activated when the client passes
+// ?limit= or ?offset=, in which case the response is the additive ListPage
+// envelope. This avoids breaking the existing TanStack Query contract.
 func GetAllJobs(c *gin.Context) {
 	statusFilter := c.Query("status")
 
-	var result []dto.DownloadResponse
-	for _, job := range GlobalManager.GetAllJobs() {
-		if statusFilter == "" || statusFilter == "all" {
-			// include all
-		} else if job.Status != statusFilter {
+	all := GlobalManager.GetAllJobs()
+	filtered := make([]dto.DownloadResponse, 0, len(all))
+	for _, job := range all {
+		if statusFilter != "" && statusFilter != "all" && job.Status != statusFilter {
 			continue
 		}
-
-		j := dto.DownloadResponse{
-			ID:          job.ID,
-			URL:         job.URL,
-			Filename:    job.FileName,
-			Progress:    utils.GetProgress(job.Downloaded, job.TotalSize),
-			Status:      job.Status,
-			Downloaded:  job.Downloaded,
-			TotalSize:   job.TotalSize,
-			Speed:       job.Speed,
-			Remaining:   int64(job.RemainingTime),
-			CreatedAt:   job.CreatedAt.String(),
-			CompletedAt: job.CompletedAt.String(),
-		}
-		result = append(result, j)
+		filtered = append(filtered, toDownloadResponseFull(job))
 	}
 
-	if len(result) == 0 {
+	_, hasLimit := c.GetQuery("limit")
+	_, hasOffset := c.GetQuery("offset")
+	if hasLimit || hasOffset {
+		c.JSON(http.StatusOK, paginate(filtered, c))
+		return
+	}
+
+	// Legacy shape preserved exactly: bare array, or a message object when empty.
+	if len(filtered) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "No Job Found"})
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, filtered)
+}
+
+func paginate(items []dto.DownloadResponse, c *gin.Context) dto.ListPage {
+	limit := dto.ClampLimit(atoiDefault(c.Query("limit"), dto.DefaultPageSize))
+	offset := atoiDefault(c.Query("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+
+	total := len(items)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+
+	page := dto.ListPage{
+		Items:  items[start:end],
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}
+	if page.Items == nil {
+		page.Items = []dto.DownloadResponse{}
+	}
+	if end < total {
+		next := end
+		page.NextOffset = &next
+	}
+	return page
+}
+
+func atoiDefault(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	return v
 }
 
 func StartDownload(c *gin.Context) {
 	jobID := c.Param("id")
 
-	jobExists := GlobalManager.CheckJobExists(c.Request.Context(), jobID)
-	if !jobExists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Job does not exists"})
+	if !GlobalManager.CheckJobExists(c.Request.Context(), jobID) {
+		writeError(c, http.StatusNotFound, dto.CodeNotFound, "job not found")
 		return
 	}
 
-	err := GlobalManager.StartJob(c.Request.Context(), jobID)
-	if err != nil {
-		log.Println("ERROR: ", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to start download %s: ", err.Error())})
+	if err := GlobalManager.StartJob(c.Request.Context(), jobID); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
@@ -138,13 +173,12 @@ func StartDownloads(c *gin.Context) {
 func PauseDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
 		return
 	}
 
-	err := GlobalManager.PauseJob(jobID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := GlobalManager.PauseJob(jobID); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
@@ -152,10 +186,8 @@ func PauseDownload(c *gin.Context) {
 }
 
 func PauseDownloads(c *gin.Context) {
-	err := GlobalManager.PauseAllJobs()
-	if err != nil {
-		log.Println("ERROR: ", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := GlobalManager.PauseAllJobs(); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
@@ -165,13 +197,12 @@ func PauseDownloads(c *gin.Context) {
 func ResumeDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
 		return
 	}
 
-	err := GlobalManager.StartJob(c.Request.Context(), jobID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := GlobalManager.StartJob(c.Request.Context(), jobID); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
@@ -181,32 +212,73 @@ func ResumeDownload(c *gin.Context) {
 func DeleteDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Job ID, please provide valid jobID"})
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
 		return
 	}
 
-	err := GlobalManager.DeleteJob(jobID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := GlobalManager.DeleteJob(jobID); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusNoContent, gin.H{"message": "Download Deleted."})
+	// NOTE: kept as 200 + JSON body (not a bodyless 204) because the frontend's
+	// fetch wrapper calls res.json() unconditionally; an empty body would throw.
+	c.JSON(http.StatusOK, gin.H{"message": "Download Deleted."})
 }
 
 func DeleteDownloads(c *gin.Context) {
 	filter := c.Query("status")
 
-	err := GlobalManager.DeleteJobsByFilter(filter)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete jobs"})
+	if err := GlobalManager.DeleteJobsByFilter(filter); err != nil {
+		writeServiceError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusNoContent, gin.H{"message": "Jobs deleted successfully."})
+	// Kept as 200 + JSON body for the same reason as DeleteDownload (frontend
+	// parses the body). The DELETE /downloads frontend call also tolerates a
+	// non-array object, returning [].
+	c.JSON(http.StatusOK, gin.H{"message": "Jobs deleted successfully."})
 }
 
 func GetDownloadsStats(c *gin.Context) {
-	dashboardStats := GlobalManager.GetDashboardStats()
-	c.JSON(http.StatusOK, dashboardStats)
+	c.JSON(http.StatusOK, GlobalManager.GetDashboardStats())
+}
+
+// toDownloadResponse builds the single-job response (used by GET /downloads/:id).
+func toDownloadResponse(job *download.Job) dto.DownloadResponse {
+	progress := 0
+	if job.TotalSize > 0 {
+		progress = int(float64(job.Downloaded) / float64(job.TotalSize) * 100)
+	}
+	return dto.DownloadResponse{
+		ID:         job.ID,
+		URL:        job.URL,
+		Filename:   job.FileName,
+		Status:     string(job.Status),
+		Progress:   progress,
+		Downloaded: job.Downloaded,
+		TotalSize:  job.TotalSize,
+		Speed:      job.GetSpeed(),
+	}
+}
+
+// toDownloadResponseFull builds the list response (used by GET /downloads).
+func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
+	resp := dto.DownloadResponse{
+		ID:          job.ID,
+		URL:         job.URL,
+		Filename:    job.FileName,
+		Progress:    utils.GetProgress(job.Downloaded, job.TotalSize),
+		Status:      job.Status,
+		Downloaded:  job.Downloaded,
+		TotalSize:   job.TotalSize,
+		Speed:       job.Speed,
+		Remaining:   int64(job.RemainingTime),
+		CreatedAt:   job.CreatedAt.String(),
+		CompletedAt: job.CompletedAt.String(),
+	}
+	if job.Error != nil {
+		resp.Error = job.Error.Error()
+	}
+	return resp
 }

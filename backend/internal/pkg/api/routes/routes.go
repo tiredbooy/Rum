@@ -28,5 +28,6 @@ func SetupRouter(r *gin.Engine) {
 
 		v1.GET("/settings", handlers.GetSettings)
 		v1.PATCH("/settings", handlers.UpdateSetting)
+		v1.PUT("/settings/speed-limit", handlers.UpdateSpeedLimit)
 	}
 }
