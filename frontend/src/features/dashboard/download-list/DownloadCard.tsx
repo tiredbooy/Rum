@@ -67,13 +67,23 @@ export function DownloadCard({
   onDelete,
   onRetry,
 }: DownloadCardProps) {
-  const { id, filename, status, progress, speed, total_size, eta } = download;
+  const { id, filename, status, progress, speed, total_size, eta, error } =
+    download;
 
   const {
     icon: StatusIcon,
     colorClass: statusColor,
     label: statusLabel,
   } = getStatusInfo(status);
+
+  // Backend may emit bogus progress (negative, or >100 when total size is
+  // unknown / -1). Clamp to [0, 100] so the bar never overflows or goes blank.
+  const safeProgress = Math.min(
+    100,
+    Math.max(0, Number.isFinite(progress) ? (progress as number) : 0),
+  );
+  // total_size is only meaningful when > 0; the backend uses -1/0 for unknown.
+  const hasKnownSize = typeof total_size === "number" && total_size > 0;
 
   return (
     <Card className="group hover:shadow-md transition-shadow p-3 flex gap-3 relative">
@@ -95,24 +105,37 @@ export function DownloadCard({
             <StatusIcon className="w-3 h-3" />
             {statusLabel}
           </span>
-          {total_size && (
+          {hasKnownSize ? (
             <span className="text-[10px] text-muted-foreground hidden sm:inline">
-              {formatBytes(total_size)}
+              {formatBytes(total_size as number)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              Unknown size
             </span>
           )}
         </div>
 
         {(status === "running" || status === "paused") && (
           <div className="space-y-1">
-            <Progress value={progress ?? 0} className="h-1.5" />
+            <Progress value={safeProgress} className="h-1.5" />
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>{progress?.toFixed(1) ?? 0}%</span>
+              <span>{hasKnownSize ? `${safeProgress.toFixed(1)}%` : "—"}</span>
               <span>
                 {speed != null ? formatSpeed(speed) : "—"} ·{" "}
-                {formatETA(eta ?? 0) ?? "—"}
+                {formatETA(eta ?? 0)}
               </span>
             </div>
           </div>
+        )}
+
+        {status === "error" && error && (
+          <p
+            className="text-[10px] text-destructive truncate"
+            title={error}
+          >
+            {error}
+          </p>
         )}
       </div>
 
@@ -126,6 +149,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onStart?.(id)}
+              aria-label="Start"
               title="Start"
             >
               <Play className="w-4 h-4" />
@@ -135,6 +159,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -150,6 +175,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onPause?.(id)}
+              aria-label="Pause"
               title="Pause"
             >
               <Pause className="w-4 h-4" />
@@ -159,6 +185,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -174,6 +201,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onResume?.(id)}
+              aria-label="Resume"
               title="Resume"
             >
               <Play className="w-4 h-4" />
@@ -183,6 +211,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -197,6 +226,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onRetry?.(id)}
+              aria-label="Retry"
               title="Retry"
             >
               <RotateCcw className="w-4 h-4" />
@@ -206,6 +236,7 @@ export function DownloadCard({
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => onDelete?.(id)}
+              aria-label="Delete"
               title="Delete"
             >
               <X className="w-4 h-4" />
@@ -220,7 +251,8 @@ export function DownloadCard({
             size="icon"
             className="h-7 w-7 text-destructive"
             onClick={() => onDelete?.(id)}
-            title="Delete"
+            aria-label="Delete"
+              title="Delete"
           >
             <X className="w-4 h-4" />
           </Button>

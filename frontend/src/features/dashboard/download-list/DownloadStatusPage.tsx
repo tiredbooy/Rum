@@ -16,7 +16,8 @@ interface DownloadStatusPageProps {
 }
 
 export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
-  const { data: downloads, isLoading } = useDownloads(status);
+  const { data: downloads, isLoading, isError, error, refetch } =
+    useDownloads(status);
   const startDownload = useStartDownload();
   const pauseDownload = usePauseDownload();
   const resumeDownload = useResumeDownload();
@@ -50,6 +51,9 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
       <DownloadList
         downloads={downloads}
         isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetryFetch={() => refetch()}
         onStart={handleStart}
         onPause={handlePause}
         onResume={handleResume}
