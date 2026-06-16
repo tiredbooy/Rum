@@ -51,6 +51,8 @@ func GetRandomUserAgent() string {
 func GetUserAgentForQueue(queueID string) string {
 	h := fnv.New32a()
 	h.Write([]byte(queueID))
-	idx := h.Sum32() / uint32(len(userAgents))
+	// Modulo, not division: division produced indices far outside the slice and
+	// panicked with index-out-of-range for almost every queueID.
+	idx := h.Sum32() % uint32(len(userAgents))
 	return userAgents[idx]
 }

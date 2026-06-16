@@ -3,9 +3,9 @@ package filesystem
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-
 )
 
 // func CreateFile(fileName string, )
@@ -16,7 +16,9 @@ func CreateMetadataFile(fileName string) string {
 		configDir = ".rum"
 	}
 	dir := filepath.Join(configDir, "rum")
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("filesystem: failed to create metadata dir %s: %v", dir, err)
+	}
 	return filepath.Join(dir, fileName)
 }
 
@@ -31,7 +33,8 @@ func WriteMetadataFile(filename string, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", filename, err)
 	}
-	if err := os.WriteFile(path, fileData, 0644); err != nil {
+	// Atomic write: a crash mid-write can no longer corrupt jobs.json/settings.json.
+	if err := AtomicWriteFile(path, fileData, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", filename, err)
 	}
 	return nil

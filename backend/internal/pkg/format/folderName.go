@@ -151,10 +151,38 @@ func GetFolderName(contentType string) string {
 	}
 }
 
-func CleanFileName(url string) string {
-	urlArr := strings.Split(url, "?")
-	fileName := path.Base(urlArr[0])
-	return fileName
+// CleanFileName extracts a safe base filename from a URL or raw path. It strips
+// the query string, takes the last path element, URL-decodes it, and removes
+// path separators / unsafe characters so the result can never traverse out of a
+// download directory. It returns "" when nothing usable remains (callers should
+// fall back to a generated name).
+func CleanFileName(rawURL string) string {
+	// Prefer the URL path component so the host (e.g. "x.com") never leaks into
+	// the filename. Fall back to raw string handling for non-URL inputs.
+	s := rawURL
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" {
+		// A real URL: only the path can contribute a filename. Empty/root path
+		// means there is no filename to extract.
+		s = parsed.Path
+	} else if i := strings.IndexAny(s, "?#"); i != -1 {
+		s = s[:i]
+	}
+
+	// Normalise separators and take the final element.
+	s = strings.ReplaceAll(s, "\\", "/")
+	base := path.Base(s)
+
+	// path.Base returns "." or "/" for degenerate inputs.
+	if base == "." || base == "/" || base == ".." {
+		return ""
+	}
+
+	// URL-decode (e.g. %20 -> space) when it decodes cleanly.
+	if decoded, err := url.PathUnescape(base); err == nil && decoded != "" {
+		base = decoded
+	}
+
+	return sanitize(base)
 }
 
 func ExtractFileNameFromURL(inputUrl string) string {
@@ -166,11 +194,37 @@ func ExtractFileNameFromURL(inputUrl string) string {
 	if fname := parsed.Query().Get("filename"); fname != "" {
 		decoded, err := url.QueryUnescape(fname)
 		if err == nil && decoded != "" {
-			return decoded
+			return sanitize(decoded)
 		}
-
-		return fname
+		return sanitize(fname)
 	}
 
 	return ""
+}
+
+// sanitize strips path components and characters that are unsafe in filenames.
+// It mirrors filesystem.SanitizeFileName but lives here to avoid an import
+// cycle; the result contains no separators and no traversal sequences.
+func sanitize(name string) string {
+	name = strings.ReplaceAll(name, "\\", "/")
+	name = name[strings.LastIndex(name, "/")+1:]
+
+	var b strings.Builder
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	out := strings.TrimSpace(b.String())
+	out = strings.Trim(out, ". ")
+	if out == "" || out == "." || out == ".." {
+		return ""
+	}
+	return out
 }
