@@ -92,16 +92,26 @@ fi
 ok "Found wails: $(wails version 2>/dev/null | head -1 || echo present)"
 
 # --- System libraries (GTK + WebKit) needed by the Wails GUI ---
+# Wails defaults to webkit2gtk-4.0; modern distros ship 4.1, which Wails builds
+# against only with the 'webkit2_41' build tag. Detect and set it automatically.
+WAILS_TAGS=""
 if command -v pkg-config >/dev/null 2>&1; then
-  if ! pkg-config --exists gtk+-3.0 2>/dev/null || \
-     ! { pkg-config --exists webkit2gtk-4.1 2>/dev/null || pkg-config --exists webkit2gtk-4.0 2>/dev/null; }; then
+  have_40=0; have_41=0
+  pkg-config --exists webkit2gtk-4.0 2>/dev/null && have_40=1
+  pkg-config --exists webkit2gtk-4.1 2>/dev/null && have_41=1
+  if ! pkg-config --exists gtk+-3.0 2>/dev/null || { [[ "$have_40" -eq 0 && "$have_41" -eq 0 ]]; }; then
     err "Missing GTK3 / WebKit2GTK system libraries (required to build the GUI). Install them, then re-run:"
     echo "  Debian/Ubuntu : sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
     echo "  Fedora        : sudo dnf install gcc pkg-config gtk3-devel webkit2gtk4.1-devel"
     echo "  Arch          : sudo pacman -S --needed base-devel gtk3 webkit2gtk-4.1"
     exit 1
   fi
-  ok "Found GTK3 + WebKit2GTK"
+  if [[ "$have_40" -eq 0 && "$have_41" -eq 1 ]]; then
+    WAILS_TAGS="webkit2_41"
+    ok "Found GTK3 + WebKit2GTK 4.1 (building with -tags webkit2_41)"
+  else
+    ok "Found GTK3 + WebKit2GTK"
+  fi
 else
   info "pkg-config not found; skipping GTK/WebKit check (Wails may still fail without them)."
 fi
@@ -128,7 +138,11 @@ ensure_icons
 
 # --- Build ---
 info "Building the Rum desktop app (wails build)…"
-( cd "$REPO_ROOT" && wails build -clean )
+if [[ -n "$WAILS_TAGS" ]]; then
+  ( cd "$REPO_ROOT" && wails build -clean -tags "$WAILS_TAGS" )
+else
+  ( cd "$REPO_ROOT" && wails build -clean )
+fi
 
 BUILT_BIN="$REPO_ROOT/build/bin/$APP"
 [[ -f "$BUILT_BIN" ]] || { err "Expected build output $BUILT_BIN not found"; exit 1; }
