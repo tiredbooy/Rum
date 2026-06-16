@@ -112,23 +112,32 @@ func (m *model) View() string {
 		}
 		etaStr := "--:--"
 		if eta > 0 {
-			etaStr = eta.String()
+			etaStr = format.FormatDuration(eta)
+		} else if status == "running" && total <= 0 {
+			// Total size unknown: an ETA cannot be computed.
+			etaStr = "unknown"
 		} else if status == "running" {
 			etaStr = "…"
 		}
 
 		percent := 0.0
-		if total > 0 {
+		if total > 0 && downloaded >= 0 {
 			percent = float64(downloaded) / float64(total)
 			if percent > 1.0 {
 				percent = 1.0
 			}
 		}
 		bar := renderProgressBar(percent, 20, status)
+		// Percentage is meaningless when the total size is unknown.
 		percentStr := fmt.Sprintf("%5.1f%%", percent*100)
-		sizeStr := fmt.Sprintf("%s / %s", format.FormatBytes(downloaded), format.FormatBytes(total))
+		if total <= 0 {
+			percentStr = fmt.Sprintf("%7s", "  --  ")
+		}
+		var sizeStr string
 		if total <= 0 {
 			sizeStr = fmt.Sprintf("%s / ?", format.FormatBytes(downloaded))
+		} else {
+			sizeStr = fmt.Sprintf("%s / %s", format.FormatBytes(downloaded), format.FormatBytes(total))
 		}
 
 		row := fmt.Sprintf("%s %-*s %-10s %-8s %-20s %-7s %s",
@@ -136,8 +145,8 @@ func (m *model) View() string {
 		s.WriteString(row + "\n")
 	}
 
-	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Showing %d–%d of %d • downloads Completed: %d/%d ",
-		completedJobs, totalJobs, start+1, end, totalJobs)))
+	s.WriteString("\n" + batchInfoStyle.Render(fmt.Sprintf("Showing %d–%d of %d • Completed: %d/%d ",
+		start+1, end, totalJobs, completedJobs, totalJobs)))
 
 	if failedJobs >= 1 {
 		s.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color("#f3330399")).Render(
