@@ -31,7 +31,7 @@ type Job struct {
 	BatchID       string             `json:"batch_id"`
 	CancelFunc    context.CancelFunc `json:"-"`
 	CreatedAt     time.Time          `json:"created_at"`
-	CompletedAt   time.Time             `json:"completed_at"`
+	CompletedAt   time.Time          `json:"completed_at"`
 }
 
 func (j *Job) GetFileName() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.FileName }
@@ -63,3 +63,14 @@ func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Cr
 
 func (j *Job) GetCompletedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CompletedAt }
 func (j *Job) SetCompletedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CompletedAt = v }
+
+func (j *Job) GetCancelFunc() context.CancelFunc {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.CancelFunc
+}
+func (j *Job) SetCancelFunc(c context.CancelFunc) {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.CancelFunc = c
+}

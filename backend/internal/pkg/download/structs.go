@@ -29,6 +29,13 @@ type Options struct {
 	MaxRetries int
 	Silent     bool
 
+	// Connections is the number of concurrent connections (segments) to use
+	// for a single download when the server supports HTTP Range requests and
+	// the total size is known and large enough. 0 or 1 => single-stream
+	// download (the legacy behavior). Defaults are applied by the engine when
+	// unset.
+	Connections int
+
 	Downloader *Downloader
 }
 
