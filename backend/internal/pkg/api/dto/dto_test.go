@@ -72,6 +72,37 @@ func TestSpeedLimitRequestValidate(t *testing.T) {
 	}
 }
 
+func TestSetPriorityRequestValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     SetPriorityRequest
+		wantErr bool
+	}{
+		{"low", SetPriorityRequest{Priority: PriorityLow}, false},
+		{"normal", SetPriorityRequest{Priority: PriorityNormal}, false},
+		{"high", SetPriorityRequest{Priority: PriorityHigh}, false},
+		{"empty", SetPriorityRequest{Priority: ""}, true},
+		{"unknown", SetPriorityRequest{Priority: "urgent"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.req.Validate()
+			if tt.wantErr {
+				if got == nil {
+					t.Fatalf("priority %q: expected validation error", tt.req.Priority)
+				}
+				if _, ok := got["priority"]; !ok {
+					t.Fatalf("priority %q: expected 'priority' field error, got %v", tt.req.Priority, got)
+				}
+				return
+			}
+			if got != nil {
+				t.Fatalf("priority %q: expected valid, got %v", tt.req.Priority, got)
+			}
+		})
+	}
+}
+
 func TestClampLimit(t *testing.T) {
 	cases := map[int]int{
 		0:               DefaultPageSize,

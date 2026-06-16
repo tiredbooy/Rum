@@ -209,6 +209,59 @@ func ResumeDownload(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"message": "Download Resumed."})
 }
 
+// RetryDownload re-queues a failed/cancelled download. The engine decides
+// whether to resume a partial or restart from scratch; this handler only maps
+// the manager result onto the standard envelope.
+//
+// Wiring note: depends on GlobalManager.RetryJob(ctx, id) which the orchestrator
+// adds to manager.go (func (m *JobManager) RetryJob(ctx context.Context, id string) error).
+func RetryDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	if err := GlobalManager.RetryJob(c.Request.Context(), jobID); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "Download retry started."})
+}
+
+// SetDownloadPriority changes the scheduling priority of a single download.
+// Body: { "priority": "low" | "normal" | "high" }.
+//
+// Wiring note: depends on GlobalManager.SetJobPriority(id, priority) which the
+// orchestrator adds to manager.go (func (m *JobManager) SetJobPriority(id, priority string) error).
+func SetDownloadPriority(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCreateBodyBytes)
+
+	var req dto.SetPriorityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
+		return
+	}
+	if fields := req.Validate(); fields != nil {
+		writeFieldErrors(c, "validation failed", fields)
+		return
+	}
+
+	if err := GlobalManager.SetJobPriority(jobID, req.Priority); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": jobID, "priority": req.Priority})
+}
+
 func DeleteDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {

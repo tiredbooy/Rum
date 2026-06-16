@@ -83,6 +83,32 @@ type JobInfo struct {
 	Status string `json:"status"`
 }
 
+// Priority levels accepted by PATCH /downloads/:id/priority. These string
+// values are part of the API contract and are passed straight through to the
+// engine's SetJobPriority.
+const (
+	PriorityLow    = "low"
+	PriorityNormal = "normal"
+	PriorityHigh   = "high"
+)
+
+// SetPriorityRequest changes the scheduling priority of a single download.
+type SetPriorityRequest struct {
+	Priority string `json:"priority"`
+}
+
+// Validate ensures the priority is one of the accepted levels.
+func (r *SetPriorityRequest) Validate() map[string]string {
+	switch r.Priority {
+	case PriorityLow, PriorityNormal, PriorityHigh:
+		return nil
+	case "":
+		return map[string]string{"priority": "is required"}
+	default:
+		return map[string]string{"priority": `must be one of "low", "normal", "high"`}
+	}
+}
+
 // SpeedLimitRequest updates the global download speed limit (KB/s, 0 = unlimited).
 type SpeedLimitRequest struct {
 	SpeedLimitKB *int `json:"speed_limit_kb"`

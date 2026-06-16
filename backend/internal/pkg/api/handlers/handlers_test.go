@@ -127,3 +127,39 @@ func TestWriteServiceErrorMapping(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// TestSetDownloadPriorityValidation verifies the priority endpoint rejects a bad
+// body with the standard validation envelope BEFORE reaching the manager (so it
+// does not depend on the orchestrator-added SetJobPriority method).
+func TestSetDownloadPriorityValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"invalid json", `{not json`},
+		{"missing priority", `{}`},
+		{"unknown priority", `{"priority":"urgent"}`},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Params = gin.Params{{Key: "id", Value: "abc"}}
+			c.Request = httptest.NewRequest(http.MethodPatch, "/api/v1/downloads/abc/priority", strings.NewReader(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			SetDownloadPriority(c)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body: %s)", w.Code, w.Body.String())
+			}
+			var resp dto.ErrorResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("not an error envelope: %v (%s)", err, w.Body.String())
+			}
+			if resp.Code != dto.CodeValidation {
+				t.Fatalf("code = %q, want %q", resp.Code, dto.CodeValidation)
+			}
+		})
+	}
+}

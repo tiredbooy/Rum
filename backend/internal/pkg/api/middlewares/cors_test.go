@@ -8,11 +8,11 @@ import "testing"
 // custom-scheme origin (tauri://localhost). Cors must build without panicking.
 func TestCorsDoesNotPanic(t *testing.T) {
 	cases := map[string][]string{
-		"server default call": {"*"},      // what cmd/server/main.go passes
-		"nil -> dev defaults":  nil,        // includes tauri://localhost
-		"empty slice":          {},         // -> dev defaults
-		"explicit http":        {"http://localhost:5173"},
-		"custom scheme only":   {"tauri://localhost"},
+		"server default call": {"*"}, // what cmd/server/main.go passes
+		"nil -> dev defaults": nil,   // includes tauri://localhost
+		"empty slice":         {},    // -> dev defaults
+		"explicit http":       {"http://localhost:5173"},
+		"custom scheme only":  {"tauri://localhost"},
 	}
 	for name, origins := range cases {
 		t.Run(name, func(t *testing.T) {
