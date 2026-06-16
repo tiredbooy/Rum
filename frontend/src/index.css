@@ -311,4 +311,32 @@
   .eta-text {
     transition: opacity 0.2s;
   }
+
+  /* =============================================
+     Accessibility: visible focus & touch targets
+     ============================================= */
+
+  /* Keyboard-only focus ring fallback for any interactive element that
+     doesn't already define its own focus-visible style. Mouse clicks do not
+     trigger :focus-visible, so this stays out of the way for pointer users. */
+  :where(a, button, [role="button"], [tabindex]:not([tabindex="-1"]), input, select, textarea):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* =============================================
+   Reduced-motion guard
+   Neutralize animations/transitions for users who request it.
+   Kept outside @layer so it reliably overrides component styles.
+   ============================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
