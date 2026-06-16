@@ -28,15 +28,38 @@ var defaultDevOrigins = []string{
 func Cors(allowOrigins []string) gin.HandlerFunc {
 	origins := resolveOrigins(allowOrigins)
 
-	return cors.New(cors.Config{
-		AllowOrigins:        origins,
+	// gin-contrib/cors panics on any AllowOrigins entry that is neither "*" nor
+	// an http(s):// URL. Desktop webview origins use custom schemes (tauri://,
+	// wails://), so keep only http(s)/wildcard entries in AllowOrigins and match
+	// custom-scheme origins via AllowOriginFunc instead.
+	var httpOrigins []string
+	customAllowed := make(map[string]bool)
+	for _, o := range origins {
+		if o == "*" || strings.HasPrefix(o, "http://") || strings.HasPrefix(o, "https://") {
+			httpOrigins = append(httpOrigins, o)
+		} else {
+			customAllowed[o] = true
+		}
+	}
+
+	cfg := cors.Config{
 		AllowMethods:        []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:        []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-Request-ID"},
 		ExposeHeaders:       []string{"Content-Length", "X-Request-ID", "X-Total-Count"},
 		AllowCredentials:    false,
 		MaxAge:              12 * time.Hour,
 		AllowPrivateNetwork: true,
-	})
+		AllowOrigins:        httpOrigins,
+	}
+	if len(customAllowed) > 0 {
+		cfg.AllowOriginFunc = func(origin string) bool { return customAllowed[origin] }
+	}
+	// cors.New errors if neither AllowOrigins nor AllowOriginFunc is set.
+	if len(cfg.AllowOrigins) == 0 && cfg.AllowOriginFunc == nil {
+		cfg.AllowOrigins = []string{"http://localhost"}
+	}
+
+	return cors.New(cfg)
 }
 
 func resolveOrigins(allowOrigins []string) []string {
