@@ -19,3 +19,4 @@ build
 /build/windows/*
 !/build/windows/icon.ico
 compressed
+Rum
