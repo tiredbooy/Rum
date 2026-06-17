@@ -3,9 +3,11 @@ module github.com/tiredbooy/Rum
 go 1.25.7
 
 require (
+	github.com/gen2brain/beeep v0.11.2
 	github.com/getlantern/systray v1.2.2
 	github.com/tiredbooy/Rum/backend v0.1.1
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/sys v0.43.0
 )
 
 require (
@@ -24,7 +26,6 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/esiqveland/notify v0.13.3 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
-	github.com/gen2brain/beeep v0.11.2 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
 	github.com/getlantern/golog v0.0.0-20190830074920-4ef2e798c2d7 // indirect
@@ -89,7 +90,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect

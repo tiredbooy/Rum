@@ -35,10 +35,12 @@ var isQuitting bool // guard to prevent recursion
 func main() {
 	app := NewApp()
 
-	pubSetting, err := server.LoadSettings()
-	if err != nil {
+	// Touch the engine's settings accessor early so a corrupt/missing settings
+	// file is repaired (it rewrites defaults) before the UI loads. The desktop
+	// layer reads the tray/window/autostart prefs from settings.json directly
+	// (see settings.go) because PublicSettings only exposes ConfirmOnExit.
+	if _, err := server.LoadSettings(); err != nil {
 		log.Println("Error loading settings:", err)
-		return
 	}
 
 	opts := &options.App{
@@ -50,12 +52,30 @@ func main() {
 		WindowStartState: options.Normal,
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		OnBeforeClose: func(ctx context.Context) bool {
 			if isQuitting {
 				return false // already quitting, do nothing
 			}
 
-			if !pubSetting.ConfirmOnExit {
+			// Re-read the desktop settings on every close attempt so a runtime
+			// toggle of close-to-tray is honored without a restart. (server.LoadSettings
+			// only exposes ConfirmOnExit; the tray/window prefs come from settings.json
+			// directly — see settings.go.)
+			ds := loadDesktopSettings()
+
+			// Persist the current window geometry before any hide/quit so the next
+			// launch restores it.
+			persistWindowState(ctx, ds)
+
+			// Close-to-tray: hide instead of quitting, and cancel the close. The app
+			// keeps running in the tray; the user quits from the tray menu.
+			if ds.CloseToTray {
+				runtime.WindowHide(ctx)
+				return true // prevent close
+			}
+
+			if !ds.ConfirmOnExit {
 				// No confirmation needed – quit the app directly
 				isQuitting = true
 				runtime.Quit(ctx)
@@ -100,10 +120,18 @@ func main() {
 	wailsApp = application.NewWithOptions(opts)
 	server.SetQuitFunc(wailsApp.Quit)
 
-	go server.Start()
-
-	err = wailsApp.Run()
+	// Safe-port handshake: bind the loopback API (preferring :8080, falling back
+	// to a dynamic port) BEFORE serving, so the resolved base URL is known and can
+	// be handed to the frontend via App.GetApiBase(). Then serve in the background.
+	base, err := server.Listen()
 	if err != nil {
+		log.Println("Error binding API server:", err)
+	} else {
+		app.apiBase = base
+	}
+	go server.Serve()
+
+	if err := wailsApp.Run(); err != nil {
 		println("Error:", err.Error())
 	}
 }
