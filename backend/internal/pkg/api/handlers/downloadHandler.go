@@ -317,6 +317,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		Downloaded: job.Downloaded,
 		TotalSize:  job.TotalSize,
 		Speed:      job.GetSpeed(),
+		Category:   job.GetCategory(),
 	}
 }
 
@@ -332,6 +333,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 		TotalSize:   job.TotalSize,
 		Speed:       job.Speed,
 		Remaining:   int64(job.RemainingTime),
+		Category:    job.GetCategory(),
 		CreatedAt:   job.CreatedAt.String(),
 		CompletedAt: job.CompletedAt.String(),
 	}
