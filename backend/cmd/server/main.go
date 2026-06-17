@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -85,12 +86,13 @@ func Listen() (baseURL string, err error) {
 	governor := download.NewSpeedGovernor(setting.SpeedLimitKB)
 
 	opt := &download.Options{
-		SpeedLimit: setting.SpeedLimitKB,
-		Parallel:   setting.MaxParallel,
-		Out:        setting.OutDir,
-		MaxRetries: setting.MaxRetries,
-		Silent:     setting.Silent,
-		Governor:   governor,
+		SpeedLimit:  setting.SpeedLimitKB,
+		Parallel:    setting.MaxParallel,
+		Connections: setting.Connections,
+		Out:         setting.OutDir,
+		MaxRetries:  setting.MaxRetries,
+		Silent:      setting.Silent,
+		Governor:    governor,
 	}
 	opt.Downloader = download.NewDownloader("", "")
 
@@ -135,21 +137,48 @@ func Listen() (baseURL string, err error) {
 	return base, nil
 }
 
-// bindLoopback opens a TCP listener on the loopback interface, preferring
-// preferredPort and falling back to an OS-assigned free port if it is taken.
-// It returns the listener and the host:port string it is actually listening on.
+// portScanSpan is how many sequential ports starting at preferredPort bindLoopback
+// tries before asking the OS for any free port. Walking 8080..8089 first keeps the
+// API on a predictable, low port across restarts (nicer for logs/debugging); the
+// :0 fallback then guarantees startup never hard-fails even if all of them are
+// busy.
+const portScanSpan = 10
+
+// bindLoopback opens a TCP listener on the loopback interface. It tries
+// preferredPort first, then the next few sequential ports, and finally an
+// OS-assigned free port (":0"), so a port already in use (a second Rum instance,
+// or any other process holding 8080) never hard-fails startup. It returns the
+// listener and the host:port string it is actually listening on.
 func bindLoopback() (net.Listener, string, error) {
-	preferred := net.JoinHostPort(loopbackHost, preferredPort)
-	listener, err := net.Listen("tcp", preferred)
-	if err == nil {
-		return listener, listener.Addr().String(), nil
+	return bindLoopbackScan(loopbackHost, preferredPort, portScanSpan)
+}
+
+// bindLoopbackScan tries startPort, then the next span-1 sequential ports on host,
+// and finally an OS-assigned free port (":0"). It is split out from bindLoopback
+// so a test can drive the sequential-fallback path deterministically against a
+// known-busy port, instead of depending on whether 8080 happens to be free.
+func bindLoopbackScan(host, startPort string, span int) (net.Listener, string, error) {
+	first := net.JoinHostPort(host, startPort)
+
+	if base, err := strconv.Atoi(startPort); err == nil {
+		// Try startPort, then startPort+1 .. startPort+span-1.
+		for i := 0; i < span; i++ {
+			addr := net.JoinHostPort(host, strconv.Itoa(base+i))
+			listener, err := net.Listen("tcp", addr)
+			if err == nil {
+				if i > 0 {
+					log.Printf("port %s busy; bound on %s instead", first, listener.Addr().String())
+				}
+				return listener, listener.Addr().String(), nil
+			}
+		}
+		log.Printf("ports %d-%d on %s all busy; falling back to a dynamic port", base, base+span-1, host)
 	}
 
-	// Preferred port unavailable (commonly EADDRINUSE): fall back to :0 so the OS
-	// hands us any free port on loopback.
-	log.Printf("port %s unavailable (%v); falling back to a dynamic port", preferred, err)
-	fallback := net.JoinHostPort(loopbackHost, "0")
-	listener, err = net.Listen("tcp", fallback)
+	// Every candidate port was taken (or startPort wasn't numeric): let the OS hand
+	// us any free port on loopback.
+	fallback := net.JoinHostPort(host, "0")
+	listener, err := net.Listen("tcp", fallback)
 	if err != nil {
 		return nil, "", err
 	}

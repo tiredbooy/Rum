@@ -89,13 +89,20 @@ func UpdateSpeedLimit(c *gin.Context) {
 
 func applyDownloadOptions(setting *config.Setting) {
 	opt := &download.Options{
-		SpeedLimit: setting.SpeedLimitKB,
-		Out:        setting.OutDir,
-		Parallel:   setting.MaxParallel,
-		Silent:     setting.Silent,
-		MaxRetries: setting.MaxRetries,
+		SpeedLimit:  setting.SpeedLimitKB,
+		Out:         setting.OutDir,
+		Parallel:    setting.MaxParallel,
+		Connections: setting.Connections,
+		Silent:      setting.Silent,
+		MaxRetries:  setting.MaxRetries,
 	}
 	download.LoadOptions(opt)
+
+	// Push the connection count onto the live manager so a change takes effect for
+	// the next download without a restart (LoadOptions is a one-shot sync.Once).
+	if GlobalManager != nil {
+		GlobalManager.SetConnections(setting.Connections)
+	}
 }
 
 func validateSettingReq(req config.SettingReq) map[string]string {
@@ -108,6 +115,9 @@ func validateSettingReq(req config.SettingReq) map[string]string {
 	}
 	if req.MaxRetries != nil && *req.MaxRetries < 0 {
 		fields["max_retries"] = "must be >= 0"
+	}
+	if req.Connections != nil && (*req.Connections < 1 || *req.Connections > 16) {
+		fields["connections"] = "must be between 1 and 16"
 	}
 	if len(fields) == 0 {
 		return nil

@@ -41,6 +41,7 @@ const defaultSettings: SettingReq = {
   out_dir: "",
   speed_limit_kb: 0,
   max_parallel: 3,
+  connections: 8,
   max_retries: 3,
   preferred_theme: "system",
   post_download: { auto_open_dir: false, action: "none" },
@@ -228,6 +229,26 @@ export function SettingsForm() {
               handleBlur("max_parallel", { max_parallel: form.max_parallel })
             }
             saved={savedField === "max_parallel"}
+          />
+
+          <SettingInput
+            label="Connections per download"
+            icon={<Zap className="w-4 h-4" />}
+            type="number"
+            min={1}
+            max={16}
+            value={form.connections}
+            placeholder="8"
+            onChange={(e) =>
+              updateField(
+                "connections",
+                e.target.value === "" ? 8 : Number(e.target.value),
+              )
+            }
+            onBlur={() =>
+              handleBlur("connections", { connections: form.connections })
+            }
+            saved={savedField === "connections"}
           />
 
           <SettingInput

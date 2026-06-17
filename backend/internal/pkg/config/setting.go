@@ -20,6 +20,10 @@ type Setting struct {
 	SpeedLimitKB int    `json:"speed_limit_kb"`
 	MaxParallel  int    `json:"max_parallel"`
 	MaxRetries   int    `json:"max_retries"`
+	// Connections is the number of parallel connections (segments) per download
+	// for range-capable files. More connections beat per-connection CDN throttling
+	// (clamped to [1, maxConnections]); 1 = single stream.
+	Connections int `json:"connections"`
 
 	// UI / Frontend
 	PreferredTheme string `json:"preferred_theme"`
@@ -84,6 +88,7 @@ type SettingReq struct {
 	SpeedLimitKB *int    `json:"speed_limit_kb"`
 	MaxParallel  *int    `json:"max_parallel"`
 	MaxRetries   *int    `json:"max_retries"`
+	Connections  *int    `json:"connections"`
 
 	// UI / Frontend
 	PreferredTheme *string `json:"preferred_theme"`
@@ -109,6 +114,13 @@ type SpeedRule struct {
 	LimitKBps int   `json:"limit_kbps"`     // 0 = unlimited
 	Days      []int `json:"days,omitempty"` // 0=Sun..6=Sat; empty = every day
 }
+
+const (
+	// defaultConnections is the default parallel connections per download. 8
+	// mirrors the engine default and IDM; maxConnections bounds the setting/slider.
+	defaultConnections = 8
+	maxConnections     = 16
+)
 
 // validActions / validConflicts / validLogLevels define the accepted enum values.
 var (
@@ -154,6 +166,12 @@ func (s *Setting) Validate() {
 	}
 	if s.MaxParallel > 64 {
 		s.MaxParallel = 64
+	}
+	if s.Connections < 1 {
+		s.Connections = defaultConnections
+	}
+	if s.Connections > maxConnections {
+		s.Connections = maxConnections
 	}
 	if s.MaxRetries < 0 {
 		s.MaxRetries = 0
@@ -243,6 +261,9 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.MaxRetries != nil {
 		s.MaxRetries = *req.MaxRetries
 	}
+	if req.Connections != nil {
+		s.Connections = *req.Connections
+	}
 	if req.PreferredTheme != nil {
 		s.PreferredTheme = *req.PreferredTheme
 	}
@@ -311,6 +332,7 @@ func (s *Setting) setDefaults() {
 	s.OutDir = filesystem.GetOrCreateDownloadDirectory()
 	s.SpeedLimitKB = 0
 	s.MaxParallel = 1
+	s.Connections = defaultConnections
 	s.MaxRetries = 3
 	s.PreferredTheme = "system"
 	s.FileConflict = "rename"
@@ -336,6 +358,9 @@ func (s *Setting) setDefaults() {
 func (s *Setting) applyMissingDefaults() {
 	if s.MaxParallel == 0 {
 		s.MaxParallel = 1
+	}
+	if s.Connections == 0 {
+		s.Connections = defaultConnections
 	}
 	if s.OutDir == "" {
 		s.OutDir = filesystem.GetOrCreateDownloadDirectory()

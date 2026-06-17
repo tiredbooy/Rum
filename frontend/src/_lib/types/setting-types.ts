@@ -4,6 +4,9 @@ export interface Setting {
   out_dir?: string;
   speed_limit_kb?: number;
   max_parallel?: number;
+  // connections: parallel connections (segments) per download, 1–16. More beats
+  // per-connection CDN throttling. Mirrors config.Setting.Connections (Go).
+  connections?: number;
   max_retries?: number;
   preferred_theme: "system" | "light" | "dark";
   // Desktop preferences (persisted via PATCH /api/v1/settings). snake_case to

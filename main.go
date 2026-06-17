@@ -70,7 +70,13 @@ func main() {
 
 			// Close-to-tray: hide instead of quitting, and cancel the close. The app
 			// keeps running in the tray; the user quits from the tray menu.
-			if ds.CloseToTray {
+			//
+			// Only honored where a tray icon actually exists to restore the window
+			// from (Windows). On builds without a tray (Linux/macOS — see
+			// trayAvailable / tray_others.go) fall through to the normal
+			// confirm/quit path so the window can never vanish with no way to bring
+			// it back.
+			if ds.CloseToTray && trayAvailable {
 				runtime.WindowHide(ctx)
 				return true // prevent close
 			}

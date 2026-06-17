@@ -77,3 +77,36 @@ func TestBindLoopbackPrefersPreferredPort(t *testing.T) {
 	// If 8080 was free it should be chosen; if not, a dynamic port is fine. Either
 	// way the bind must succeed on loopback (asserted above).
 }
+
+// TestBindLoopbackScanSkipsBusyStartPort drives the sequential-scan helper
+// deterministically: it occupies an arbitrary free loopback port, then asks the
+// scanner to START at that port, and asserts it skips ahead to a different one.
+// Unlike TestBindLoopbackFallsBackWhenPortTaken (which gets skipped when a sibling
+// test is already holding 8080), this never depends on the preferred port, so the
+// fallback path is always exercised.
+func TestBindLoopbackScanSkipsBusyStartPort(t *testing.T) {
+	// Grab a free port and hold it so the scan's first attempt fails.
+	blocker, err := net.Listen("tcp", net.JoinHostPort(loopbackHost, "0"))
+	if err != nil {
+		t.Fatalf("occupy a free port: %v", err)
+	}
+	defer blocker.Close()
+
+	_, busyPort, err := net.SplitHostPort(blocker.Addr().String())
+	if err != nil {
+		t.Fatalf("split blocker addr: %v", err)
+	}
+
+	ln, addr, err := bindLoopbackScan(loopbackHost, busyPort, 10)
+	if err != nil {
+		t.Fatalf("bindLoopbackScan with start port busy: %v", err)
+	}
+	defer ln.Close()
+
+	if !strings.HasPrefix(addr, loopbackHost+":") {
+		t.Fatalf("want loopback addr, got %q", addr)
+	}
+	if strings.HasSuffix(addr, ":"+busyPort) {
+		t.Fatalf("expected the scan to skip busy start port %s, but it bound it: %q", busyPort, addr)
+	}
+}

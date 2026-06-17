@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 import (
@@ -7,6 +9,16 @@ import (
 	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// trayAvailable reports whether this build runs a real system tray. Only the
+// Windows build does. getlantern/systray drives its own native UI event loop;
+// on Windows that loop is just a hidden message-pump window, which coexists
+// fine with Wails' WebView2. On Linux it is a second GTK main loop and on macOS
+// a second AppKit run loop — and Wails already owns one of those on the main
+// thread. Two native UI loops in one process race on shared global state and
+// abort (SIGABRT inside gtk_widget_show_all on Linux). See tray_others.go for
+// the no-op used everywhere else.
+const trayAvailable = true
 
 //go:embed frontend/src/assets/tray-icon.png
 var trayIcon []byte // embed a 16x16 or 24x24 PNG

@@ -99,6 +99,9 @@ configure_goproxy() {
 if [[ "$UNINSTALL" -eq 1 ]]; then
   rm -f "$TARGET" "$ICON_TARGET" "$DESKTOP_TARGET"
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+  for kb in kbuildsycoca6 kbuildsycoca5; do
+    if command -v "$kb" >/dev/null 2>&1; then "$kb" >/dev/null 2>&1 || true; break; fi
+  done
   ok "Uninstalled $APP (binary, icon, menu entry)."
   exit 0
 fi
@@ -204,13 +207,19 @@ Comment=Powerful, fast and modern download manager
 Exec=$TARGET
 Icon=$APP
 Terminal=false
-Categories=Network;FileTransfer;Utility;
+Categories=Network;FileTransfer;
 StartupWMClass=$APP
 EOF
 chmod 0644 "$DESKTOP_TARGET"
 ok "Installed menu entry to $DESKTOP_TARGET"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+# KDE Plasma keeps its own menu cache (sycoca) that update-desktop-database does
+# not touch, so a fresh entry won't appear until the next login. Rebuild it when
+# present; a no-op on GNOME/other desktops.
+for kb in kbuildsycoca6 kbuildsycoca5; do
+  if command -v "$kb" >/dev/null 2>&1; then "$kb" >/dev/null 2>&1 || true; break; fi
+done
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;

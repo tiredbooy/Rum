@@ -53,8 +53,13 @@ func (a *App) startup(ctx context.Context) {
 	// Opt-in clipboard watcher: emits "clipboard:url" events for the frontend.
 	go a.watchClipboard(bgCtx)
 
-	// Best-effort minimize-to-tray (Wails v2.12 has no OnMinimise callback).
-	go a.watchMinimize(bgCtx)
+	// Best-effort minimize-to-tray (Wails v2.12 has no OnMinimise callback). Only
+	// started where a tray exists to minimize into — otherwise hiding the window
+	// on minimize would strand it with no tray icon to restore it from (see
+	// trayAvailable / tray_others.go).
+	if trayAvailable {
+		go a.watchMinimize(bgCtx)
+	}
 }
 
 // shutdown is wired to options.App.OnShutdown. It cancels every background

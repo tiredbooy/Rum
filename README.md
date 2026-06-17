@@ -53,8 +53,10 @@ TUI all share.
 **Desktop experience**
 - 📋 **Clipboard capture** — opt-in watcher that offers to add http(s) links you
   copy.
-- 🪟 **System tray** — show/hide, start-all, pause-all, and quit; optional
-  **minimize-to-tray** and **close-to-tray**.
+- 🪟 **System tray** *(Windows)* — show/hide, start-all, pause-all, and quit;
+  optional **minimize-to-tray** and **close-to-tray**. On Linux/macOS these fall
+  back to normal window behavior (a Wails v2 GTK/AppKit app can't host a second
+  tray event loop in-process; native tray support arrives with Wails v3).
 - 🔔 **Native notifications** on download completion.
 - 🚀 **Autostart on login** (Linux `.desktop`, Windows Run key, macOS LaunchAgent)
   and **window-state persistence**.

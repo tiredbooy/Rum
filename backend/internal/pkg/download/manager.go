@@ -625,6 +625,22 @@ func (m *JobManager) SetMax(n int) {
 	m.sched.SetMax(n)
 }
 
+// SetConnections updates the per-download parallel connection (segment) count
+// used for NEW downloads; already-running downloads keep their existing segment
+// plan (changing it mid-flight would invalidate the resume sidecar). n is clamped
+// to [1, maxConnections]; 1 means single-stream.
+func (m *JobManager) SetConnections(n int) {
+	if n < 1 {
+		n = 1
+	}
+	if n > maxConnections {
+		n = maxConnections
+	}
+	m.mu.Lock()
+	m.opt.Connections = n
+	m.mu.Unlock()
+}
+
 // Shutdown stops the dispatcher and closes the scheduler. It cancels the
 // dispatch context (waking a blocked Next), closes the scheduler (so no further
 // Submit/Next succeed), and waits for the dispatcher goroutine to exit. In-flight

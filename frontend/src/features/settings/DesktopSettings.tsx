@@ -29,12 +29,12 @@ const TOGGLES: {
   {
     field: "minimize_to_tray",
     label: "Minimize to tray",
-    help: "Hide the window to the system tray instead of the taskbar when minimized.",
+    help: "Hide the window to the system tray instead of the taskbar when minimized. Windows only in this build; on Linux/macOS the window minimizes normally.",
   },
   {
     field: "close_to_tray",
     label: "Close to tray",
-    help: "Keep running in the tray when the window is closed.",
+    help: "Keep running in the tray when the window is closed. Windows only in this build; on Linux/macOS closing quits the app.",
   },
   {
     field: "enable_clipboard_watch",
@@ -46,7 +46,10 @@ const TOGGLES: {
 /**
  * Desktop preference switches. Each toggle persists immediately via the existing
  * partial PATCH /settings mutation. These fields are only meaningful in the
- * desktop (Wails) build, but they persist harmlessly in browser/dev too.
+ * desktop (Wails) build, but they persist harmlessly in browser/dev too. Note
+ * minimize_to_tray / close_to_tray are effective only on Windows (the system
+ * tray is Windows-only — see the Go side's trayAvailable in tray_others.go);
+ * elsewhere they persist but have no effect.
  */
 export function DesktopSettings() {
   const { data: settings, isLoading, isError } = useSettings();

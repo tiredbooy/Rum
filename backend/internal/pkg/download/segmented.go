@@ -21,9 +21,13 @@ import (
 
 const (
 	// defaultConnections is used when a job opts into segmented downloading
-	// (Connections <= 0 means "single stream", so callers must set it).
-	defaultConnections = 4
-	// maxConnections caps how many segments we will ever open for one file.
+	// (Connections <= 0 means "single stream", so callers must set it). 8 mirrors
+	// IDM's default and roughly doubles throughput against CDNs that rate-limit
+	// each connection (the common case for game/file-host CDNs); see the
+	// user-tunable "connections" setting (clamped to maxConnections).
+	defaultConnections = 8
+	// maxConnections caps how many segments we will ever open for one file. It is
+	// also the upper bound of the user-facing connections setting/slider.
 	maxConnections = 16
 	// minSegmentedSize is the smallest total size for which segmenting is worth
 	// the overhead of multiple connections + a sidecar file (4 MiB).
