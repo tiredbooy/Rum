@@ -100,24 +100,29 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 		offset = 0
 	}
 
-	var setting config.Setting
-	err = setting.LoadSettingMetadata()
-	if err != nil {
-		log.Println("Failed to load setting metadata.")
-	}
-
 	var body io.ReadCloser = resp.Body
-	// Per-job override (opt.SpeedLimit, in KB/s) takes precedence when set;
-	// otherwise fall back to the global setting (setting.SpeedLimitKB, KB/s).
-	limitKB := setting.SpeedLimitKB
-	if opt.SpeedLimit > 0 {
-		limitKB = opt.SpeedLimit
-	}
-	if limiter := newSpeedLimiter(limitKB); limiter != nil {
-		body = &rateLimitedReader{
-			reader:  resp.Body,
-			limiter: limiter,
-			ctx:     ctx,
+	if opt.Governor != nil {
+		// Shared, live-adjustable global cap (desktop server path). The governor
+		// enforces one budget across all concurrent downloads and honors live
+		// bandwidth-window changes.
+		body = opt.Governor.Wrap(ctx, resp.Body)
+	} else {
+		// Engine/CLI path: per-download limiter. Per-job override (opt.SpeedLimit,
+		// KB/s) takes precedence; otherwise fall back to the global setting.
+		var setting config.Setting
+		if err := setting.LoadSettingMetadata(); err != nil {
+			log.Println("Failed to load setting metadata.")
+		}
+		limitKB := setting.SpeedLimitKB
+		if opt.SpeedLimit > 0 {
+			limitKB = opt.SpeedLimit
+		}
+		if limiter := newSpeedLimiter(limitKB); limiter != nil {
+			body = &rateLimitedReader{
+				reader:  resp.Body,
+				limiter: limiter,
+				ctx:     ctx,
+			}
 		}
 	}
 
@@ -173,7 +178,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
 	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
-	job.OutputPath = fullPath
+	job.SetOutputPath(fullPath)
 
 	var existsFileSize int64 = 0
 	if filesystem.IsFileExists(fullPath) {
@@ -186,6 +191,11 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	if job.TotalSize <= 0 && existsFileSize > 0 {
 		DebugLog("Remote size unknown, local file exists -> marking as completed")
+		// Even a pre-existing file is verified against a supplied checksum (no-op
+		// when none was supplied).
+		if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+			return err
+		}
 		job.SetStatus(StatusCompleted)
 		job.SetDownloaded(existsFileSize)
 		return nil
@@ -193,6 +203,9 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 
 	if job.TotalSize >= 1 && existsFileSize == int64(job.TotalSize) {
 		DebugLog("Found Completed File Pass")
+		if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+			return err
+		}
 		job.SetStatus(StatusCompleted)
 		job.SetDownloaded(int64(job.TotalSize))
 		return nil
@@ -204,14 +217,45 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		job.SetTotalSize(-1)
 	}
 
+	// Fail fast if the destination filesystem clearly cannot hold what remains to
+	// be downloaded, instead of allocating, downloading partway, and dying with
+	// ENOSPC. Only the not-yet-downloaded bytes need to fit. Degrades to a no-op
+	// when the size is unknown or free space can't be determined.
+	if job.TotalSize > 0 {
+		remaining := int64(job.TotalSize) - existsFileSize
+		if remaining > 0 {
+			if err := PreflightDiskSpace(filepath.Dir(fullPath), remaining); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Wrap the actual transfer in retry-with-backoff. Each attempt re-stats the
 	// partial file and resumes from its current size, so a transient failure
 	// mid-stream resumes where it left off instead of restarting. Permanent
 	// errors (HTTP 4xx) and context cancellation are not retried.
 	cfg := newRetryConfig(opt.MaxRetries)
-	return retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
+	if err := retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
 		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Verify integrity once, after a successful assemble (NOT per retry attempt).
+	// A mismatch surfaces ErrChecksumMismatch and leaves the file in place so the
+	// user can inspect/retry. No-op when opt.Checksum == "".
+	if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+		return err
+	}
+
+	// Auto-organize into a category directory (no-op unless opt.Categorize and a
+	// matching rule). A categorize failure must not lose the downloaded file, so
+	// log and continue rather than returning an error.
+	if err := finalizeCategorize(opt, job); err != nil {
+		DebugLog("categorize failed: " + err.Error())
+	}
+
+	return nil
 }
 
 // downloadSingleAttempt performs one single-stream download attempt, resuming

@@ -18,14 +18,41 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/scheduler"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
+
+// testCompletionHook, when non-nil, is invoked with a job id right after the job
+// finishes (success, error, or pause). It exists only so tests can observe
+// completion ordering without depending on disk persistence; production code
+// leaves it nil. Access is guarded by testHookMu so a download goroutine reading
+// the hook never races a test reassigning it.
+var (
+	testHookMu         sync.Mutex
+	testCompletionHook func(id string)
+)
+
+func setTestCompletionHook(f func(id string)) func(id string) {
+	testHookMu.Lock()
+	defer testHookMu.Unlock()
+	prev := testCompletionHook
+	testCompletionHook = f
+	return prev
+}
+
+func fireTestCompletionHook(id string) {
+	testHookMu.Lock()
+	f := testCompletionHook
+	testHookMu.Unlock()
+	if f != nil {
+		f(id)
+	}
+}
 
 type JobManager struct {
 	mu             sync.RWMutex
 	jobs           map[string]*Job
 	urls           map[string]string
-	sem            chan struct{}
 	opt            *Options
 	subMu          sync.RWMutex
 	subscribers    map[string][]chan dto.ProgressUpdate
@@ -34,6 +61,15 @@ type JobManager struct {
 	batchCounters  map[string]int32
 	batchMu        sync.Mutex
 	config         config.Setting
+
+	// sched is the priority-aware concurrency gate. At most opt.Parallel jobs run
+	// at once; queued jobs are granted highest-priority-first. A single dispatcher
+	// goroutine pulls runnable ids from it and launches downloads.
+	sched          *scheduler.Scheduler
+	dispatchCtx    context.Context
+	dispatchCancel context.CancelFunc
+	dispatchWG     sync.WaitGroup
+	shutdownOnce   sync.Once
 }
 
 type SortField string
@@ -74,20 +110,80 @@ func NewJobManager(opt *Options) *JobManager {
 	var setting config.Setting
 	setting.LoadSettingMetadata()
 
+	dispatchCtx, dispatchCancel := context.WithCancel(context.Background())
+
 	m := &JobManager{
-		jobs:          make(map[string]*Job),
-		urls:          make(map[string]string),
-		sem:           make(chan struct{}, opt.Parallel),
-		opt:           opt,
-		subscribers:   make(map[string][]chan dto.ProgressUpdate),
-		batchCounters: make(map[string]int32),
-		config:        setting,
+		jobs:           make(map[string]*Job),
+		urls:           make(map[string]string),
+		opt:            opt,
+		subscribers:    make(map[string][]chan dto.ProgressUpdate),
+		batchCounters:  make(map[string]int32),
+		config:         setting,
+		sched:          scheduler.New(opt.Parallel),
+		dispatchCtx:    dispatchCtx,
+		dispatchCancel: dispatchCancel,
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.loadFromDisk()
+	m.mu.Unlock()
+
+	// Start the single dispatcher goroutine. It is the only goroutine that ever
+	// launches a download, so concurrency is bounded by the scheduler. It exits
+	// when Shutdown cancels dispatchCtx / closes the scheduler (leak-free).
+	m.dispatchWG.Add(1)
+	go m.dispatch()
+
 	return m
+}
+
+// dispatch is the single goroutine that turns scheduler grants into running
+// downloads. It blocks in Next until a slot is free and a job is queued, then
+// launches that job. Each launched download's defer calls sched.Done so the slot
+// is always released. It returns when the scheduler is closed (Shutdown).
+func (m *JobManager) dispatch() {
+	defer m.dispatchWG.Done()
+	for {
+		id, ok := m.sched.Next(m.dispatchCtx)
+		if !ok {
+			return // scheduler closed or context cancelled
+		}
+
+		// Re-check the job is still eligible at the moment a slot opens. It may
+		// have been deleted, completed, or paused while queued; if so, release the
+		// slot and move on instead of (re)starting it.
+		m.mu.Lock()
+		job, exists := m.jobs[id]
+		if !exists {
+			m.mu.Unlock()
+			m.sched.Done(id)
+			continue
+		}
+		status := job.GetStatus()
+		if status != StatusPending && status != StatusPaused {
+			m.mu.Unlock()
+			m.sched.Done(id)
+			continue
+		}
+		// Establish the per-job cancellable context now (before running) so PauseJob
+		// can cancel it once the job is running.
+		bgCtx, cancel := context.WithCancel(context.Background())
+		job.SetStatus(StatusRunning)
+		job.SetCancelFunc(cancel)
+		m.mu.Unlock()
+
+		// release frees the scheduler slot. It is called as soon as the transfer
+		// finishes (before slow post-completion side effects like notifications),
+		// and again via defer as a panic-safe net. sync.Once makes it idempotent so
+		// the slot is freed exactly once.
+		var releaseOnce sync.Once
+		release := func() { releaseOnce.Do(func() { m.sched.Done(id) }) }
+
+		go func(id string, ctx context.Context, cancel context.CancelFunc, release func()) {
+			defer release()
+			m.runDownload(ctx, id, cancel, release)
+		}(id, bgCtx, cancel, release)
+	}
 }
 
 func (m *JobManager) loadFromDisk() {
@@ -103,6 +199,48 @@ func (m *JobManager) GetJobIDByURL(url string) (string, bool) {
 	defer m.mu.RUnlock()
 	id, ok := m.urls[url]
 	return id, ok
+}
+
+// JobCreateOptions carries optional per-job fields threaded from the create /
+// batch API onto newly created jobs. All fields are optional; zero values mean
+// "no override".
+type JobCreateOptions struct {
+	Checksum     string
+	ChecksumAlgo string
+	Category     string
+	StartAt      time.Time
+}
+
+// CreateJobsFromURLsWithOptions creates jobs for the given URLs (same dedupe /
+// HEAD / validation behavior as CreateJobsFromURLs) and stamps the optional
+// per-job fields (checksum, category, scheduled start) onto each created job,
+// persisting them. It returns the newly created jobs.
+func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreateOptions) ([]*Job, error) {
+	jobs, err := m.CreateJobsFromURLs(urls)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return jobs, nil
+	}
+
+	for _, job := range jobs {
+		if opts.Checksum != "" {
+			job.SetChecksum(opts.Checksum)
+			job.SetChecksumAlgo(opts.ChecksumAlgo)
+		}
+		if opts.Category != "" {
+			job.SetCategory(opts.Category)
+		}
+		if !opts.StartAt.IsZero() {
+			job.SetStartAt(opts.StartAt)
+		}
+	}
+
+	m.mu.Lock()
+	m.saveToDisk()
+	m.mu.Unlock()
+	return jobs, nil
 }
 
 func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
@@ -277,6 +415,10 @@ func (m *JobManager) CheckJobExists(ctx context.Context, jobID string) bool {
 	return true
 }
 
+// StartJob enqueues a pending/paused job on the priority scheduler. The actual
+// download is launched by the single dispatcher goroutine once a concurrency
+// slot is free (highest priority first). It returns once the job is queued; the
+// ctx argument is accepted for API compatibility but the dispatch is async.
 func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.mu.Lock()
 	job, exists := m.jobs[jobID]
@@ -284,35 +426,34 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 		m.mu.Unlock()
 		return fmt.Errorf("job %s not found", jobID)
 	}
-	if job.Status != StatusPending && job.Status != StatusPaused {
+	if s := job.GetStatus(); s != StatusPending && s != StatusPaused {
 		m.mu.Unlock()
-		return fmt.Errorf("job %s is already %s", jobID, job.Status)
+		return fmt.Errorf("job %s is already %s", jobID, s)
 	}
+	// Mark pending so the dispatcher's eligibility re-check passes when the slot
+	// opens. The dispatcher flips it to running just before launching.
 	job.SetStatus(StatusPending)
+	priority := job.GetPriority()
 	m.mu.Unlock()
 
-	bgCtx, cancel := context.WithCancel(context.Background())
-	job.SetCancelFunc(cancel)
-
-	select {
-	case m.sem <- struct{}{}:
-		log.Printf("StartJob: acquired semaphore for %s", jobID)
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	go m.runDownload(bgCtx, jobID, cancel)
+	m.sched.Submit(jobID, scheduler.ParsePriority(normalizePriority(priority)))
 	return nil
 }
 
-func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel context.CancelFunc) {
-	defer func() { <-m.sem }()
+// runDownload executes a single job. release frees the scheduler's concurrency
+// slot; it is invoked as soon as the transfer finishes (before slow
+// post-completion side effects such as desktop notifications) so a blocked
+// notification cannot starve the gate. The job is already marked running by the
+// dispatcher before this is called.
+func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel context.CancelFunc, release func()) {
 	defer cancel()
 
-	m.mu.Lock()
+	m.mu.RLock()
 	job := m.jobs[jobID]
-	job.SetStatus(StatusRunning)
-	m.mu.Unlock()
+	m.mu.RUnlock()
+	if job == nil {
+		return
+	}
 
 	var lastDownloaded int64
 	var lastTime time.Time
@@ -354,14 +495,32 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 			Downloaded: downloaded,
 			TotalSize:  total,
 			Speed:      smoothSpeed,
-			Status:     string(job.Status),
+			Status:     job.GetStatus(),
 			Progress:   progressPercent(downloaded, total),
 			ETA:        eta,
 		}
 		m.publishProgress(update)
 	}
 
-	err := DownloadSegmented(ctx, *m.opt, job, progressFn)
+	// Build the effective per-download options: start from the manager's global
+	// options (governor, parallelism, out dir, speed limit) and overlay the
+	// per-job fields threaded from the create/batch request (checksum, category).
+	m.mu.RLock()
+	effectiveOpt := *m.opt
+	m.mu.RUnlock()
+	if cs := job.GetChecksum(); cs != "" {
+		effectiveOpt.Checksum = cs
+		effectiveOpt.ChecksumAlgo = job.GetChecksumAlgo()
+	}
+	if cat := job.GetCategory(); cat != "" {
+		effectiveOpt.Categorize = true
+		effectiveOpt.Category = cat
+	} else if effectiveOpt.Categorize {
+		// Global categorize-on (no explicit per-job category): keep auto-detect.
+		effectiveOpt.Category = ""
+	}
+
+	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
 
 	m.mu.Lock()
 	if ctx.Err() == context.Canceled {
@@ -372,11 +531,11 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	} else {
 		log.Println("ERROR STARTING: ", err.Error())
 		job.SetStatus(StatusError)
-		job.Error = err
+		job.SetError(err)
 	}
 	downloaded := job.GetDownloaded()
-	totalSize := job.TotalSize
-	finalStatus := string(job.Status)
+	totalSize := job.GetTotalSize()
+	finalStatus := job.GetStatus()
 	m.mu.Unlock()
 
 	finalUpdate := dto.ProgressUpdate{
@@ -390,9 +549,18 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	}
 	m.publishProgress(finalUpdate)
 
+	// The transfer is done — free the scheduler slot now so the next queued job
+	// can start immediately, before the (potentially slow / blocking) post-
+	// completion side effects below (disk persist, OS notification, auto-open).
+	if release != nil {
+		release()
+	}
+
 	m.saveToDisk()
 
 	m.onJobFinished(job)
+
+	fireTestCompletionHook(jobID)
 }
 
 func (m *JobManager) StartAllJobs(ctx context.Context) {
@@ -401,7 +569,7 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.mu.RLock()
 
 	for _, job := range m.jobs {
-		if job.Status == StatusPending || job.Status == StatusPaused {
+		if s := job.GetStatus(); s == StatusPending || s == StatusPaused {
 			eligibleJobs = append(eligibleJobs, job)
 		}
 	}
@@ -411,24 +579,64 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.batchCounters[batchID] = int32(len(eligibleJobs))
 	m.batchMu.Unlock()
 
-	// Start higher-priority jobs first; fall back to the configured sort within
-	// the same priority level.
+	// Submit higher-priority jobs first; fall back to the configured sort within
+	// the same priority level. The scheduler also orders by priority, but a
+	// deterministic Submit order keeps FIFO-within-a-level behavior predictable.
 	sort.SliceStable(eligibleJobs, func(i, j int) bool {
 		pi, pj := priorityRank(eligibleJobs[i].GetPriority()), priorityRank(eligibleJobs[j].GetPriority())
 		if pi != pj {
 			return pi > pj
 		}
 		if m.sortBy == "created_at" {
-			return utils.TimeCompare(eligibleJobs[i].CreatedAt, eligibleJobs[j].CreatedAt)
+			return utils.TimeCompare(eligibleJobs[i].GetCreatedAt(), eligibleJobs[j].GetCreatedAt())
 		}
 
-		return eligibleJobs[i].FileName < eligibleJobs[j].FileName
+		return eligibleJobs[i].GetFileName() < eligibleJobs[j].GetFileName()
 	})
 
 	for _, job := range eligibleJobs {
 		job.BatchID = batchID
 		m.StartJob(ctx, job.ID)
 	}
+}
+
+// SetSpeedLimit updates the global download speed limit (KB/s, 0 = unlimited)
+// stored on the manager's Options. When a SpeedGovernor is attached (the desktop
+// server path), the schedule controller calls Governor.SetLimitKBps so running
+// downloads pick up the new limit live; new downloads always read this value.
+func (m *JobManager) SetSpeedLimit(kbps int) {
+	if kbps < 0 {
+		kbps = 0
+	}
+	m.mu.Lock()
+	m.opt.SpeedLimit = kbps
+	m.mu.Unlock()
+}
+
+// SetMax adjusts the maximum number of concurrent downloads at runtime. It is a
+// passthrough to the scheduler; n is clamped to >= 1 by the scheduler.
+func (m *JobManager) SetMax(n int) {
+	if n < 1 {
+		n = 1
+	}
+	m.mu.Lock()
+	m.opt.Parallel = n
+	m.mu.Unlock()
+	m.sched.SetMax(n)
+}
+
+// Shutdown stops the dispatcher and closes the scheduler. It cancels the
+// dispatch context (waking a blocked Next), closes the scheduler (so no further
+// Submit/Next succeed), and waits for the dispatcher goroutine to exit. In-flight
+// downloads continue under their own contexts; callers that want to stop them
+// should PauseAllJobs first. Shutdown is idempotent and safe to call once on app
+// exit.
+func (m *JobManager) Shutdown() {
+	m.shutdownOnce.Do(func() {
+		m.dispatchCancel()
+		m.sched.Close()
+		m.dispatchWG.Wait()
+	})
 }
 
 func (m *JobManager) PauseJob(jobID string) error {
@@ -438,7 +646,7 @@ func (m *JobManager) PauseJob(jobID string) error {
 	if !exists {
 		return fmt.Errorf("job %s not found", jobID)
 	}
-	if job.Status != StatusRunning {
+	if job.GetStatus() != StatusRunning {
 		return fmt.Errorf("job %s is not running", jobID)
 	}
 	if cancel := job.GetCancelFunc(); cancel != nil {
@@ -624,11 +832,11 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	for _, job := range m.jobs {
 		switch filter {
 		case "completed":
-			if job.Status == StatusCompleted {
+			if job.GetStatus() == StatusCompleted {
 				continue // drop completed
 			}
 		case "error", "failed":
-			if job.Status == StatusError {
+			if job.GetStatus() == StatusError {
 				continue // drop errored/failed
 			}
 		case "all":
@@ -680,15 +888,16 @@ func (m *JobManager) handleBatchCompletion(batchID string, job *Job) {
 }
 
 func (m *JobManager) completionOperations(job *Job) {
+	// Use a local snapshot of the settings: multiple downloads can finish
+	// concurrently, so mutating shared manager state (m.config) here would race.
 	var setting config.Setting
 	setting.LoadSettingMetadata()
-	m.config = setting
 
-	if m.config.PostDownload.AutoOpenDir {
-		filesystem.OpenFolder(job.OutputPath)
+	if setting.PostDownload.AutoOpenDir {
+		filesystem.OpenFolder(job.GetOutputPath())
 	}
 
-	switch m.config.PostDownload.Action {
+	switch setting.PostDownload.Action {
 	case "shutdown":
 		if err := utils.ShutdownPC(); err != nil {
 			log.Printf("Shutdown failed: %v", err)
@@ -703,7 +912,7 @@ func (m *JobManager) completionOperations(job *Job) {
 		}
 	}
 
-	if !m.config.Silent && job.GetStatus() == StatusCompleted {
+	if !setting.Silent && job.GetStatus() == StatusCompleted {
 		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		beeep.Notify("Downlods Completed", "All Jobs Finished", "")
 	}

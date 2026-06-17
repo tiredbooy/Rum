@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -33,8 +34,21 @@ type Job struct {
 	CancelFunc    context.CancelFunc `json:"-"`
 	CreatedAt     time.Time          `json:"created_at"`
 	CompletedAt   time.Time          `json:"completed_at"`
+	// StartAt, when non-zero, defers automatic start of this job until the time
+	// passes (honored by the schedule controller when scheduled-start is on). A
+	// zero value means start immediately via the normal flow.
+	StartAt time.Time `json:"start_at,omitempty"`
+
+	// Per-job download options threaded from the create/batch request. These
+	// overlay the manager's global Options when the job runs. Empty values mean
+	// "use the global / default behavior".
+	Checksum     string `json:"checksum,omitempty"`
+	ChecksumAlgo string `json:"checksum_algo,omitempty"`
+	Category     string `json:"category,omitempty"` // forces a category; "" = auto-detect
 }
 
+func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
+func (j *Job) SetOutputPath(p string)  { j.Mu.Lock(); defer j.Mu.Unlock(); j.OutputPath = p }
 func (j *Job) GetFileName() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.FileName }
 func (j *Job) SetFileName(name string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.FileName = name }
 func (j *Job) GetStatus() string       { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Status }
@@ -67,6 +81,16 @@ func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Cr
 func (j *Job) GetCompletedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CompletedAt }
 func (j *Job) SetCompletedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CompletedAt = v }
 
+func (j *Job) GetStartAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.StartAt }
+func (j *Job) SetStartAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.StartAt = v }
+
+func (j *Job) GetChecksum() string      { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Checksum }
+func (j *Job) SetChecksum(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Checksum = v }
+func (j *Job) GetChecksumAlgo() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.ChecksumAlgo }
+func (j *Job) SetChecksumAlgo(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.ChecksumAlgo = v }
+func (j *Job) GetCategory() string      { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Category }
+func (j *Job) SetCategory(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Category = v }
+
 func (j *Job) GetCancelFunc() context.CancelFunc {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
@@ -76,4 +100,63 @@ func (j *Job) SetCancelFunc(c context.CancelFunc) {
 	j.Mu.Lock()
 	defer j.Mu.Unlock()
 	j.CancelFunc = c
+}
+
+// jobJSON mirrors Job's JSON-tagged fields (minus the mutex and the CancelFunc
+// that is json:"-") so the Job can be marshaled while holding its read lock
+// without copying the embedded sync.RWMutex (which `go vet` rightly forbids).
+// The field tags match Job exactly, so the on-disk format is unchanged.
+type jobJSON struct {
+	ID            string        `json:"id"`
+	URL           string        `json:"url"`
+	FileName      string        `json:"file_name"`
+	OutputPath    string        `json:"output_path"`
+	Status        string        `json:"status"`
+	Priority      string        `json:"priority"`
+	Downloaded    int64         `json:"downloaded"`
+	TotalSize     int64         `json:"total_size"`
+	ContentType   string        `json:"content_type"`
+	SupportRange  bool          `json:"support_range"`
+	Speed         float64       `json:"speed"`
+	RemainingTime time.Duration `json:"remaining_time"`
+	Error         error         `json:"error"`
+	BatchID       string        `json:"batch_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	CompletedAt   time.Time     `json:"completed_at"`
+	StartAt       time.Time     `json:"start_at,omitempty"`
+	Checksum      string        `json:"checksum,omitempty"`
+	ChecksumAlgo  string        `json:"checksum_algo,omitempty"`
+	Category      string        `json:"category,omitempty"`
+}
+
+// MarshalJSON serializes a Job under its read lock. Without this, persisting the
+// job set (saveToDisk) reads job fields via reflection while a running download
+// concurrently mutates them (status, downloaded, output path), which the race
+// detector flags. Taking Mu.RLock here pairs with the field setters' Mu.Lock to
+// make persistence race-free.
+func (j *Job) MarshalJSON() ([]byte, error) {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return json.Marshal(jobJSON{
+		ID:            j.ID,
+		URL:           j.URL,
+		FileName:      j.FileName,
+		OutputPath:    j.OutputPath,
+		Status:        j.Status,
+		Priority:      j.Priority,
+		Downloaded:    j.Downloaded,
+		TotalSize:     j.TotalSize,
+		ContentType:   j.ContentType,
+		SupportRange:  j.SupportRange,
+		Speed:         j.Speed,
+		RemainingTime: j.RemainingTime,
+		Error:         j.Error,
+		BatchID:       j.BatchID,
+		CreatedAt:     j.CreatedAt,
+		CompletedAt:   j.CompletedAt,
+		StartAt:       j.StartAt,
+		Checksum:      j.Checksum,
+		ChecksumAlgo:  j.ChecksumAlgo,
+		Category:      j.Category,
+	})
 }

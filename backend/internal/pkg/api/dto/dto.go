@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 )
 
 // Data Transfer Object (DTO)
@@ -18,6 +21,12 @@ type CreateDownloadRequest struct {
 	GroupFolder string   `json:"group_folder"`
 	MaxRetries  int      `json:"max_retries"`
 	AutoStart   bool     `json:"auto_start"`
+
+	// Optional, additive fields (existing clients omit them safely).
+	Checksum     string `json:"checksum,omitempty"`
+	ChecksumAlgo string `json:"checksum_algo,omitempty"` // "sha256" | "md5"
+	StartAt      string `json:"start_at,omitempty"`      // RFC3339
+	Category     string `json:"category,omitempty"`
 }
 
 // Validate performs field-level validation at the edge, before anything reaches
@@ -52,10 +61,42 @@ func (r *CreateDownloadRequest) Validate() map[string]string {
 		fields["max_retries"] = "must be >= 0"
 	}
 
+	// Optional checksum: if a checksum is provided, the algo must be supported.
+	if strings.TrimSpace(r.Checksum) != "" {
+		switch strings.ToLower(strings.TrimSpace(r.ChecksumAlgo)) {
+		case "sha256", "md5":
+		case "":
+			fields["checksum_algo"] = `is required when checksum is set ("sha256" or "md5")`
+		default:
+			fields["checksum_algo"] = `must be "sha256" or "md5"`
+		}
+	}
+
+	// Optional start_at: must be RFC3339 when present.
+	if strings.TrimSpace(r.StartAt) != "" {
+		if _, err := time.Parse(time.RFC3339, strings.TrimSpace(r.StartAt)); err != nil {
+			fields["start_at"] = "must be an RFC3339 timestamp"
+		}
+	}
+
 	if len(fields) == 0 {
 		return nil
 	}
 	return fields
+}
+
+// ParsedStartAt returns the parsed StartAt (zero time when empty/invalid). Call
+// Validate first to surface a bad value to the client.
+func (r *CreateDownloadRequest) ParsedStartAt() time.Time {
+	s := strings.TrimSpace(r.StartAt)
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 type DownloadResponse struct {
@@ -122,4 +163,96 @@ func (r *SpeedLimitRequest) Validate() map[string]string {
 		return map[string]string{"speed_limit_kb": "must be >= 0 (0 means unlimited)"}
 	}
 	return nil
+}
+
+// ScheduleSettings is the body/response for GET|PUT /settings/schedule. It reuses
+// config.SpeedRule (start_hour/end_hour/limit_kbps/days) so there is one rule
+// shape across the codebase.
+type ScheduleSettings struct {
+	ScheduledStartEnabled bool               `json:"scheduled_start_enabled"`
+	Rules                 []config.SpeedRule `json:"rules"`
+}
+
+// Validate performs light edge validation; config.Setting.Validate does the
+// authoritative clamping (hours, days, limits) on Save.
+func (s *ScheduleSettings) Validate() map[string]string {
+	fields := map[string]string{}
+	for i, r := range s.Rules {
+		if r.StartHour < 0 || r.StartHour > 23 {
+			fields[fmt.Sprintf("rules[%d].start_hour", i)] = "must be 0..23"
+		}
+		if r.EndHour < 0 || r.EndHour > 23 {
+			fields[fmt.Sprintf("rules[%d].end_hour", i)] = "must be 0..23"
+		}
+		if r.LimitKBps < 0 {
+			fields[fmt.Sprintf("rules[%d].limit_kbps", i)] = "must be >= 0 (0 means unlimited)"
+		}
+		for j, d := range r.Days {
+			if d < 0 || d > 6 {
+				fields[fmt.Sprintf("rules[%d].days[%d]", i, j)] = "must be 0..6 (0=Sun..6=Sat)"
+			}
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+// CategorySettings is the body/response for GET|PUT /settings/categories. It
+// reuses config.CategoryRule so there is one rule shape across the codebase.
+type CategorySettings struct {
+	Enabled bool                  `json:"enabled"`
+	Rules   []config.CategoryRule `json:"rules"`
+}
+
+// Validate ensures each rule has a name and at least one extension before it is
+// persisted (config.Setting.Validate also prunes invalid rules defensively).
+func (s *CategorySettings) Validate() map[string]string {
+	fields := map[string]string{}
+	for i, r := range s.Rules {
+		if strings.TrimSpace(r.Name) == "" {
+			fields[fmt.Sprintf("rules[%d].name", i)] = "is required"
+		}
+		if len(r.Extensions) == 0 {
+			fields[fmt.Sprintf("rules[%d].extensions", i)] = "at least one extension is required"
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+// BatchCreateRequest is the body for POST /downloads/batch: a list of URLs plus
+// optional shared options applied to every created job.
+type BatchCreateRequest struct {
+	URLs    []string            `json:"urls" binding:"required,min=1"`
+	Options *BatchCreateOptions `json:"options,omitempty"`
+}
+
+// BatchCreateOptions are the per-batch options (mirrors the optional fields of
+// CreateDownloadRequest). All fields are optional.
+type BatchCreateOptions struct {
+	DestPath     string `json:"dest_path"`
+	SpeedLimit   int    `json:"speed_limit"`
+	MaxRetries   int    `json:"max_retries"`
+	GroupFolder  string `json:"group_folder"`
+	Category     string `json:"category"`
+	Checksum     string `json:"checksum"`
+	ChecksumAlgo string `json:"checksum_algo"`
+	StartAt      string `json:"start_at"` // RFC3339
+	AutoStart    bool   `json:"auto_start"`
+}
+
+// BatchCreateResult is one per-URL outcome in the batch response.
+type BatchURLError struct {
+	URL   string `json:"url"`
+	Error string `json:"error"`
+}
+
+// BatchCreateResultResponse is the response for POST /downloads/batch.
+type BatchCreateResultResponse struct {
+	Created []DownloadResponse `json:"created"`
+	Errors  []BatchURLError    `json:"errors"`
 }

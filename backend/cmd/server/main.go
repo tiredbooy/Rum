@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,25 +20,69 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
 )
 
+// preferredPort is the port the API tries first. If it is already in use the
+// server falls back to an OS-assigned free port (see Listen) so a second Rum
+// instance — or any process already holding 8080 — does not hard-fail startup.
+const preferredPort = "8080"
+
+// loopbackHost binds the API to the loopback interface only. The desktop
+// frontend and the local CLI/TUI talk to it over 127.0.0.1; binding all
+// interfaces would needlessly expose the download manager to the LAN.
+const loopbackHost = "127.0.0.1"
+
 var AppQuitFunc func()
 
 func SetQuitFunc(f func()) {
 	AppQuitFunc = f
 }
 
-func Start() {
+// Package-level server state, populated by Listen and consumed by Serve /
+// APIBase. Guarded by srvMu so concurrent Listen/APIBase access from the desktop
+// layer is race-free.
+var (
+	srvMu   sync.Mutex
+	srv     *http.Server
+	ln      net.Listener
+	apiBase string
+
+	// controller, when set in Listen, is the bandwidth/scheduled-start ticker; it
+	// is stopped on graceful shutdown.
+	controller *download.ScheduleController
+	// manager is the live job manager (handlers.GlobalManager) captured at Listen
+	// time so Serve can shut its dispatcher down cleanly.
+	manager *download.JobManager
+	// rootCancel cancels the controller's context on shutdown.
+	rootCancel context.CancelFunc
+)
+
+// Listen builds the API router, binds it to the loopback interface, and records
+// the resolved base URL. It prefers preferredPort and falls back to an
+// OS-assigned free port (":0") when the preferred one is taken, so startup never
+// hard-fails on a busy port.
+//
+// It returns the resolved base URL (e.g. "http://127.0.0.1:8080"). The server is
+// not yet accepting connections when Listen returns — call Serve (typically in a
+// goroutine) to start handling requests. This split lets the desktop layer learn
+// the real port (via APIBase) before any frontend code runs.
+func Listen() (baseURL string, err error) {
 	download.InitLogFile()
 
 	var setting config.Setting
-	err := setting.LoadSettingMetadata()
-	if err != nil {
+	if err := setting.LoadSettingMetadata(); err != nil {
 		log.Println("Error Opening setting: ", err.Error())
-		return
+		// Continue with whatever defaults LoadSettingMetadata applied rather than
+		// refusing to start the server.
 	}
 
 	if setting.SpeedLimitKB < 0 {
 		setting.SpeedLimitKB = 0
 	}
+
+	// Build a shared speed governor from the persisted limit. The schedule
+	// controller (started in Serve) updates it live as bandwidth windows open and
+	// close; the engine reads it per Read so changes apply mid-stream. Engine/CLI
+	// callers that don't supply a governor keep the per-download limiter.
+	governor := download.NewSpeedGovernor(setting.SpeedLimitKB)
 
 	opt := &download.Options{
 		SpeedLimit: setting.SpeedLimitKB,
@@ -44,6 +90,7 @@ func Start() {
 		Out:        setting.OutDir,
 		MaxRetries: setting.MaxRetries,
 		Silent:     setting.Silent,
+		Governor:   governor,
 	}
 	opt.Downloader = download.NewDownloader("", "")
 
@@ -55,8 +102,16 @@ func Start() {
 	middlewares.SetupMiddlewares(r)
 	routes.SetupRouter(r)
 
-	srv := &http.Server{
-		Addr:              ":8080",
+	// Bind the listener up front so we can resolve the real port before serving.
+	listener, addr, err := bindLoopback()
+	if err != nil {
+		return "", err
+	}
+
+	srvMu.Lock()
+	ln = listener
+	apiBase = "http://" + addr
+	srv = &http.Server{
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -66,25 +121,116 @@ func Start() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Wire the bandwidth/scheduled-start controller onto the live manager. It is
+	// started in Serve and stopped on graceful shutdown so there is no leaked
+	// ticker goroutine.
+	manager = handlers.GlobalManager
+	if manager != nil {
+		controller = download.NewScheduleController(manager, governor, setting)
+	}
+	base := apiBase
+	srvMu.Unlock()
+
+	log.Printf("Rum API server bound on %s", base)
+	return base, nil
+}
+
+// bindLoopback opens a TCP listener on the loopback interface, preferring
+// preferredPort and falling back to an OS-assigned free port if it is taken.
+// It returns the listener and the host:port string it is actually listening on.
+func bindLoopback() (net.Listener, string, error) {
+	preferred := net.JoinHostPort(loopbackHost, preferredPort)
+	listener, err := net.Listen("tcp", preferred)
+	if err == nil {
+		return listener, listener.Addr().String(), nil
+	}
+
+	// Preferred port unavailable (commonly EADDRINUSE): fall back to :0 so the OS
+	// hands us any free port on loopback.
+	log.Printf("port %s unavailable (%v); falling back to a dynamic port", preferred, err)
+	fallback := net.JoinHostPort(loopbackHost, "0")
+	listener, err = net.Listen("tcp", fallback)
+	if err != nil {
+		return nil, "", err
+	}
+	return listener, listener.Addr().String(), nil
+}
+
+// APIBase returns the resolved base URL recorded by Listen (e.g.
+// "http://127.0.0.1:8080"). It returns "" before Listen has been called.
+func APIBase() string {
+	srvMu.Lock()
+	defer srvMu.Unlock()
+	return apiBase
+}
+
+// Serve starts handling requests on the listener opened by Listen and blocks
+// until a termination signal arrives, then shuts the server down gracefully.
+// Call it in a goroutine (the desktop layer does `go server.Serve()`). It is a
+// no-op if Listen has not been called.
+func Serve() {
+	srvMu.Lock()
+	s := srv
+	l := ln
+	ctrl := controller
+	mgr := manager
+	srvMu.Unlock()
+
+	if s == nil || l == nil {
+		log.Println("Serve called before Listen; nothing to do")
+		return
+	}
+
+	// Start the schedule controller (bandwidth windows + scheduled starts). Its
+	// context is cancelled on shutdown so the ticker goroutine exits cleanly.
+	if ctrl != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		srvMu.Lock()
+		rootCancel = cancel
+		srvMu.Unlock()
+		ctrl.Start(ctx)
+	}
+
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := s.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}
 	}()
-	log.Println("Rum API server listening on :8080")
+	log.Printf("Rum API server listening on %s", APIBase())
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
 
+	// Stop the controller and the manager dispatcher before closing the HTTP
+	// server so no new downloads are scheduled mid-shutdown.
+	if ctrl != nil {
+		ctrl.Stop()
+	}
+	srvMu.Lock()
+	if rootCancel != nil {
+		rootCancel()
+	}
+	srvMu.Unlock()
+	if mgr != nil {
+		mgr.Shutdown()
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := s.Shutdown(ctx); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
 }
 
-// func main() {
-// 	Start()
-// }
+// Start preserves the original entry point: it binds the server (Listen) and
+// then serves it (Serve), blocking until shutdown. The root Wails module still
+// calls `go server.Start()`, so keeping this wrapper avoids breaking it.
+func Start() {
+	if _, err := Listen(); err != nil {
+		log.Printf("failed to bind API server: %v", err)
+		return
+	}
+	Serve()
+}

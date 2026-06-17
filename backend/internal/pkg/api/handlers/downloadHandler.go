@@ -37,7 +37,12 @@ func CreateDownload(c *gin.Context) {
 		return
 	}
 
-	jobs, err := GlobalManager.CreateJobsFromURLs(req.URLs)
+	jobs, err := GlobalManager.CreateJobsFromURLsWithOptions(req.URLs, download.JobCreateOptions{
+		Checksum:     req.Checksum,
+		ChecksumAlgo: req.ChecksumAlgo,
+		Category:     req.Category,
+		StartAt:      req.ParsedStartAt(),
+	})
 	if err != nil {
 		writeServiceError(c, err)
 		return

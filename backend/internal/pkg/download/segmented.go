@@ -169,9 +169,9 @@ func removePartsMeta(outputPath string) {
 func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
 	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
-	job.OutputPath = fullPath
+	job.SetOutputPath(fullPath)
 
-	totalSize := job.TotalSize
+	totalSize := job.GetTotalSize()
 	connections := resolveConnections(opt.Connections, totalSize)
 
 	if !shouldSegment(job.SupportRange, totalSize, opt.Connections) {
@@ -243,13 +243,19 @@ func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn Pr
 	}
 
 	// Speed limiter: shared across all segments so the global cap is honored.
-	var setting config.Setting
-	_ = setting.LoadSettingMetadata()
-	limitKB := setting.SpeedLimitKB
-	if opt.SpeedLimit > 0 {
-		limitKB = opt.SpeedLimit
+	// When a governor is attached (desktop server path) the per-segment readers
+	// use it instead (one live, process-wide budget); otherwise we build a single
+	// per-download limiter shared across this download's segments.
+	var limiter *rate.Limiter
+	if opt.Governor == nil {
+		var setting config.Setting
+		_ = setting.LoadSettingMetadata()
+		limitKB := setting.SpeedLimitKB
+		if opt.SpeedLimit > 0 {
+			limitKB = opt.SpeedLimit
+		}
+		limiter = newSpeedLimiter(limitKB)
 	}
-	limiter := newSpeedLimiter(limitKB)
 
 	// Periodic persistence of segment progress so a crash/pause can resume.
 	persistCtx, stopPersist := context.WithCancel(ctx)
@@ -327,6 +333,18 @@ func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn Pr
 	if safeProgress != nil {
 		safeProgress(totalSize, totalSize)
 	}
+
+	// Close the output file before any rename so auto-organize works on Windows
+	// (an open file cannot be renamed there). The deferred Close becomes a no-op /
+	// harmless double-close.
+	_ = outFile.Close()
+
+	// Auto-organize into a category directory (no-op unless opt.Categorize and a
+	// matching rule). Never lose a finished file on a categorize error.
+	if err := finalizeCategorize(opt, job); err != nil {
+		DebugLog("categorize failed: " + err.Error())
+	}
+
 	return nil
 }
 
@@ -378,7 +396,11 @@ func downloadSegment(
 	}
 
 	var body io.Reader = resp.Body
-	if limiter != nil {
+	if opt.Governor != nil {
+		// Shared global cap across all concurrent downloads/segments, honoring live
+		// bandwidth-window changes.
+		body = opt.Governor.Wrap(ctx, resp.Body)
+	} else if limiter != nil {
 		body = &rateLimitedReader{reader: resp.Body, limiter: limiter, ctx: ctx}
 	}
 
