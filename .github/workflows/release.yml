@@ -48,9 +48,20 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      # frontend/package-lock.json was generated against a private mirror
+      # (npm.devneeds.ir), so its "resolved" URLs point there instead of the
+      # public registry. `wails build` runs `npm install` for the frontend
+      # internally, which would otherwise fetch from that mirror and 403 on
+      # CI runners. This rewrites the lockfile's host to the public registry
+      # first — same packages/integrity hashes, just a reachable source.
+      # Remove this step once the lockfile is regenerated locally with
+      # `npm install --registry=https://registry.npmjs.org/`.
+      - name: Point lockfile at public registry
+        run: sed -i 's#https://npm.devneeds.ir/repository/npm#https://registry.npmjs.org#g' frontend/package-lock.json
 
       - name: Install WebKit/GTK + packaging dependencies
         run: |
@@ -211,9 +222,17 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      # See the same step in the linux job for why this is needed: the
+      # committed lockfile resolves against a private mirror that CI can't
+      # reach. Uses the bash shell (Git Bash, preinstalled on windows-latest)
+      # so `sed` is available.
+      - name: Point lockfile at public registry
+        shell: bash
+        run: sed -i 's#https://npm.devneeds.ir/repository/npm#https://registry.npmjs.org#g' frontend/package-lock.json
 
       - name: Install the Wails CLI
         shell: pwsh
@@ -283,9 +302,15 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      # See the same step in the linux job for why this is needed: the
+      # committed lockfile resolves against a private mirror that CI can't
+      # reach.
+      - name: Point lockfile at public registry
+        run: sed -i '' 's#https://npm.devneeds.ir/repository/npm#https://registry.npmjs.org#g' frontend/package-lock.json
 
       - name: Install the Wails CLI
         run: |
