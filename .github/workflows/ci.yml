@@ -1,0 +1,74 @@
+# CI — build, vet and test on every push and pull request.
+#
+# Rum is a Wails v2 desktop app made of three pieces:
+#   - backend/   a standalone Go module (the engine + HTTP API + CLI/TUI)
+#   - frontend/  a Vite/React/TypeScript app
+#   - the repo root, which is the Wails Go module that embeds frontend/dist
+#
+# This job mirrors the project's verification gate so a red CI means the same
+# thing a developer would see locally. The full `wails build` is intentionally
+# NOT run here (that lives in release.yml) — CI keeps it cheap by building the
+# component modules and type-checking the frontend.
+name: CI
+
+on: [push, pull_request]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build / vet / test (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Floor is go 1.25.7 (see go.mod); 1.25.x keeps us on the pinned line.
+          go-version: '1.25.x'
+          # Cache modules for both the root and backend modules.
+          cache-dependency-path: |
+            go.sum
+            backend/go.sum
+
+      # WebKit2GTK + GTK3 dev headers are required for the root Wails module
+      # to even compile (it imports the Wails runtime, which needs CGo headers).
+      - name: Install WebKit/GTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Backend — build, vet, test
+        working-directory: backend
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install, type-check, build
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+
+      # The root module embeds frontend/dist, so it is built last (after the
+      # frontend build above has produced dist/). Uses the webkit2_41 tag to
+      # match modern Ubuntu shipping WebKit2GTK 4.1.
+      - name: Root (Wails module) — build
+        run: go build -tags webkit2_41 ./...

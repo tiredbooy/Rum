@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# Rum CLI installer — Linux / macOS
+# Rum CLI installer — macOS
 #
 # Builds the `rum` command-line download manager from source and installs it
-# onto your PATH.
+# into /usr/local/bin (or ~/.local/bin if that isn't writable).
 #
 # Usage:
-#   ./installers/cli/install-linux.sh [--prefix DIR] [--yes] [--uninstall]
+#   ./installers/cli/install-macos.sh [--prefix DIR] [--yes] [--uninstall] [--mirror[=URL]]
 #
-#   --prefix DIR   Install into DIR/bin (default: /usr/local if writable or via
-#                  sudo, otherwise ~/.local). Honors $PREFIX too.
+#   --prefix DIR   Install into DIR/bin (default: /usr/local, falling back to
+#                  ~/.local). Honors $PREFIX too.
 #   --yes          Non-interactive; assume "yes" to prompts.
 #   --uninstall    Remove an installed `rum` binary instead of installing.
+#   --mirror[=URL] Use a Go module proxy (helps on restricted networks).
 #
 set -euo pipefail
 
@@ -30,53 +31,22 @@ while [[ $# -gt 0 ]]; do
     --mirror) MIRROR="$DEFAULT_MIRROR"; shift ;;
     --mirror=*) MIRROR="${1#*=}"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
-# Resolve the repo root from this script's location: installers/cli/ -> repo
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 
 info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
-ok()   { printf '\033[0;32m✓\033[0m %s\n' "$*"; }
-err()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; }
+ok()   { printf '\033[0;32m=>\033[0m %s\n' "$*"; }
+err()  { printf '\033[0;31mx %s\033[0m\n' "$*" >&2; }
 
-# Identify the distro family so a missing-Go message can name the exact install
-# command (kept in sync with INSTALL.md). The CLI only needs Go.
-detect_distro() {
-  if [[ -r /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    case " $ID ${ID_LIKE:-} " in
-      *" debian "*|*" ubuntu "*) echo "debian" ;;
-      *" fedora "*|*" rhel "*)   echo "fedora" ;;
-      *" arch "*)                echo "arch" ;;
-      *) echo "unknown" ;;
-    esac
-  else
-    echo "unknown"
-  fi
-}
-DISTRO="$(detect_distro)"
-
-print_go_install_cmd() {
-  case "$DISTRO" in
-    debian) echo "  sudo apt update && sudo apt install -y golang" ;;
-    fedora) echo "  sudo dnf install -y golang" ;;
-    arch)   echo "  sudo pacman -S --needed go" ;;
-    *)      echo "  Install Go 1.25+ from https://go.dev/doc/install" ;;
-  esac
-}
-
-# On restricted networks Go's default servers can return 403/timeouts. Offer a
-# Go module proxy mirror (set GOPROXY). GOSUMDB is disabled because the checksum
-# database (sum.golang.org) is usually blocked on the same networks.
 configure_goproxy() {
   if [[ -z "$MIRROR" && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
-    read -rp "Use a Go module mirror? Helps if downloads fail with 403/timeouts (e.g. in Iran) [y/N]: " ans
+    read -rp "Use a Go module mirror? Helps if downloads fail with 403/timeouts [y/N]: " ans
     if [[ "$ans" =~ ^[Yy] ]]; then
       read -rp "Mirror URL [$DEFAULT_MIRROR]: " url
       MIRROR="${url:-$DEFAULT_MIRROR}"
@@ -113,23 +83,35 @@ if [[ "$UNINSTALL" -eq 1 ]]; then
 fi
 
 # --- Prerequisites ---
+# Xcode Command Line Tools provide the C toolchain Go's CGo paths may need.
+if ! xcode-select -p >/dev/null 2>&1; then
+  err "Xcode Command Line Tools are required. Install them with:"
+  echo "  xcode-select --install" >&2
+  exit 1
+fi
+ok "Found Xcode Command Line Tools"
+
 if ! command -v go >/dev/null 2>&1; then
   err "Go is not installed (required to build the CLI)."
-  echo "Install it with:" >&2
-  print_go_install_cmd >&2
+  if command -v brew >/dev/null 2>&1; then
+    echo "  brew install go" >&2
+  else
+    echo "  Install Homebrew (https://brew.sh) then: brew install go" >&2
+    echo "  (or install Go 1.25+ from https://go.dev/doc/install)" >&2
+  fi
   exit 1
 fi
 ok "Found $(go version)"
 
 if [[ ! -d "$BACKEND_DIR/cmd/rum" ]]; then
-  err "Cannot find $BACKEND_DIR/cmd/rum — run this from a clean checkout."
+  err "Cannot find $BACKEND_DIR/cmd/rum - run this from a clean checkout."
   exit 1
 fi
 
 configure_goproxy
 
 # --- Build ---
-info "Building $APP (this may take a moment)…"
+info "Building $APP (this may take a moment)..."
 BUILD_OUT="$(mktemp -d)/$APP"
 ( cd "$BACKEND_DIR" && go build -trimpath -ldflags "-s -w" -o "$BUILD_OUT" ./cmd/rum )
 ok "Built $APP"
@@ -150,8 +132,8 @@ case ":$PATH:" in
   *)
     echo
     info "$BIN_DIR is not on your PATH. Add it:"
-    echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc   # or ~/.zshrc"
-    echo "  source ~/.bashrc"
+    echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc"
+    echo "  source ~/.zshrc"
     ;;
 esac
 

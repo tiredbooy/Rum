@@ -50,6 +50,34 @@ info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m✓\033[0m %s\n' "$*"; }
 err()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; }
 
+# Identify the distro family so dependency-error messages can print the exact
+# package-manager command (kept in sync with INSTALL.md).
+detect_distro() {
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case " $ID ${ID_LIKE:-} " in
+      *" debian "*|*" ubuntu "*) echo "debian" ;;
+      *" fedora "*|*" rhel "*)   echo "fedora" ;;
+      *" arch "*)                echo "arch" ;;
+      *) echo "unknown" ;;
+    esac
+  else
+    echo "unknown"
+  fi
+}
+DISTRO="$(detect_distro)"
+
+# Print the one-liner that installs ALL GUI build dependencies on this distro.
+print_full_dep_cmd() {
+  case "$DISTRO" in
+    debian) echo "  sudo apt update && sudo apt install -y golang nodejs npm build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev" ;;
+    fedora) echo "  sudo dnf install -y golang nodejs npm gcc pkg-config gtk3-devel webkit2gtk4.1-devel" ;;
+    arch)   echo "  sudo pacman -S --needed go nodejs npm base-devel gtk3 webkit2gtk-4.1" ;;
+    *)      echo "  Install: Go 1.25+, Node.js + npm, a C toolchain, GTK3 and WebKit2GTK 4.1 dev packages (see INSTALL.md)." ;;
+  esac
+}
+
 # On restricted networks Go's default servers can return 403/timeouts. Offer a
 # Go module proxy mirror (GOPROXY). GOSUMDB is disabled because the checksum
 # database (sum.golang.org) is usually blocked on the same networks.
@@ -76,9 +104,21 @@ if [[ "$UNINSTALL" -eq 1 ]]; then
 fi
 
 # --- Prerequisites ---
-command -v go   >/dev/null 2>&1 || { err "Go 1.25+ required: https://go.dev/doc/install"; exit 1; }
-command -v npm  >/dev/null 2>&1 || { err "Node.js + npm required: https://nodejs.org"; exit 1; }
+# Collect ALL missing core tools first, then print one actionable command,
+# rather than failing one tool at a time.
+MISSING=()
+command -v go   >/dev/null 2>&1 || MISSING+=("go")
+command -v node >/dev/null 2>&1 || MISSING+=("node")
+command -v npm  >/dev/null 2>&1 || MISSING+=("npm")
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  err "Missing required tool(s) to build the GUI: ${MISSING[*]}"
+  echo "Install everything Rum's GUI needs with:" >&2
+  print_full_dep_cmd >&2
+  echo "Docs: Go https://go.dev/doc/install · Node.js https://nodejs.org · see INSTALL.md" >&2
+  exit 1
+fi
 ok "Found $(go version)"
+ok "Found node $(node --version 2>/dev/null) / npm $(npm --version 2>/dev/null)"
 
 # Set the mirror (if requested) BEFORE any 'go install' / 'wails build' downloads.
 configure_goproxy
@@ -101,9 +141,7 @@ if command -v pkg-config >/dev/null 2>&1; then
   pkg-config --exists webkit2gtk-4.1 2>/dev/null && have_41=1
   if ! pkg-config --exists gtk+-3.0 2>/dev/null || { [[ "$have_40" -eq 0 && "$have_41" -eq 0 ]]; }; then
     err "Missing GTK3 / WebKit2GTK system libraries (required to build the GUI). Install them, then re-run:"
-    echo "  Debian/Ubuntu : sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
-    echo "  Fedora        : sudo dnf install gcc pkg-config gtk3-devel webkit2gtk4.1-devel"
-    echo "  Arch          : sudo pacman -S --needed base-devel gtk3 webkit2gtk-4.1"
+    print_full_dep_cmd >&2
     exit 1
   fi
   if [[ "$have_40" -eq 0 && "$have_41" -eq 1 ]]; then
