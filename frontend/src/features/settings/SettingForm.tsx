@@ -30,6 +30,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SettingReq } from "@/_lib/types/setting-types";
+import { ScheduleEditor } from "./ScheduleEditor";
+import { CategoryManager } from "./CategoryManager";
+import { DesktopSettings } from "./DesktopSettings";
 
 // Safe defaults – prevents any undefined field from crashing
 const defaultSettings: SettingReq = {
@@ -114,7 +117,8 @@ export function SettingsForm() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {/* General Section */}
       <Card className="col-span-full md:col-span-1">
         <CardHeader>
@@ -336,6 +340,16 @@ export function SettingsForm() {
           />
         </CardContent>
       </Card>
+      </div>
+
+      {/* Bandwidth schedule + scheduled-start (PUT /settings/schedule) */}
+      <ScheduleEditor />
+
+      {/* Category auto-organize (PUT /settings/categories) */}
+      <CategoryManager />
+
+      {/* Desktop preferences (PATCH /settings) */}
+      <DesktopSettings />
     </div>
   );
 }

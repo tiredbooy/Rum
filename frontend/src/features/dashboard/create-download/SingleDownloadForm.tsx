@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { isValidUrl } from "@/_lib/utils/validators";
+import { AdvancedOptions } from "./AdvancedOptions";
 
 export function SingleDownloadForm() {
   const { clipboardUrl, pasteValidUrl } = useClipboardUrl();
@@ -112,6 +113,8 @@ export function SingleDownloadForm() {
           className="bg-background text-foreground"
         />
       </div>
+
+      <AdvancedOptions />
     </div>
   );
 }

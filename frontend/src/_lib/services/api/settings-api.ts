@@ -1,5 +1,5 @@
 import { SettingReq } from "@/_lib/types/setting-types";
-import { API_URL, request } from "./api";
+import { request } from "./api";
 
 export async function getSettings(): Promise<SettingReq> {
   return request<SettingReq>(`/api/v1/settings`);;
