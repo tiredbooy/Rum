@@ -37,7 +37,12 @@ func CreateDownload(c *gin.Context) {
 		return
 	}
 
-	jobs, err := GlobalManager.CreateJobsFromURLs(req.URLs)
+	jobs, err := GlobalManager.CreateJobsFromURLsWithOptions(req.URLs, download.JobCreateOptions{
+		Checksum:     req.Checksum,
+		ChecksumAlgo: req.ChecksumAlgo,
+		Category:     req.Category,
+		StartAt:      req.ParsedStartAt(),
+	})
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -312,6 +317,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		Downloaded: job.Downloaded,
 		TotalSize:  job.TotalSize,
 		Speed:      job.GetSpeed(),
+		Category:   job.GetCategory(),
 	}
 }
 
@@ -327,6 +333,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 		TotalSize:   job.TotalSize,
 		Speed:       job.Speed,
 		Remaining:   int64(job.RemainingTime),
+		Category:    job.GetCategory(),
 		CreatedAt:   job.CreatedAt.String(),
 		CompletedAt: job.CompletedAt.String(),
 	}

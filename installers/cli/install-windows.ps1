@@ -73,7 +73,9 @@ if ($Uninstall) {
 # --- Prerequisites ---
 $go = Get-Command go -ErrorAction SilentlyContinue
 if (-not $go) {
-    Fail "Go is not installed. Install Go 1.25+ from https://go.dev/doc/install"
+    Fail "Go is not installed (required to build the CLI)."
+    Write-Host "  Download the Windows installer from https://go.dev/dl/, click through it," -ForegroundColor Red
+    Write-Host "  reopen PowerShell, then re-run this script. See INSTALL.md." -ForegroundColor Red
     exit 1
 }
 Ok "Found $(go version)"

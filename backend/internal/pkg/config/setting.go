@@ -20,19 +20,61 @@ type Setting struct {
 	SpeedLimitKB int    `json:"speed_limit_kb"`
 	MaxParallel  int    `json:"max_parallel"`
 	MaxRetries   int    `json:"max_retries"`
+	// Connections is the number of parallel connections (segments) per download
+	// for range-capable files. More connections beat per-connection CDN throttling
+	// (clamped to [1, maxConnections]); 1 = single stream.
+	Connections int `json:"connections"`
 
 	// UI / Frontend
 	PreferredTheme string `json:"preferred_theme"`
 
 	// Advanced (customizable)
 	BandwidthSchedule []SpeedRule `json:"bandwidth_schedule,omitempty"`
-	PostDownload      struct {
+	// ScheduledStartEnabled gates whether jobs with a future StartAt are started
+	// automatically by the schedule controller. The bandwidth windows in
+	// BandwidthSchedule always apply regardless of this flag.
+	ScheduledStartEnabled bool `json:"scheduled_start_enabled"`
+	PostDownload          struct {
 		Action      string `json:"action"` // "none", "shutdown", "sleep", "close"
 		AutoOpenDir bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
 	FileConflict string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        string `json:"proxy,omitempty"`
 	LogLevel     string `json:"log_level"` // "info", "debug"
+
+	// Categories drive auto-organize: a finished download whose extension matches
+	// a rule is moved into the rule's DestDir. EnableCategories is the master
+	// toggle; rules are ignored when it is false.
+	EnableCategories bool           `json:"enable_categories"`
+	Categories       []CategoryRule `json:"categories,omitempty"`
+
+	// Desktop / Wails preferences. These live in the backend config (the root
+	// module imports it) but are read/written by the desktop layer.
+	LaunchOnStartup      bool        `json:"launch_on_startup"` // OS login autostart
+	MinimizeToTray       bool        `json:"minimize_to_tray"`  // hide to tray on minimise
+	CloseToTray          bool        `json:"close_to_tray"`     // hide to tray instead of quitting
+	EnableClipboardWatch bool        `json:"enable_clipboard_watch"`
+	WindowState          WindowState `json:"window_state"`
+}
+
+// WindowState persists the desktop window geometry so it can be restored on the
+// next launch. Zero values mean "no saved state" (the desktop layer then uses
+// its defaults).
+type WindowState struct {
+	W         int  `json:"w"`
+	H         int  `json:"h"`
+	X         int  `json:"x"`
+	Y         int  `json:"y"`
+	Maximized bool `json:"maximized"`
+}
+
+// CategoryRule maps a set of file extensions to a destination directory. A
+// finished download whose extension matches Extensions is moved into DestDir
+// (absolute, or relative to the download OutDir).
+type CategoryRule struct {
+	Name       string   `json:"name"`
+	Extensions []string `json:"extensions"` // e.g. [".mp4", ".mkv"]
+	DestDir    string   `json:"dest_dir"`   // abs, or relative to OutDir
 }
 
 type SettingReq struct {
@@ -46,6 +88,7 @@ type SettingReq struct {
 	SpeedLimitKB *int    `json:"speed_limit_kb"`
 	MaxParallel  *int    `json:"max_parallel"`
 	MaxRetries   *int    `json:"max_retries"`
+	Connections  *int    `json:"connections"`
 
 	// UI / Frontend
 	PreferredTheme *string `json:"preferred_theme"`
@@ -56,13 +99,28 @@ type SettingReq struct {
 	} `json:"post_download,omitempty"`
 	FileConflict *string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        *string `json:"proxy,omitempty"`
+
+	// Desktop / Wails preference toggles (partial-update via PATCH /settings).
+	LaunchOnStartup      *bool        `json:"launch_on_startup"`
+	MinimizeToTray       *bool        `json:"minimize_to_tray"`
+	CloseToTray          *bool        `json:"close_to_tray"`
+	EnableClipboardWatch *bool        `json:"enable_clipboard_watch"`
+	WindowState          *WindowState `json:"window_state"`
 }
 
 type SpeedRule struct {
-	StartHour int `json:"start_hour"` // 0-23
-	EndHour   int `json:"end_hour"`
-	LimitKBps int `json:"limit_kbps"` // 0 = unlimited
+	StartHour int   `json:"start_hour"`     // 0-23
+	EndHour   int   `json:"end_hour"`       // 0-23
+	LimitKBps int   `json:"limit_kbps"`     // 0 = unlimited
+	Days      []int `json:"days,omitempty"` // 0=Sun..6=Sat; empty = every day
 }
+
+const (
+	// defaultConnections is the default parallel connections per download. 8
+	// mirrors the engine default and IDM; maxConnections bounds the setting/slider.
+	defaultConnections = 8
+	maxConnections     = 16
+)
 
 // validActions / validConflicts / validLogLevels define the accepted enum values.
 var (
@@ -109,6 +167,12 @@ func (s *Setting) Validate() {
 	if s.MaxParallel > 64 {
 		s.MaxParallel = 64
 	}
+	if s.Connections < 1 {
+		s.Connections = defaultConnections
+	}
+	if s.Connections > maxConnections {
+		s.Connections = maxConnections
+	}
 	if s.MaxRetries < 0 {
 		s.MaxRetries = 0
 	}
@@ -130,7 +194,7 @@ func (s *Setting) Validate() {
 	if s.PreferredTheme == "" {
 		s.PreferredTheme = "system"
 	}
-	// Clamp bandwidth schedule hours/limits.
+	// Clamp bandwidth schedule hours/limits and prune invalid day-of-week entries.
 	for i := range s.BandwidthSchedule {
 		r := &s.BandwidthSchedule[i]
 		if r.StartHour < 0 {
@@ -148,6 +212,30 @@ func (s *Setting) Validate() {
 		if r.LimitKBps < 0 {
 			r.LimitKBps = 0
 		}
+		// Drop any day index outside 0..6 (Sun..Sat). An empty/nil Days slice means
+		// "every day", which is preserved.
+		if len(r.Days) > 0 {
+			valid := r.Days[:0]
+			for _, d := range r.Days {
+				if d >= 0 && d <= 6 {
+					valid = append(valid, d)
+				}
+			}
+			r.Days = valid
+		}
+	}
+
+	// Drop category rules that can never match (no name, or no extensions). An
+	// empty DestDir is allowed and means "leave next to the download / OutDir".
+	if len(s.Categories) > 0 {
+		valid := s.Categories[:0]
+		for _, c := range s.Categories {
+			if strings.TrimSpace(c.Name) == "" || len(c.Extensions) == 0 {
+				continue
+			}
+			valid = append(valid, c)
+		}
+		s.Categories = valid
 	}
 }
 
@@ -173,6 +261,9 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.MaxRetries != nil {
 		s.MaxRetries = *req.MaxRetries
 	}
+	if req.Connections != nil {
+		s.Connections = *req.Connections
+	}
 	if req.PreferredTheme != nil {
 		s.PreferredTheme = *req.PreferredTheme
 	}
@@ -188,6 +279,23 @@ func (s *Setting) Update(req SettingReq) error {
 	}
 	if req.PostDownload.AutoOpenDir != nil {
 		s.PostDownload.AutoOpenDir = *req.PostDownload.AutoOpenDir
+	}
+
+	// Desktop preference toggles.
+	if req.LaunchOnStartup != nil {
+		s.LaunchOnStartup = *req.LaunchOnStartup
+	}
+	if req.MinimizeToTray != nil {
+		s.MinimizeToTray = *req.MinimizeToTray
+	}
+	if req.CloseToTray != nil {
+		s.CloseToTray = *req.CloseToTray
+	}
+	if req.EnableClipboardWatch != nil {
+		s.EnableClipboardWatch = *req.EnableClipboardWatch
+	}
+	if req.WindowState != nil {
+		s.WindowState = *req.WindowState
 	}
 
 	s.Validate()
@@ -224,6 +332,7 @@ func (s *Setting) setDefaults() {
 	s.OutDir = filesystem.GetOrCreateDownloadDirectory()
 	s.SpeedLimitKB = 0
 	s.MaxParallel = 1
+	s.Connections = defaultConnections
 	s.MaxRetries = 3
 	s.PreferredTheme = "system"
 	s.FileConflict = "rename"
@@ -231,12 +340,27 @@ func (s *Setting) setDefaults() {
 	s.PostDownload.Action = "none"
 	s.PostDownload.AutoOpenDir = false
 	s.BandwidthSchedule = nil
+	s.ScheduledStartEnabled = false
 	s.Proxy = ""
+
+	// Auto-organize: off by default with no rules.
+	s.EnableCategories = false
+	s.Categories = nil
+
+	// Desktop preferences: all opt-in (off) by default; no saved window geometry.
+	s.LaunchOnStartup = false
+	s.MinimizeToTray = false
+	s.CloseToTray = false
+	s.EnableClipboardWatch = false
+	s.WindowState = WindowState{}
 }
 
 func (s *Setting) applyMissingDefaults() {
 	if s.MaxParallel == 0 {
 		s.MaxParallel = 1
+	}
+	if s.Connections == 0 {
+		s.Connections = defaultConnections
 	}
 	if s.OutDir == "" {
 		s.OutDir = filesystem.GetOrCreateDownloadDirectory()

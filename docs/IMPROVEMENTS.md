@@ -397,29 +397,189 @@ were forbidden to touch:
 
 ### Known limitations / future work
 
-- **Single-file path has no integrity wiring.** `PreflightDiskSpace` and
-  `VerifyChecksum` are wired into the **segmented** finalize path only
-  (`segmented.go`). `DownloadSingleFile` (`download.go`) — the fallback for
-  non-range-capable servers, unknown sizes, small files, or `Connections == 1` —
-  does **not** yet preflight disk space or verify a checksum. Threading the same
-  two calls into that path is the obvious next step.
-- **Scheduler is opt-in / not yet routing `StartAllJobs`.** The
-  `internal/pkg/scheduler` package is complete and tested but is not imported by
-  the engine. Priority ordering today comes from the `priorityRank` sort the
-  orchestrator added to `StartAllJobs`, not from the scheduler's concurrency
-  gate. Adopting the scheduler would give true priority-aware *concurrency*
-  (currently the gate is the engine's existing parallelism limit).
+> **Update (Round 3):** four of the limitations below were resolved in Round 3 —
+> see the "Round 3 — Production Release Overhaul" section further down. They are
+> kept here with a ✓ and a pointer so the history stays readable.
+
+- ✓ **RESOLVED in Round 3 — Single-file path now has integrity wiring.**
+  ~~`PreflightDiskSpace` and `VerifyChecksum` were wired into the **segmented**
+  finalize path only.~~ `DownloadSingleFile` (`download.go`) now preflights disk
+  space before allocating and verifies the checksum after assembling, matching the
+  segmented path. (Round 3 §"Reliability follow-ups".)
+- ✓ **RESOLVED in Round 3 — Scheduler now gates concurrency.** ~~The
+  `internal/pkg/scheduler` package was complete but not imported by the engine.~~
+  `JobManager` now adopts `scheduler.Scheduler` as its concurrency gate, so
+  downloads run priority-aware *and* concurrency-bounded (no longer just the plain
+  parallelism limit + a sort). (Round 3 §"Reliability follow-ups".)
 - **SSRF guard is off by default.** `IsPrivateHost` exists but nothing rejects
   private/loopback targets, because reaching LAN hosts is a legitimate use case.
-  Enforcing it should be a configurable policy, not a hard default.
-- **No UI to supply expected checksums.** The engine accepts
-  `Options.Checksum` / `Options.ChecksumAlgo`, but the frontend has no field to
-  enter an expected hash, so checksum verification is currently only reachable
-  programmatically / via the CLI.
-- **`ConnectionBanner` is built but not mounted.** F2 provides
-  `components/connection-banner.tsx`, but it is not yet rendered anywhere
-  (analogous to the opt-in scheduler). The reconnect/offline UX it offers is a
-  ready-to-wire follow-up.
+  Enforcing it should be a configurable policy, not a hard default. *(Still open.)*
+- ✓ **RESOLVED in Round 3 — UI to supply expected checksums.** ~~The engine
+  accepted `Options.Checksum`/`Options.ChecksumAlgo` but the frontend had no
+  field for it.~~ The add-download UI now has a checksum input + algorithm select,
+  and the create/batch endpoints accept `checksum`/`checksum_algo`. (Round 3
+  §"Frontend coverage".)
+- ✓ **RESOLVED in Round 3 — `ConnectionBanner` is now mounted.** ~~F2 provided
+  `components/connection-banner.tsx` but it was rendered nowhere.~~ It is now
+  mounted in the layout and driven by the SSE stream's online/offline state.
+  (Round 3 §"Frontend coverage".)
 - **`internal/pkg/logging` is available but not yet adopted** by the engine/API
   call sites, which still use the existing logging; migrating call sites onto the
-  `slog` wrapper is a follow-up.
+  `slog` wrapper is a follow-up. *(Still open.)*
+
+---
+
+## Round 3 — Production Release Overhaul (2026-06-17)
+
+A third sweep that takes Rum from "two enhancement rounds done" to
+**releasable**: four new/finished engine capabilities, full frontend coverage of
+them, a production-hardened Wails desktop layer, and — new this round — a
+3-OS prebuilt-release pipeline with polished from-source installers and rewritten
+docs. Same method as Rounds 1–2: **path-owned agents** (Engine `backend/**`,
+Frontend `frontend/**`, Desktop root `*.go`/`wails.json`, Release
+`installers|.github|build-*|docs`) working in parallel against a frozen interface
+contract, with the orchestrator wiring cross-scope integration.
+
+- Design spec: [`docs/superpowers/specs/2026-06-17-rum-round3-release-overhaul-design.md`](superpowers/specs/2026-06-17-rum-round3-release-overhaul-design.md)
+- Plan: [`docs/superpowers/plans/2026-06-17-rum-round3-release-overhaul.md`](superpowers/plans/2026-06-17-rum-round3-release-overhaul.md)
+- Verification gate: backend `go build ./... && go vet ./... && go test ./...`
+  (`-race` on `download`/`scheduler`/`queue`); frontend `npx tsc --noEmit` and
+  `npm run build`; root `go build -tags webkit2_41 ./...`. Platforms: Linux +
+  Windows + macOS, with **macOS best-effort, unsigned and untested**.
+
+### Engine — reliability follow-ups & four features
+
+- **What changed.** (1) **Single-file integrity** — `DownloadSingleFile` now
+  calls `PreflightDiskSpace` before allocating and `VerifyChecksum` once on
+  success, closing the gap left in Round 2 (which only covered the segmented
+  path). (2) **Scheduler adoption** — `JobManager` routes concurrency through
+  `internal/pkg/scheduler`, so the priority queue actually gates *how many* run at
+  once, highest priority first. (3) **Bandwidth windows + scheduled start** — a
+  leak-free `ScheduleController` ticks a shared `SpeedGovernor`, recomputing the
+  active limit from time-of-day/day-of-week `SpeedRule`s and starting jobs whose
+  `StartAt` is due; new `GET|PUT /settings/schedule`. (4) **Categories &
+  auto-organize** — `CategorizeFile` routes finished files into per-extension
+  destination folders on the finalize path of both single and segmented
+  downloads; new `GET|PUT /settings/categories`. Plus a **batch create**
+  endpoint (`POST /downloads/batch`) and additive `checksum`/`checksum_algo`/
+  `start_at`/`category` fields on create.
+- **The issue / why it mattered.** Round 2 left four loose ends (single-file
+  integrity, an unrouted scheduler, no checksum UI surface, no bandwidth/category
+  features). A download manager that throttles globally, schedules off-peak
+  transfers, and files results by type is the difference between a demo and a
+  daily driver.
+- **Why this path.** All engine changes are **additive** (new fields, new routes,
+  new symbols) so the root module, CLI, and TUI keep compiling and the existing
+  frontend keeps working. The governor is a shared global budget honored live
+  mid-download via an atomic limiter pointer; categorization is pure path
+  resolution + dir creation so the engine still performs the rename and honors
+  conflict handling.
+
+### Frontend — full coverage of the new features
+
+- **What changed.** New settings surfaces (bandwidth-schedule editor with a
+  scheduled-start toggle; category manager; desktop preference toggles for
+  autostart / minimize-to-tray / close-to-tray / clipboard watch); add-download
+  enhancements (checksum + algorithm fields, category select, scheduled-start,
+  batch paste, and a clipboard "paste link" affordance); category badges on
+  download cards. The API client now resolves its base URL from the Wails binding
+  (`App.GetApiBase()`) with a dev fallback, and the previously-unmounted
+  **`ConnectionBanner`** is rendered in the layout, driven by SSE online state.
+- **The issue / why it mattered.** The Round-2 engine features (retry, priority,
+  checksums) and the new Round-3 ones had little or no UI; the connection banner
+  was dead code; and a hardcoded `:8080` base URL would break once the desktop
+  app moved to a safe loopback port that can change.
+- **Why this path.** Built with `ui-ux-pro-max` to match the existing shadcn/ui +
+  Tailwind look; mutations live in the existing TanStack Query layer (optimistic
+  where the latency matters); types mirror the Go JSON tags so the contract stays
+  in lockstep.
+
+### Desktop / Wails — production hardening
+
+- **What changed.** A **safe local API port** (binds `127.0.0.1`, prefers 8080,
+  falls back to a free port) exposed to the UI via `App.GetApiBase()`, plus a
+  native folder picker (`App.ChooseDir()`). The previously-dead **system tray** is
+  now wired (show / start-all / pause-all / quit), with **minimize-to-tray** and
+  **close-to-tray** honoring settings, **native completion notifications**,
+  **autostart on login** (per-OS), **window-state persistence**, and an opt-in
+  **clipboard watcher** that emits a Wails event for the frontend. App metadata in
+  `wails.json` was corrected.
+- **The issue / why it mattered.** The app bound `:8080` on **all interfaces**
+  (LAN exposure) and hard-failed if the port was taken; the tray was dead code;
+  there was no minimize/close-to-tray, no notifications, no autostart, and window
+  geometry wasn't remembered — table stakes for a desktop download manager.
+- **Why this path.** Reuse the existing HTTP API rather than rewrite onto native
+  bindings; background goroutines (clipboard watcher, completion poller) are
+  context-cancelable and opt-in to stay leak-free.
+
+### Release / install / docs (this round's new pillar)
+
+- **What changed.**
+  - **CI** (`.github/workflows/ci.yml`): builds, vets, and tests the backend,
+    type-checks and builds the frontend, and builds the root Wails module on every
+    push and PR (installing GTK3 + WebKit2GTK 4.1 so the root module compiles).
+  - **Release pipeline** (`.github/workflows/release.yml`): on a `v*` tag, a 3-OS
+    matrix installs the Wails CLI and builds — **Linux** (`wails build` →
+    `.deb` via nfpm + `.AppImage` via linuxdeploy), **Windows** (`wails build` →
+    `Rum-Setup.exe` via Inno Setup, with a raw-`.exe` fallback), **macOS**
+    (`wails build -platform darwin/universal` → an **unsigned `.dmg`**). A final
+    job attaches every artifact to the GitHub Release with notes pointing here.
+  - **Installers**: the Linux/Windows from-source scripts gained clearer
+    dependency pre-checks that detect missing `go`/`node`/WebKit and print the
+    exact, distro-specific install command (in sync with `INSTALL.md`); existing
+    `--uninstall`/`--mirror`/`--prefix` flags preserved. New **macOS** gui + cli
+    install scripts (check Xcode CLT + Homebrew `go`/`node`; gui installs `Rum.app`
+    into `/Applications` and clears the quarantine flag; cli builds
+    `backend/cmd/rum` into `/usr/local/bin`; both support `--uninstall`).
+  - **Docs**: `INSTALL.md` rewritten to **lead with "download a prebuilt installer
+    from Releases"** (a per-OS table + the macOS Gatekeeper note), build-from-source
+    kept as the second path; `README.md` replaced the stock Wails template with a
+    real project README (what Rum is, feature list incl. the Round-3 additions,
+    install link, `wails dev` quickstart, architecture paragraph, MIT license);
+    this Round-3 entry added and the Round-2 "Known limitations" updated to mark
+    the four resolved items.
+- **The issue / why it mattered.** Rum had **no CI/CD and no prebuilt binaries** —
+  install was build-from-source only, with no macOS support and a stock-template
+  README. Non-technical users had no way to just download and run it, and nothing
+  guarded against a regression on push.
+- **Why this path.** `wails build` does not emit OS packages by itself on the
+  pinned v2.12.0, so the `.deb` is produced with **nfpm** driven by a config the
+  workflow generates to mirror the `nfpm` block in `wails.json` (which the Release
+  scope is not allowed to edit), and the AppImage with **linuxdeploy** over the
+  built binary. macOS is shipped **unsigned and clearly labelled** because no
+  Apple Developer certificate is available; the documented one-line
+  `xattr -dr com.apple.quarantine` workaround unblocks first launch. The full
+  release matrix can only be *proven* on a real tag push — it is written to be
+  correct and heavily commented so the first tag works.
+
+### Orchestrator integration (cross-scope wiring)
+
+Applied after the agents finished, into the shared files each agent could read
+but not write:
+
+1. **Safe-port handshake** end-to-end: `main.go` calls `server.Listen()` /
+   `server.Serve()`; `App.GetApiBase()` returns the resolved base; the frontend
+   API client consumes it.
+2. **Schedule controller mounted** in `cmd/server`: a `SpeedGovernor` is built
+   from settings and attached to the engine; `ScheduleController` is started and
+   the `JobManager`/scheduler are shut down cleanly on exit.
+3. **`go.sum` reconciliation** in both modules for any new (build-tagged) deps.
+4. Resolve "requested upstream changes" reported by agents (e.g. the `wails.json`
+   `nfpm.homepage` typo `https:/tiredbooy.ir` → `https://tiredbooy.ir`, owned by
+   the Desktop agent).
+
+### Known limitations / future work (Round 3)
+
+- **macOS is unsigned and untested.** The `.dmg` is produced automatically but
+  never verified on a real Mac; users must clear the Gatekeeper quarantine flag
+  once. Code signing + notarization would need an Apple Developer account.
+- **The release pipeline is proven only on a tag push.** YAML is validated and
+  the steps are correct by construction, but the `.deb`/AppImage/`.exe`/`.dmg`
+  jobs (and the macOS `.dmg` in particular) only actually run when a `v*` tag is
+  pushed.
+- **`.deb` metadata is duplicated.** Because the Release scope cannot edit
+  `wails.json`, the nfpm config is generated in the workflow to mirror it; if the
+  `wails.json` `nfpm` block changes, the workflow's env values must be updated to
+  match (noted inline in `release.yml`).
+- **SSRF guard still off by default**, and **`internal/pkg/logging` still not
+  adopted** — carried over from Round 2.

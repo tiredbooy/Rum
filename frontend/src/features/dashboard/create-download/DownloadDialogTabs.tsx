@@ -1,17 +1,18 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Download, FileText, Link } from "lucide-react";
+import { Download, FileText, Layers, Link } from "lucide-react";
 import { useState } from "react";
 import { SingleDownloadForm } from "./SingleDownloadForm";
 import { BulkDownloadForm } from "./BulkDownloadForm";
 import { LoadFromUrlForm } from "./LoadFromUrlForm";
+import { BatchDownloadForm } from "./BatchDownloadForm";
 
 export function DownloadTabs() {
   const [activeTab, setActiveTab] = useState("single");
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-      <TabsList className="grid w-full grid-cols-3 bg-muted rounded-md">
+      <TabsList className="grid w-full grid-cols-4 bg-muted rounded-md">
         <TabsTrigger
           value="single"
           className={cn(
@@ -45,6 +46,17 @@ export function DownloadTabs() {
           <Link className="h-4 w-4" />
           <span className="hidden sm:inline">From URL</span>
         </TabsTrigger>
+        <TabsTrigger
+          value="batch"
+          className={cn(
+            "flex items-center gap-2",
+            "data-[state=active]:bg-background data-[state=active]:text-foreground",
+            "text-muted-foreground",
+          )}
+        >
+          <Layers className="h-4 w-4" />
+          <span className="hidden sm:inline">Batch</span>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="single" className="mt-4">
@@ -57,6 +69,10 @@ export function DownloadTabs() {
 
       <TabsContent value="url" className="mt-4">
         <LoadFromUrlForm />
+      </TabsContent>
+
+      <TabsContent value="batch" className="mt-4">
+        <BatchDownloadForm />
       </TabsContent>
     </Tabs>
   );

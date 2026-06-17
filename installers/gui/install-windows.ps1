@@ -73,9 +73,20 @@ if ($Uninstall) {
 }
 
 # --- Prerequisites ---
-if (-not (Get-Command go  -ErrorAction SilentlyContinue)) { Fail "Go 1.25+ required: https://go.dev/doc/install"; exit 1 }
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Fail "Node.js + npm required: https://nodejs.org"; exit 1 }
+# Collect ALL missing tools first, then print one actionable message.
+$missing = @()
+if (-not (Get-Command go   -ErrorAction SilentlyContinue)) { $missing += "Go (https://go.dev/dl/)" }
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { $missing += "Node.js (https://nodejs.org, the LTS installer)" }
+if (-not (Get-Command npm  -ErrorAction SilentlyContinue)) { $missing += "npm (bundled with Node.js)" }
+if ($missing.Count -gt 0) {
+    Fail "Missing required tool(s) to build the GUI:"
+    foreach ($m in $missing) { Write-Host "    - $m" -ForegroundColor Red }
+    Write-Host "  Install them (click through each installer), reopen PowerShell, then re-run. See INSTALL.md." -ForegroundColor Red
+    Write-Host "  Note: the app needs the WebView2 runtime at run time (preinstalled on Windows 10/11)." -ForegroundColor Yellow
+    exit 1
+}
 Ok "Found $(go version)"
+Ok "Found node $(node --version) / npm $(npm --version)"
 
 # Set the mirror (if requested) BEFORE any 'go install' / 'wails build' downloads.
 Set-GoProxy

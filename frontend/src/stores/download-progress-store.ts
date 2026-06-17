@@ -12,12 +12,18 @@ export interface ProgressEntry {
 
 interface ProgressState {
   progressMap: Record<string, ProgressEntry>;
+  /** Whether the live (SSE) progress connection is currently up. */
+  online: boolean;
   updateProgress: (id: string, data: Partial<ProgressEntry>) => void;
+  setOnline: (online: boolean) => void;
   clearAll: () => void;
 }
 
 export const useProgressStore = create<ProgressState>((set) => ({
   progressMap: {},
+  // Optimistic default: assume online until the stream reports otherwise, so the
+  // banner does not flash on the very first render before the SSE connects.
+  online: true,
   updateProgress: (id, data) =>
     set((state) => ({
       progressMap: {
@@ -25,5 +31,6 @@ export const useProgressStore = create<ProgressState>((set) => ({
         [id]: { ...state.progressMap[id], ...data },
       },
     })),
+  setOnline: (online) => set({ online }),
   clearAll: () => set({ progressMap: {} }),
 }));

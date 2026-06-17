@@ -1,4 +1,6 @@
 import {
+  BatchOptions,
+  BatchResult,
   DashboardStats,
   Download,
   DownloadPriority,
@@ -28,6 +30,20 @@ export async function createDownloads(payload: DownloadReq) {
       body: JSON.stringify(payload),
     },
   );
+}
+
+/**
+ * Batch-create downloads. Returns the created jobs plus a per-URL error list for
+ * any URLs the backend rejected (e.g. bad scheme).
+ */
+export async function createBatch(
+  urls: string[],
+  options?: BatchOptions,
+): Promise<BatchResult> {
+  return request<BatchResult>("/api/v1/downloads/batch", {
+    method: "POST",
+    body: JSON.stringify({ urls, options }),
+  });
 }
 
 export async function deleteDownloads(

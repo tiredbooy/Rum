@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { API_URL } from "@/_lib/services/api/api";
+import { apiBaseSync } from "@/_lib/wails";
 import { downloadKeys } from "@/_lib/services/queries/download.queries";
+import { useProgressStore } from "@/stores/download-progress-store";
 import type { Download } from "@/_lib/types/download-types";
 
 /**
@@ -60,9 +61,11 @@ export function AllProgressStream() {
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
 
+  const setOnline = useProgressStore((s) => s.setOnline);
+
   useEffect(() => {
     let cancelled = false;
-    const url = `${API_URL}/api/v1/downloads/stream`;
+    const url = `${apiBaseSync()}/api/v1/downloads/stream`;
 
     const connect = () => {
       if (cancelled) return;
@@ -72,6 +75,7 @@ export function AllProgressStream() {
 
       es.onopen = () => {
         attemptsRef.current = 0;
+        setOnline(true);
       };
 
       es.onmessage = (event) => {
@@ -89,6 +93,7 @@ export function AllProgressStream() {
         // reconnect with capped exponential backoff so the UI never freezes.
         es.close();
         esRef.current = null;
+        setOnline(false);
         if (cancelled) return;
 
         const attempt = attemptsRef.current++;
@@ -105,7 +110,7 @@ export function AllProgressStream() {
       esRef.current?.close();
       esRef.current = null;
     };
-  }, [queryClient]);
+  }, [queryClient, setOnline]);
 
   return null;
 }

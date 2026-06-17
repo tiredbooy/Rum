@@ -19,6 +19,7 @@ import {
 import { ElementType } from "react";
 import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
+import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
 
 interface DownloadCardProps {
@@ -83,6 +84,7 @@ export function DownloadCard({
     eta,
     error,
     priority,
+    category,
   } = download;
 
   const {
@@ -135,6 +137,7 @@ export function DownloadCard({
           {status !== "completed" && (
             <PriorityBadge priority={priority} className="hidden sm:inline-flex" />
           )}
+          <CategoryBadge category={category} className="hidden sm:inline-flex" />
         </div>
 
         {(status === "running" || status === "paused") && (

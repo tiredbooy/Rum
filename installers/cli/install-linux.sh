@@ -44,6 +44,33 @@ info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m✓\033[0m %s\n' "$*"; }
 err()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; }
 
+# Identify the distro family so a missing-Go message can name the exact install
+# command (kept in sync with INSTALL.md). The CLI only needs Go.
+detect_distro() {
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case " $ID ${ID_LIKE:-} " in
+      *" debian "*|*" ubuntu "*) echo "debian" ;;
+      *" fedora "*|*" rhel "*)   echo "fedora" ;;
+      *" arch "*)                echo "arch" ;;
+      *) echo "unknown" ;;
+    esac
+  else
+    echo "unknown"
+  fi
+}
+DISTRO="$(detect_distro)"
+
+print_go_install_cmd() {
+  case "$DISTRO" in
+    debian) echo "  sudo apt update && sudo apt install -y golang" ;;
+    fedora) echo "  sudo dnf install -y golang" ;;
+    arch)   echo "  sudo pacman -S --needed go" ;;
+    *)      echo "  Install Go 1.25+ from https://go.dev/doc/install" ;;
+  esac
+}
+
 # On restricted networks Go's default servers can return 403/timeouts. Offer a
 # Go module proxy mirror (set GOPROXY). GOSUMDB is disabled because the checksum
 # database (sum.golang.org) is usually blocked on the same networks.
@@ -87,7 +114,9 @@ fi
 
 # --- Prerequisites ---
 if ! command -v go >/dev/null 2>&1; then
-  err "Go is not installed. Install Go 1.25+ from https://go.dev/doc/install"
+  err "Go is not installed (required to build the CLI)."
+  echo "Install it with:" >&2
+  print_go_install_cmd >&2
   exit 1
 fi
 ok "Found $(go version)"

@@ -7,6 +7,8 @@ export type DownloadStatus =
 
 export type DownloadPriority = "low" | "normal" | "high";
 
+export type ChecksumAlgo = "sha256" | "md5";
+
 export interface Download {
   id: string;
   url: string;
@@ -23,6 +25,8 @@ export interface Download {
   dest_path?: string;
   created_at?: string;
   completed_at?: string;
+  /** Auto-organize category, echoed by the backend when set. */
+  category?: string;
 }
 
 export interface DownloadReq {
@@ -35,6 +39,49 @@ export interface DownloadReq {
   group_folder?: string;
   max_retries?: string;
   auto_start?: boolean;
+  // Round-3 additive optional fields (POST /downloads).
+  /** Expected checksum to verify the finished file against. */
+  checksum?: string;
+  /** Algorithm for `checksum`. */
+  checksum_algo?: ChecksumAlgo;
+  /** RFC3339 timestamp to defer the download start to. */
+  start_at?: string;
+  /** Category override for auto-organize. */
+  category?: string;
+}
+
+/** Options accepted by the batch endpoint (POST /downloads/batch). */
+export interface BatchOptions {
+  dest_path?: string;
+  speed_limit?: number;
+  max_retries?: number;
+  group_folder?: string;
+  category?: string;
+  checksum?: string;
+  checksum_algo?: ChecksumAlgo;
+  start_at?: string;
+}
+
+export interface BatchRequest {
+  urls: string[];
+  options?: BatchOptions;
+}
+
+export interface DownloadResponse {
+  id: string;
+  url: string;
+  status: string;
+  filename?: string;
+}
+
+export interface BatchError {
+  url: string;
+  error: string;
+}
+
+export interface BatchResult {
+  created: DownloadResponse[];
+  errors: BatchError[];
 }
 
 export interface DashboardStats {

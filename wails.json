@@ -5,7 +5,7 @@
   "frontend:build": "npm run build",
   "author": {
     "name": "tiredbooy",
-    "email": "mahdykazemyo1i2@email.com"
+    "email": "mahdykazemyo1i2@gmail.com"
   },
   "info": {
     "companyName": "tiredbooy",
@@ -23,7 +23,7 @@
   },
   "nfpm": {
     "vendor": "tiredbooy",
-    "homepage": "https:/tiredbooy.ir",
+    "homepage": "https://tiredbooy.ir",
     "maintainer": "tiredbooy <mahdykazemyo1i2@gmail.com>",
     "description": "Rum Is a Fast & Modern Download Manager Written In golang.",
     "formats": ["deb"],

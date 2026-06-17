@@ -31,5 +31,13 @@ func SetupRouter(r *gin.Engine) {
 		v1.GET("/settings", handlers.GetSettings)
 		v1.PATCH("/settings", handlers.UpdateSetting)
 		v1.PUT("/settings/speed-limit", handlers.UpdateSpeedLimit)
+
+		v1.GET("/settings/schedule", handlers.GetSchedule)
+		v1.PUT("/settings/schedule", handlers.PutSchedule)
+
+		v1.GET("/settings/categories", handlers.GetCategories)
+		v1.PUT("/settings/categories", handlers.PutCategories)
+
+		v1.POST("/downloads/batch", handlers.CreateBatch)
 	}
 }

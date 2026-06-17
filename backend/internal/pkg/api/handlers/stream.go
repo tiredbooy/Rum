@@ -14,6 +14,15 @@ import (
 // and to detect dead clients (a failed write surfaces via context cancellation).
 const sseKeepAlive = 15 * time.Second
 
+// progressFlushInterval bounds how often the stream flushes coalesced progress to
+// the client. The engine publishes progress on EVERY buffer read (hundreds–
+// thousands per second on a fast download); flushing each one floods the client
+// and overruns the buffered subscriber channel, so updates get dropped and the
+// progress bar appears to stutter / "pause" even though bytes are flowing. We
+// instead keep only the latest update per job and flush on this cadence, giving a
+// smooth ~10 Hz live stream regardless of how fast the engine produces bytes.
+const progressFlushInterval = 100 * time.Millisecond
+
 func setSSEHeaders(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -32,8 +41,29 @@ func streamLoop(c *gin.Context, flusher http.Flusher, updateCh <-chan dto.Progre
 	fmt.Fprint(c.Writer, ": connected\n\n")
 	flusher.Flush()
 
-	ticker := time.NewTicker(sseKeepAlive)
-	defer ticker.Stop()
+	keepAlive := time.NewTicker(sseKeepAlive)
+	defer keepAlive.Stop()
+	flushTick := time.NewTicker(progressFlushInterval)
+	defer flushTick.Stop()
+
+	// Coalesce: hold only the most recent update per job between flushes so a fast
+	// download can't flood the client (only the latest percentage matters).
+	pending := make(map[string]dto.ProgressUpdate)
+
+	flush := func() bool {
+		for id, u := range pending {
+			delete(pending, id)
+			data, err := json.Marshal(u)
+			if err != nil {
+				continue
+			}
+			if _, werr := fmt.Fprintf(c.Writer, "data: %s\n\n", data); werr != nil {
+				return false
+			}
+		}
+		flusher.Flush()
+		return true
+	}
 
 	for {
 		select {
@@ -41,17 +71,15 @@ func streamLoop(c *gin.Context, flusher http.Flusher, updateCh <-chan dto.Progre
 			return
 		case update, ok := <-updateCh:
 			if !ok {
+				flush() // emit whatever is still pending before closing
 				return
 			}
-			data, err := json.Marshal(update)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
+			pending[update.JobID] = update // keep only the latest per job
+		case <-flushTick.C:
+			if len(pending) > 0 && !flush() {
 				return
 			}
-			flusher.Flush()
-		case <-ticker.C:
+		case <-keepAlive.C:
 			if _, err := fmt.Fprint(c.Writer, ": keep-alive\n\n"); err != nil {
 				return
 			}

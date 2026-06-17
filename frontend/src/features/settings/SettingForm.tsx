@@ -30,6 +30,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SettingReq } from "@/_lib/types/setting-types";
+import { ScheduleEditor } from "./ScheduleEditor";
+import { CategoryManager } from "./CategoryManager";
+import { DesktopSettings } from "./DesktopSettings";
 
 // Safe defaults – prevents any undefined field from crashing
 const defaultSettings: SettingReq = {
@@ -38,6 +41,7 @@ const defaultSettings: SettingReq = {
   out_dir: "",
   speed_limit_kb: 0,
   max_parallel: 3,
+  connections: 8,
   max_retries: 3,
   preferred_theme: "system",
   post_download: { auto_open_dir: false, action: "none" },
@@ -114,7 +118,8 @@ export function SettingsForm() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {/* General Section */}
       <Card className="col-span-full md:col-span-1">
         <CardHeader>
@@ -227,6 +232,26 @@ export function SettingsForm() {
           />
 
           <SettingInput
+            label="Connections per download"
+            icon={<Zap className="w-4 h-4" />}
+            type="number"
+            min={1}
+            max={16}
+            value={form.connections}
+            placeholder="8"
+            onChange={(e) =>
+              updateField(
+                "connections",
+                e.target.value === "" ? 8 : Number(e.target.value),
+              )
+            }
+            onBlur={() =>
+              handleBlur("connections", { connections: form.connections })
+            }
+            saved={savedField === "connections"}
+          />
+
+          <SettingInput
             label="Retry attempts"
             icon={<Repeat className="w-4 h-4" />}
             type="number"
@@ -336,6 +361,16 @@ export function SettingsForm() {
           />
         </CardContent>
       </Card>
+      </div>
+
+      {/* Bandwidth schedule + scheduled-start (PUT /settings/schedule) */}
+      <ScheduleEditor />
+
+      {/* Category auto-organize (PUT /settings/categories) */}
+      <CategoryManager />
+
+      {/* Desktop preferences (PATCH /settings) */}
+      <DesktopSettings />
     </div>
   );
 }

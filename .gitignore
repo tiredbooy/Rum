@@ -2,11 +2,20 @@
 .idea
 cmd/swiftget/swiftget
 cmd/rum/Rum
+/Rum
+/rum
 .VSCodeCounter
 cmd/rum/build.sh
 frontend/dist
 frontend/node_modules
 build
 
-frontend/node_modules
-frontend/dist
+# Ignore Wails build output, but keep the committed icon/metadata source assets
+# so a fresh clone builds with the real app icon (not the Wails default).
+/build/*
+!/build/appicon.png
+!/build/icon.png
+!/build/windows
+/build/windows/*
+!/build/windows/icon.ico
+compressed

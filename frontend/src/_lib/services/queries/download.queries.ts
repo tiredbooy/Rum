@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
+  BatchOptions,
   Download,
   DownloadPriority,
   DownloadReq,
   DownloadStatus,
 } from "@/_lib/types/download-types";
 import {
+  createBatch,
   createDownloads,
   deleteDownload,
   deleteDownloads,
@@ -48,6 +50,22 @@ export function useCreateDownloads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: DownloadReq) => createDownloads(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+export function useCreateBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      urls,
+      options,
+    }: {
+      urls: string[];
+      options?: BatchOptions;
+    }) => createBatch(urls, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
