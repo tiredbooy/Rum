@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AllProgressStream } from "./hooks/useAllProgressStream";
+import DropProvider from "@/features/drag-drop/DropProvider";
 
 const queryClient = createQueryClient();
 
@@ -15,6 +16,7 @@ function App() {
       <Toaster />
       <QueryClientProvider client={queryClient}>
         <AllProgressStream />
+        <DropProvider />
         <RouterProvider router={router} />
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
