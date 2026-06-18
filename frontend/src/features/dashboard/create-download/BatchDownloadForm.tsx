@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { isValidUrl } from "@/_lib/utils/validators";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
 import { useCreateBatch } from "@/_lib/services/queries/download.queries";
 import type { BatchResult } from "@/_lib/types/download-types";
+import { useAddDialogStore } from "@/stores/add-dialog-store";
+import { classifyLinks } from "@/features/drag-drop/extract-links";
 
 /**
  * Self-contained batch add: paste/type one URL per line, submit straight to
@@ -24,9 +26,41 @@ export function BatchDownloadForm() {
   const { readRawText } = useClipboardUrl();
   const createBatch = useCreateBatch();
 
+  const consumeDropped = useAddDialogStore((s) => s.consumeDropped);
+  const open = useAddDialogStore((s) => s.open);
+
   const [rawText, setRawText] = useState("");
   const [destPath, setDestPath] = useState("");
   const [result, setResult] = useState<BatchResult | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [dropped, setDropped] = useState<{
+    all: string[];
+    downloadable: string[];
+  } | null>(null);
+
+  // When the dialog opens carrying dropped URLs, classify them once and seed the
+  // textarea (downloadable-only by default, falling back to all links).
+  useEffect(() => {
+    if (!open) return;
+    const urls = consumeDropped();
+    if (urls && urls.length) {
+      const classified = classifyLinks(urls);
+      setDropped(classified);
+      setRawText(
+        (classified.downloadable.length
+          ? classified.downloadable
+          : classified.all
+        ).join("\n"),
+      );
+      setShowAll(classified.downloadable.length === 0);
+    }
+  }, [open, consumeDropped]);
+
+  // When the toggle flips and we have a drop set, swap the textarea contents.
+  useEffect(() => {
+    if (!dropped) return;
+    setRawText((showAll ? dropped.all : dropped.downloadable).join("\n"));
+  }, [showAll, dropped]);
 
   const urls = useMemo(
     () =>
@@ -89,6 +123,17 @@ export function BatchDownloadForm() {
         <Label htmlFor="batch-urls" className="text-sm font-medium">
           URLs <span className="text-muted-foreground">(one per line)</span>
         </Label>
+        {dropped && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={(e) => setShowAll(e.target.checked)}
+            />
+            Show all links ({dropped.all.length}) · downloadable only (
+            {dropped.downloadable.length})
+          </label>
+        )}
         <Textarea
           id="batch-urls"
           placeholder={"https://example.com/file1.zip\nhttps://example.com/file2.mp4"}
