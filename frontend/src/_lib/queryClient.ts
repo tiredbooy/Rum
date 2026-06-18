@@ -5,6 +5,8 @@ export function createQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 5_000,
+        // Collect idle/stale query caches after a minute to keep RSS down.
+        gcTime: 60_000,
         refetchOnWindowFocus: true,
         retry: 2,
       },

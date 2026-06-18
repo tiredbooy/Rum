@@ -55,6 +55,21 @@ function applyPatch(queryClient: QueryClient, patch: Partial<Download> & { id: s
     });
 }
 
+/**
+ * Reports whether any download tracked in the React Query cache is currently
+ * running or pending. Used to decide whether the SSE stream needs to be open:
+ * idle (everything completed/paused/error) means we can close it to save RAM/CPU.
+ */
+function hasActiveDownloads(queryClient: QueryClient): boolean {
+  return queryClient
+    .getQueriesData<Download[]>({ queryKey: downloadKeys.all })
+    .some(([, list]) =>
+      Array.isArray(list)
+        ? list.some((dl) => dl?.status === "running" || dl?.status === "pending")
+        : false,
+    );
+}
+
 export function AllProgressStream() {
   const queryClient = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
@@ -62,8 +77,36 @@ export function AllProgressStream() {
   const attemptsRef = useRef(0);
 
   const setOnline = useProgressStore((s) => s.setOnline);
+  const setHasActivity = useProgressStore((s) => s.setHasActivity);
+  const hasActivity = useProgressStore((s) => s.hasActivity);
+
+  // Keep the activity flag in sync with the download cache. Subscribing to the
+  // query cache means adding/completing a download flips the flag, which in turn
+  // (via the connect effect below) opens or pauses the SSE stream.
+  useEffect(() => {
+    const recompute = () => setHasActivity(hasActiveDownloads(queryClient));
+    recompute();
+    const cache = queryClient.getQueryCache();
+    const unsubscribe = cache.subscribe(recompute);
+    return unsubscribe;
+  }, [queryClient, setHasActivity]);
 
   useEffect(() => {
+    // No work to watch: keep the stream closed but report "online" so the
+    // connection banner stays hidden — this is an intentional idle pause, not
+    // a dropped connection.
+    if (!hasActivity) {
+      if (reconnectRef.current) {
+        clearTimeout(reconnectRef.current);
+        reconnectRef.current = null;
+      }
+      esRef.current?.close();
+      esRef.current = null;
+      attemptsRef.current = 0;
+      setOnline(true);
+      return;
+    }
+
     let cancelled = false;
     const url = `${apiBaseSync()}/api/v1/downloads/stream`;
 
@@ -110,7 +153,7 @@ export function AllProgressStream() {
       esRef.current?.close();
       esRef.current = null;
     };
-  }, [queryClient, setOnline]);
+  }, [queryClient, setOnline, hasActivity]);
 
   return null;
 }
