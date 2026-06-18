@@ -7,6 +7,9 @@ import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { AdvancedOptions } from "./AdvancedOptions";
+import { hasWildcard } from "@/features/wildcard/wildcard";
+import { WildcardExpander } from "@/features/wildcard/WildcardExpander";
+import { useAddDialogStore } from "@/stores/add-dialog-store";
 
 export function SingleDownloadForm() {
   const { clipboardUrl, pasteValidUrl } = useClipboardUrl();
@@ -86,6 +89,14 @@ export function SingleDownloadForm() {
           </p>
         )}
       </div>
+
+      {hasWildcard(url) && (
+        <WildcardExpander
+          url={url.trim()}
+          options={destPath.trim() ? { dest_path: destPath.trim() } : undefined}
+          onDone={() => useAddDialogStore.getState().setOpen(false)}
+        />
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="filename" className="text-sm font-medium">
