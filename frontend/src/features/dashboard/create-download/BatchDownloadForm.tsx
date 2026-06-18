@@ -72,12 +72,6 @@ export function BatchDownloadForm() {
     }
   }, [open, consumeDropped]);
 
-  // When the toggle flips and we have a drop set, swap the textarea contents.
-  useEffect(() => {
-    if (!dropped) return;
-    setRawText((showAll ? dropped.all : dropped.downloadable).join("\n"));
-  }, [showAll, dropped]);
-
   const urls = useMemo(
     () =>
       rawText
@@ -135,6 +129,9 @@ export function BatchDownloadForm() {
       }
     }
     setRawText(expanded.join("\n"));
+    // Once expanded, the drop-classification toggle no longer applies — drop it
+    // so flipping "Show all" can't overwrite the expanded list.
+    setDropped(null);
     setWildcardOpen(false);
   };
 
@@ -153,6 +150,7 @@ export function BatchDownloadForm() {
       {
         onSuccess: (res) => {
           setResult(res);
+          setDropped(null);
           // Keep only the lines that failed so the user can fix + resubmit.
           if (res.errors.length) {
             setRawText(res.errors.map((e) => e.url).join("\n"));
@@ -189,7 +187,15 @@ export function BatchDownloadForm() {
             <input
               type="checkbox"
               checked={showAll}
-              onChange={(e) => setShowAll(e.target.checked)}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setShowAll(next);
+                // Swap only on an actual toggle (not on every render), so an
+                // expanded/edited list is never clobbered.
+                setRawText(
+                  (next ? dropped.all : dropped.downloadable).join("\n"),
+                );
+              }}
             />
             Show all links ({dropped.all.length}) · downloadable only (
             {dropped.downloadable.length})

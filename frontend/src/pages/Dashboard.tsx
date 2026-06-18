@@ -11,11 +11,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
 import { useRef, useState } from "react";
 
-interface Props {
-  // props here
-}
-
-export default function Dashboard({}: Props) {
+export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("all");
   const openWith = useAddDialogStore((s) => s.openWith);
   const filterRef = useRef<HTMLDivElement>(null);
