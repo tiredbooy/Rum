@@ -4,10 +4,16 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   CheckCircle2,
   Clipboard,
   Loader2,
   Send,
+  Wand2,
   XCircle,
 } from "lucide-react";
 import { isValidUrl } from "@/_lib/utils/validators";
@@ -16,6 +22,14 @@ import { useCreateBatch } from "@/_lib/services/queries/download.queries";
 import type { BatchResult } from "@/_lib/types/download-types";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
 import { classifyLinks } from "@/features/drag-drop/extract-links";
+import {
+  expandWildcard,
+  hasWildcard,
+  validateRange,
+  WILDCARD_MAX,
+  type WildcardRange,
+} from "@/features/wildcard/wildcard";
+import { toast } from "@/lib/toast";
 
 /**
  * Self-contained batch add: paste/type one URL per line, submit straight to
@@ -37,6 +51,8 @@ export function BatchDownloadForm() {
     all: string[];
     downloadable: string[];
   } | null>(null);
+  const [wildcardOpen, setWildcardOpen] = useState(false);
+  const [range, setRange] = useState<WildcardRange>({ from: 1, to: 10, pad: 0 });
 
   // When the dialog opens carrying dropped URLs, classify them once and seed the
   // textarea (downloadable-only by default, falling back to all links).
@@ -76,6 +92,51 @@ export function BatchDownloadForm() {
     .map((l) => l.trim())
     .filter(Boolean).length;
   const invalidCount = totalLines - urls.length;
+
+  // Count non-empty lines that carry a `*` so the Expand action only shows when
+  // there is something to expand.
+  const wildcardLineCount = useMemo(
+    () =>
+      rawText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && hasWildcard(l)).length,
+    [rawText],
+  );
+
+  const rangeError = validateRange(range);
+
+  // Expand every `*` line in place using the shared From/To/pad range, leaving
+  // plain (non-wildcard) lines untouched. Bails out (with a toast) if the total
+  // would blow past WILDCARD_MAX so we never build a runaway list.
+  const handleExpandWildcards = () => {
+    if (rangeError) {
+      toast.error?.(rangeError);
+      return;
+    }
+    const lines = rawText.split("\n").map((l) => l.trim());
+    const expanded: string[] = [];
+    let total = 0;
+    for (const line of lines) {
+      if (!line) continue;
+      if (!hasWildcard(line)) {
+        expanded.push(line);
+        total += 1;
+      } else {
+        const next = expandWildcard(line, range);
+        total += next.length;
+        if (total > WILDCARD_MAX) {
+          toast.error?.(
+            `Expansion would exceed the ${WILDCARD_MAX}-URL limit. Narrow the range and try again.`,
+          );
+          return;
+        }
+        expanded.push(...next);
+      }
+    }
+    setRawText(expanded.join("\n"));
+    setWildcardOpen(false);
+  };
 
   const handlePaste = async () => {
     const text = await readRawText();
@@ -152,16 +213,89 @@ export function BatchDownloadForm() {
               </span>
             )}
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePaste}
-            className="gap-2 self-start sm:self-auto"
-          >
-            <Clipboard className="h-4 w-4" />
-            Paste from clipboard
-          </Button>
+          <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+            {wildcardLineCount > 0 && (
+              <Popover open={wildcardOpen} onOpenChange={setWildcardOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    Expand wildcards ({wildcardLineCount})
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 space-y-3">
+                  <p className="text-sm font-medium">Expand * range</p>
+                  <p className="text-xs text-muted-foreground">
+                    Replaces the first <code>*</code> in each line with a number
+                    in the range below.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">From</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={range.from}
+                        onChange={(e) =>
+                          setRange((r) => ({ ...r, from: Number(e.target.value) }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">To</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={range.to}
+                        onChange={(e) =>
+                          setRange((r) => ({ ...r, to: Number(e.target.value) }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Zero-pad</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={12}
+                        value={range.pad}
+                        onChange={(e) =>
+                          setRange((r) => ({ ...r, pad: Number(e.target.value) }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  {rangeError && (
+                    <p className="text-xs text-destructive">{rangeError}</p>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleExpandWildcards}
+                    disabled={!!rangeError}
+                    className="w-full gap-2"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    Expand
+                  </Button>
+                </PopoverContent>
+              </Popover>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handlePaste}
+              className="gap-2"
+            >
+              <Clipboard className="h-4 w-4" />
+              Paste from clipboard
+            </Button>
+          </div>
         </div>
       </div>
 
