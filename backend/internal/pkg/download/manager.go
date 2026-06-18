@@ -970,3 +970,15 @@ func (m *JobManager) GetDashboardStats() DashboardStats {
 		CurrentSpeedMBps:  totalSpeed / (1024 * 1024), // convert bytes/sec to MB/s
 	}
 }
+
+// ActiveCount returns the number of currently-running jobs (used by the idle
+// memory controller).
+func (m *JobManager) ActiveCount() int {
+	n := 0
+	for _, j := range m.GetAllJobs() {
+		if j.GetStatus() == StatusRunning {
+			n++
+		}
+	}
+	return n
+}
