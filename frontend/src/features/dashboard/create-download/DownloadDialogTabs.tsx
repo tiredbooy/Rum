@@ -1,14 +1,17 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { Download, FileText, Layers, Link } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SingleDownloadForm } from "./SingleDownloadForm";
 import { BulkDownloadForm } from "./BulkDownloadForm";
 import { LoadFromUrlForm } from "./LoadFromUrlForm";
 import { BatchDownloadForm } from "./BatchDownloadForm";
+import { useAddDialogStore } from "@/stores/add-dialog-store";
 
 export function DownloadTabs() {
-  const [activeTab, setActiveTab] = useState("single");
+  const initialTab = useAddDialogStore((s) => s.initialTab);
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  useEffect(() => setActiveTab(initialTab), [initialTab]);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

@@ -1,22 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { ResponsiveDialog } from "@/features/reusable/dialog/DialogShell";
 import { DownloadTabs } from "./DownloadDialogTabs";
-import { Dispatch, SetStateAction } from "react";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { useCreateDownloads } from "@/_lib/services/queries/download.queries";
+import { useAddDialogStore } from "@/stores/add-dialog-store";
 
-interface Props {
-  open: boolean;
-  setOpen: Dispatch<SetStateAction<boolean>>;
-}
+export default function DownloadDialog() {
+  const open = useAddDialogStore((s) => s.open);
+  const setOpen = useAddDialogStore((s) => s.setOpen);
+  const draft = useDownloadRequestStore((s) => s.draft);
+  const saveDownloads = useCreateDownloads();
 
-export default function DownloadDialog({ open, setOpen }: Props) {
-  const draft = useDownloadRequestStore((s) => s.draft)
-  const saveDownloads = useCreateDownloads()
-  
   const handleSaveDownloads = () => {
-    if (draft?.urls.length  )
-    saveDownloads.mutateAsync(draft)
+    if (draft?.urls?.length) saveDownloads.mutateAsync(draft);
     setOpen(false);
   };
 

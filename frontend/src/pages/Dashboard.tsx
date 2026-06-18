@@ -8,6 +8,7 @@ import { DownloadStatusPage } from "@/features/dashboard/download-list/DownloadS
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
 import { DashboardToolbar } from "@/features/dashboard/Toolbar";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useAddDialogStore } from "@/stores/add-dialog-store";
 import { useRef, useState } from "react";
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
 
 export default function Dashboard({}: Props) {
   const [activeTab, setActiveTab] = useState("all");
-  const [open, setOpen] = useState(false);
+  const openWith = useAddDialogStore((s) => s.openWith);
   const filterRef = useRef<HTMLDivElement>(null);
 
   const startDownloads = useStartAllDownloads();
@@ -57,7 +58,7 @@ export default function Dashboard({}: Props) {
   ];
 
   const handleAddDownlad = () => {
-    setOpen((open) => !open);
+    openWith();
   };
 
   const handleStartAll = () => {
@@ -81,7 +82,7 @@ export default function Dashboard({}: Props) {
   };
 
   useKeyboardShortcuts({
-    onNewDownload: () => setOpen(true),
+    onNewDownload: () => openWith(),
     onFocusFilter: focusFilter,
     onPauseAll: handlePauseAll,
     onStartAll: handleStartAll,
@@ -89,7 +90,7 @@ export default function Dashboard({}: Props) {
 
   return (
     <div className="">
-      <DownloadDialog open={open} setOpen={setOpen} />
+      <DownloadDialog />
       <DashboardToolbar
         stats={{
           active: 1,
