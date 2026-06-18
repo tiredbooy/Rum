@@ -210,14 +210,26 @@ func Serve() {
 		return
 	}
 
-	// Start the schedule controller (bandwidth windows + scheduled starts). Its
-	// context is cancelled on shutdown so the ticker goroutine exits cleanly.
+	// Long-lived context for background controllers. Cancelled on shutdown so
+	// their ticker goroutines exit cleanly. Shared by the schedule controller and
+	// the idle memory controller.
+	rootCtx, cancel := context.WithCancel(context.Background())
+	srvMu.Lock()
+	rootCancel = cancel
+	srvMu.Unlock()
+
+	// Start the schedule controller (bandwidth windows + scheduled starts).
 	if ctrl != nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		srvMu.Lock()
-		rootCancel = cancel
-		srvMu.Unlock()
-		ctrl.Start(ctx)
+		ctrl.Start(rootCtx)
+	}
+
+	// Start the idle-gated memory controller so the runtime returns freed heap
+	// pages to the OS when no downloads are active (Go releases memory lazily, so
+	// RSS otherwise stays high after a large download). It self-stops when rootCtx
+	// is cancelled. Started here because the root Wails module cannot import
+	// backend/internal — the manager is only reachable from inside cmd/server.
+	if mgr != nil {
+		download.StartMemoryController(rootCtx, mgr.ActiveCount, 30*time.Second)
 	}
 
 	go func() {

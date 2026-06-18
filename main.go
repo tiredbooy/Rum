@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"log"
+	"runtime/debug"
 
 	"github.com/tiredbooy/Rum/backend/cmd/server"
 	"github.com/wailsapp/wails/v2/pkg/application"
@@ -33,6 +34,8 @@ var wailsApp *application.Application
 var isQuitting bool // guard to prevent recursion
 
 func main() {
+	debug.SetGCPercent(50) // collect more often; trade a little CPU for lower RSS
+
 	app := NewApp()
 
 	// Touch the engine's settings accessor early so a corrupt/missing settings
