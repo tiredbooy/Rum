@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Rum
+Comment=Rum - Powerfull Fast & modern Download manger app
+Exec=/usr/local/bin/Rum
+Icon=Rum
+Terminal=false
+Categories=Office;Utility;

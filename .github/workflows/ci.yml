@@ -56,9 +56,21 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      # Your local package-lock.json was generated against a private mirror
+      # (npm.devneeds.ir), so its "resolved" URLs point there instead of the
+      # public registry. `npm ci` fetches from those exact URLs regardless of
+      # CI's registry config, and the mirror 403s requests from GitHub's
+      # runners. This rewrites the lockfile's host to the public registry
+      # before install — same packages/integrity hashes, just a reachable
+      # source. Remove this step once you've regenerated the lockfile
+      # locally with `npm install --registry=https://registry.npmjs.org/`.
+      - name: Point lockfile at public registry
+        working-directory: frontend
+        run: sed -i 's#https://npm.devneeds.ir/repository/npm#https://registry.npmjs.org#g' package-lock.json
 
       - name: Frontend — install, type-check, build
         working-directory: frontend

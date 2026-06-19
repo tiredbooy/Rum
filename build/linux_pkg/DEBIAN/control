@@ -1,0 +1,7 @@
+Package: rum
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: tiredbooy <mahdykazemyo1i2@gmail.com>
+Description: Rum - Powerfull Fast & modern Download manger app
