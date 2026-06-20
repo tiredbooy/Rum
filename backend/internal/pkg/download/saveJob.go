@@ -83,11 +83,29 @@ func readJobsFile() []*Job {
 		return nil
 	}
 
+	// Fast path: decode the whole array at once.
 	var loaded []*Job
-	if err := json.Unmarshal(data, &loaded); err != nil {
+	if err := json.Unmarshal(data, &loaded); err == nil {
+		return loaded
+	} else {
+		// One malformed record must never wipe the user's entire history. Fall back
+		// to decoding record-by-record and keep every job that still parses.
+		log.Printf("jobs.json array decode failed (%v); recovering record-by-record", err)
+	}
+
+	var raws []json.RawMessage
+	if err := json.Unmarshal(data, &raws); err != nil {
 		log.Printf("Failed to parse jobs.json: %v", err)
 		return nil
 	}
-
-	return loaded
+	recovered := make([]*Job, 0, len(raws))
+	for i, raw := range raws {
+		var j Job
+		if err := json.Unmarshal(raw, &j); err != nil {
+			log.Printf("skipping unreadable job #%d in jobs.json: %v", i, err)
+			continue
+		}
+		recovered = append(recovered, &j)
+	}
+	return recovered
 }

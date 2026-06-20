@@ -3,6 +3,8 @@ package download
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -137,7 +139,7 @@ type jobJSON struct {
 	SupportRange      bool          `json:"support_range"`
 	Speed             float64       `json:"speed"`
 	RemainingTime     time.Duration `json:"remaining_time"`
-	Error             error         `json:"error"`
+	Error             string        `json:"error,omitempty"`
 	BatchID           string        `json:"batch_id"`
 	CreatedAt         time.Time     `json:"created_at"`
 	CompletedAt       time.Time     `json:"completed_at"`
@@ -170,7 +172,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		SupportRange:      j.SupportRange,
 		Speed:             j.Speed,
 		RemainingTime:     j.RemainingTime,
-		Error:             j.Error,
+		Error:             errString(j.Error),
 		BatchID:           j.BatchID,
 		CreatedAt:         j.CreatedAt,
 		CompletedAt:       j.CompletedAt,
@@ -181,4 +183,93 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
 	})
+}
+
+// errString renders an error as its message, or "" when nil. Used so the Error
+// field persists as a plain JSON string that round-trips, instead of the old
+// `"error":{}` object that an `error` interface marshals to and then fails to
+// unmarshal (which silently wiped the whole jobs.json on load).
+func errString(e error) string {
+	if e == nil {
+		return ""
+	}
+	return e.Error()
+}
+
+// UnmarshalJSON restores a Job from disk, decoding the Error field tolerantly via
+// json.RawMessage so BOTH the current string form (`"error":"msg"`) and the legacy
+// object form (`"error":{}`) written by older builds load without error. The old
+// code path rejected the ENTIRE jobs.json on a single un-decodable error field,
+// silently erasing the user's download history. A fresh Job is not yet shared, so
+// no locking is needed here.
+func (j *Job) UnmarshalJSON(data []byte) error {
+	var in struct {
+		ID                string          `json:"id"`
+		URL               string          `json:"url"`
+		FileName          string          `json:"file_name"`
+		OutputPath        string          `json:"output_path"`
+		Status            string          `json:"status"`
+		Priority          string          `json:"priority"`
+		Downloaded        int64           `json:"downloaded"`
+		TotalSize         int64           `json:"total_size"`
+		ContentType       string          `json:"content_type"`
+		SupportRange      bool            `json:"support_range"`
+		Speed             float64         `json:"speed"`
+		RemainingTime     time.Duration   `json:"remaining_time"`
+		Error             json.RawMessage `json:"error"`
+		BatchID           string          `json:"batch_id"`
+		CreatedAt         time.Time       `json:"created_at"`
+		CompletedAt       time.Time       `json:"completed_at"`
+		StartAt           time.Time       `json:"start_at"`
+		Checksum          string          `json:"checksum"`
+		ChecksumAlgo      string          `json:"checksum_algo"`
+		Category          string          `json:"category"`
+		IntegrityHash     string          `json:"integrity_hash"`
+		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	j.ID = in.ID
+	j.URL = in.URL
+	j.FileName = in.FileName
+	j.OutputPath = in.OutputPath
+	j.Status = in.Status
+	j.Priority = in.Priority
+	j.Downloaded = in.Downloaded
+	j.TotalSize = in.TotalSize
+	j.ContentType = in.ContentType
+	j.SupportRange = in.SupportRange
+	j.Speed = in.Speed
+	j.RemainingTime = in.RemainingTime
+	j.Error = parseJobError(in.Error)
+	j.BatchID = in.BatchID
+	j.CreatedAt = in.CreatedAt
+	j.CompletedAt = in.CompletedAt
+	j.StartAt = in.StartAt
+	j.Checksum = in.Checksum
+	j.ChecksumAlgo = in.ChecksumAlgo
+	j.Category = in.Category
+	j.IntegrityHash = in.IntegrityHash
+	j.IntegrityHashAlgo = in.IntegrityHashAlgo
+	return nil
+}
+
+// parseJobError decodes a persisted error field tolerantly: a JSON string becomes
+// an error carrying that message; null/empty or a legacy object form (`{}`, which
+// older builds wrote for any non-nil error) becomes nil. The job's error STATE is
+// preserved separately via Status, so dropping an unrecoverable legacy message
+// never loses the fact that the job failed.
+func parseJobError(raw json.RawMessage) error {
+	s := strings.TrimSpace(string(raw))
+	if s == "" || s == "null" {
+		return nil
+	}
+	if s[0] == '"' {
+		var msg string
+		if err := json.Unmarshal(raw, &msg); err == nil && msg != "" {
+			return errors.New(msg)
+		}
+	}
+	return nil
 }
