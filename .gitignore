@@ -8,6 +8,7 @@ cmd/rum/Rum
 cmd/rum/build.sh
 frontend/dist
 frontend/node_modules
+frontend/package.json.md5
 build
 
 # Ignore Wails build output, but keep the committed icon/metadata source assets
