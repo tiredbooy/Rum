@@ -43,6 +43,13 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A changed remote validator (E1) must never be retried: resuming would only
+	// re-staple new-version bytes onto old ones. The segmented driver catches this
+	// sentinel and restarts the whole download from zero instead.
+	if errors.Is(err, errValidatorChanged) {
+		return false
+	}
+
 	// HTTP status based decisions.
 	var se *httpStatusError
 	if errors.As(err, &se) {
@@ -136,13 +143,23 @@ type retryConfig struct {
 	maxDelay   time.Duration
 }
 
-func newRetryConfig(maxRetries int) retryConfig {
+// newRetryConfig builds a retry config from opt. opt.MaxRetries bounds the retry
+// count; opt.RetryBackoffSec (seconds) overrides the base exponential-backoff
+// delay when > 0, otherwise the engine default (defaultRetryBaseDelay) is used.
+// Threading the base lets the AutoResume/retry settings tune how aggressively a
+// transient (e.g. reconnect) failure is retried before surfacing.
+func newRetryConfig(opt Options) retryConfig {
+	maxRetries := opt.MaxRetries
 	if maxRetries < 0 {
 		maxRetries = 0
 	}
+	base := defaultRetryBaseDelay
+	if opt.RetryBackoffSec > 0 {
+		base = time.Duration(opt.RetryBackoffSec) * time.Second
+	}
 	return retryConfig{
 		maxRetries: maxRetries,
-		base:       defaultRetryBaseDelay,
+		base:       base,
 		maxDelay:   defaultRetryMaxDelay,
 	}
 }

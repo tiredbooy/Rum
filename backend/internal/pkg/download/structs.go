@@ -43,6 +43,32 @@ type Options struct {
 	Checksum     string
 	ChecksumAlgo string
 
+	// VerifyIntegrity, when true, makes a finished segmented download compute a
+	// full-file SHA-256 and store it in the sidecar/job so a later "verify" can
+	// be performed without the server (server-free re-verification). Structural
+	// verification (segment completeness + on-disk size, which catches sparse
+	// holes) always runs regardless of this flag; this only controls whether the
+	// extra full-file hash is computed and persisted. Default false keeps the
+	// fast path for callers that have not opted into it.
+	VerifyIntegrity bool
+
+	// RetryBackoffSec is the base exponential-backoff delay (seconds) used by the
+	// engine retry config. 0 means "use the engine default" (defaultRetryBaseDelay).
+	// Threaded from config.Setting.RetryBackoffSec (clamped to [1,60] there).
+	RetryBackoffSec int
+
+	// TempDir, when non-empty, is where the in-progress file (and its .rumparts
+	// resume sidecar) are written; the finished file is moved to Out on
+	// completion. Empty = write the in-progress file next to the final output
+	// (the legacy behavior). Threaded from config.Setting.TempDir.
+	TempDir string
+
+	// KeepPartialOnFailure, when true, preserves on-disk partial data + the resume
+	// sidecar when a download FAILS (so it can be resumed/repaired). It does not
+	// affect explicit deletes, which always remove partials. Threaded from
+	// config.Setting.KeepPartialOnFailure.
+	KeepPartialOnFailure bool
+
 	// StartAt, when non-zero, is the earliest time a scheduled job should begin.
 	// The schedule controller starts due jobs; a zero value means start
 	// immediately (the default).

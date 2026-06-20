@@ -45,6 +45,14 @@ type Job struct {
 	Checksum     string `json:"checksum,omitempty"`
 	ChecksumAlgo string `json:"checksum_algo,omitempty"`
 	Category     string `json:"category,omitempty"` // forces a category; "" = auto-detect
+
+	// IntegrityHash is the hex digest of the fully assembled file, recorded on
+	// completion when integrity verification was enabled. It lets a later verify
+	// re-check the on-disk bytes without contacting the server, and replaces the
+	// old practice of leaving a visible *.rumparts sidecar next to every finished
+	// download (clutter). IntegrityHashAlgo names the algorithm ("sha256").
+	IntegrityHash     string `json:"integrity_hash,omitempty"`
+	IntegrityHashAlgo string `json:"integrity_hash_algo,omitempty"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -91,6 +99,16 @@ func (j *Job) SetChecksumAlgo(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Ch
 func (j *Job) GetCategory() string      { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Category }
 func (j *Job) SetCategory(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Category = v }
 
+func (j *Job) GetIntegrityHash() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.IntegrityHash }
+
+// SetIntegrityHash records the full-file digest and its algorithm together.
+func (j *Job) SetIntegrityHash(hash, algo string) {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.IntegrityHash = hash
+	j.IntegrityHashAlgo = algo
+}
+
 func (j *Job) GetCancelFunc() context.CancelFunc {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
@@ -107,26 +125,28 @@ func (j *Job) SetCancelFunc(c context.CancelFunc) {
 // without copying the embedded sync.RWMutex (which `go vet` rightly forbids).
 // The field tags match Job exactly, so the on-disk format is unchanged.
 type jobJSON struct {
-	ID            string        `json:"id"`
-	URL           string        `json:"url"`
-	FileName      string        `json:"file_name"`
-	OutputPath    string        `json:"output_path"`
-	Status        string        `json:"status"`
-	Priority      string        `json:"priority"`
-	Downloaded    int64         `json:"downloaded"`
-	TotalSize     int64         `json:"total_size"`
-	ContentType   string        `json:"content_type"`
-	SupportRange  bool          `json:"support_range"`
-	Speed         float64       `json:"speed"`
-	RemainingTime time.Duration `json:"remaining_time"`
-	Error         error         `json:"error"`
-	BatchID       string        `json:"batch_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	CompletedAt   time.Time     `json:"completed_at"`
-	StartAt       time.Time     `json:"start_at,omitempty"`
-	Checksum      string        `json:"checksum,omitempty"`
-	ChecksumAlgo  string        `json:"checksum_algo,omitempty"`
-	Category      string        `json:"category,omitempty"`
+	ID                string        `json:"id"`
+	URL               string        `json:"url"`
+	FileName          string        `json:"file_name"`
+	OutputPath        string        `json:"output_path"`
+	Status            string        `json:"status"`
+	Priority          string        `json:"priority"`
+	Downloaded        int64         `json:"downloaded"`
+	TotalSize         int64         `json:"total_size"`
+	ContentType       string        `json:"content_type"`
+	SupportRange      bool          `json:"support_range"`
+	Speed             float64       `json:"speed"`
+	RemainingTime     time.Duration `json:"remaining_time"`
+	Error             error         `json:"error"`
+	BatchID           string        `json:"batch_id"`
+	CreatedAt         time.Time     `json:"created_at"`
+	CompletedAt       time.Time     `json:"completed_at"`
+	StartAt           time.Time     `json:"start_at,omitempty"`
+	Checksum          string        `json:"checksum,omitempty"`
+	ChecksumAlgo      string        `json:"checksum_algo,omitempty"`
+	Category          string        `json:"category,omitempty"`
+	IntegrityHash     string        `json:"integrity_hash,omitempty"`
+	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -138,25 +158,27 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
 	return json.Marshal(jobJSON{
-		ID:            j.ID,
-		URL:           j.URL,
-		FileName:      j.FileName,
-		OutputPath:    j.OutputPath,
-		Status:        j.Status,
-		Priority:      j.Priority,
-		Downloaded:    j.Downloaded,
-		TotalSize:     j.TotalSize,
-		ContentType:   j.ContentType,
-		SupportRange:  j.SupportRange,
-		Speed:         j.Speed,
-		RemainingTime: j.RemainingTime,
-		Error:         j.Error,
-		BatchID:       j.BatchID,
-		CreatedAt:     j.CreatedAt,
-		CompletedAt:   j.CompletedAt,
-		StartAt:       j.StartAt,
-		Checksum:      j.Checksum,
-		ChecksumAlgo:  j.ChecksumAlgo,
-		Category:      j.Category,
+		ID:                j.ID,
+		URL:               j.URL,
+		FileName:          j.FileName,
+		OutputPath:        j.OutputPath,
+		Status:            j.Status,
+		Priority:          j.Priority,
+		Downloaded:        j.Downloaded,
+		TotalSize:         j.TotalSize,
+		ContentType:       j.ContentType,
+		SupportRange:      j.SupportRange,
+		Speed:             j.Speed,
+		RemainingTime:     j.RemainingTime,
+		Error:             j.Error,
+		BatchID:           j.BatchID,
+		CreatedAt:         j.CreatedAt,
+		CompletedAt:       j.CompletedAt,
+		StartAt:           j.StartAt,
+		Checksum:          j.Checksum,
+		ChecksumAlgo:      j.ChecksumAlgo,
+		Category:          j.Category,
+		IntegrityHash:     j.IntegrityHash,
+		IntegrityHashAlgo: j.IntegrityHashAlgo,
 	})
 }

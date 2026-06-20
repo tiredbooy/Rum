@@ -532,6 +532,14 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		log.Println("ERROR STARTING: ", err.Error())
 		job.SetStatus(StatusError)
 		job.SetError(err)
+		// KeepPartialOnFailure governs ONLY the failure path: when it is off, a
+		// failed download's partial data + resume sidecar are discarded so a stale,
+		// possibly-corrupt partial is not left around. When on (the default), the
+		// partial is kept so the user can resume/repair. A pause/cancel above is not
+		// a failure and always keeps the partial.
+		if !effectiveOpt.KeepPartialOnFailure {
+			RemovePartialData(job.GetOutputPath())
+		}
 	}
 	downloaded := job.GetDownloaded()
 	totalSize := job.GetTotalSize()
@@ -561,6 +569,140 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	m.onJobFinished(job)
 
 	fireTestCompletionHook(jobID)
+}
+
+// ResumeInterruptedJobs re-queues jobs that were interrupted by a previous
+// session's exit/crash so a restart picks up where it left off. It targets jobs
+// persisted with status "running" (the app stopped mid-transfer) — these were
+// never deliberately stopped by the user, so resuming them is safe and expected.
+// Deliberately "paused" jobs are left alone (the user chose to pause them).
+//
+// It is the AutoResumeOnLaunch hook; the caller (server startup) gates it on the
+// setting. The partial data on disk + the resume sidecar make this a real resume,
+// not a restart-from-zero. Safe to call once on launch.
+func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) {
+	m.mu.RLock()
+	var toResume []string
+	for id, job := range m.jobs {
+		// A persisted "running" status means the previous session was killed before
+		// it could flip the job to paused/completed/error — i.e. it was interrupted.
+		if job.GetStatus() == StatusRunning {
+			toResume = append(toResume, id)
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, id := range toResume {
+		// Reset to pending so StartJob's eligibility check passes, then enqueue.
+		m.mu.Lock()
+		if job, ok := m.jobs[id]; ok {
+			job.SetStatus(StatusPending)
+		}
+		m.mu.Unlock()
+		_ = m.StartJob(ctx, id)
+	}
+}
+
+// effectiveOptsForJob builds the per-download Options for a job the same way
+// runDownload does: start from the manager's global Options (out dir, governor,
+// connections, reliability settings) and overlay the job's per-job fields
+// (checksum/algo, category). Used by verify/repair so they resolve the same
+// output path + segment plan + validators a normal download would.
+func (m *JobManager) effectiveOptsForJob(job *Job) Options {
+	m.mu.RLock()
+	opt := *m.opt
+	m.mu.RUnlock()
+	if cs := job.GetChecksum(); cs != "" {
+		opt.Checksum = cs
+		opt.ChecksumAlgo = job.GetChecksumAlgo()
+	}
+	if cat := job.GetCategory(); cat != "" {
+		opt.Categorize = true
+		opt.Category = cat
+	}
+	if opt.Downloader == nil {
+		opt.Downloader = NewDownloader(opt.UserAgent, opt.Referer)
+	}
+	return opt
+}
+
+// VerifyJob runs an integrity check on a (typically completed) job and returns
+// the result. It never mutates the file. deep forces a network re-validation
+// (re-HEAD to confirm the source still matches). Returns ErrNotFound if the job
+// is unknown so the handler can map it to 404.
+func (m *JobManager) VerifyJob(ctx context.Context, id string, deep bool) (VerifyResult, error) {
+	m.mu.RLock()
+	job, ok := m.jobs[id]
+	m.mu.RUnlock()
+	if !ok {
+		return VerifyResult{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	opt := m.effectiveOptsForJob(job)
+	return VerifyFile(ctx, opt, job, deep)
+}
+
+// RepairJob verifies a job and re-fetches only the bad/missing segments. When
+// segments is nil it first runs VerifyFile to localize the damage, then repairs
+// exactly those segments; an already-good job is a fast no-op re-verify. The job
+// transitions running -> (repair) -> completed/error around the repair so the UI
+// reflects progress. It is idempotent and safe on a completed job. Returns the
+// post-repair VerifyResult. Returns ErrNotFound for an unknown job and ErrConflict
+// if the job is actively downloading (pause it first).
+func (m *JobManager) RepairJob(ctx context.Context, id string, segments []int) (VerifyResult, error) {
+	m.mu.RLock()
+	job, ok := m.jobs[id]
+	m.mu.RUnlock()
+	if !ok {
+		return VerifyResult{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.GetStatus() == StatusRunning {
+		return VerifyResult{}, fmt.Errorf("job %s is downloading; pause it before repair: %w", id, ErrConflict)
+	}
+
+	opt := m.effectiveOptsForJob(job)
+
+	// Localize damage when the caller did not specify segments.
+	if segments == nil {
+		res, err := VerifyFile(ctx, opt, job, false)
+		if err != nil {
+			return VerifyResult{}, err
+		}
+		if res.Ok {
+			// Nothing to repair; report the clean verdict (idempotent no-op).
+			return res, nil
+		}
+		segments = res.BadSegments
+	}
+
+	prevStatus := job.GetStatus()
+	job.SetStatus(StatusRunning)
+	job.SetError(nil)
+
+	if err := RepairFile(ctx, opt, job, segments); err != nil {
+		// Restore a terminal status on failure so the card doesn't get stuck running.
+		job.SetStatus(StatusError)
+		job.SetError(err)
+		m.saveToDisk()
+		return VerifyResult{}, err
+	}
+
+	// Re-verify after the repair to confirm the file is now whole.
+	res, err := VerifyFile(ctx, opt, job, false)
+	if err != nil {
+		job.SetStatus(StatusError)
+		job.SetError(err)
+		m.saveToDisk()
+		return VerifyResult{}, err
+	}
+	if res.Ok {
+		job.SetStatus(StatusCompleted)
+		job.SetCompletedAt(time.Now())
+	} else {
+		// Still bad after a repair pass: surface it rather than claim success.
+		job.SetStatus(prevStatus)
+	}
+	m.saveToDisk()
+	return res, nil
 }
 
 func (m *JobManager) StartAllJobs(ctx context.Context) {
@@ -638,6 +780,19 @@ func (m *JobManager) SetConnections(n int) {
 	}
 	m.mu.Lock()
 	m.opt.Connections = n
+	m.mu.Unlock()
+}
+
+// SetReliabilityOptions updates the reliability/UX engine options (integrity
+// verification, retry backoff base, temp dir, keep-partial-on-failure) on the
+// live manager so a settings change applies to the NEXT download without an app
+// restart. Already-running downloads keep the options they started with.
+func (m *JobManager) SetReliabilityOptions(verifyIntegrity bool, retryBackoffSec int, tempDir string, keepPartialOnFailure bool) {
+	m.mu.Lock()
+	m.opt.VerifyIntegrity = verifyIntegrity
+	m.opt.RetryBackoffSec = retryBackoffSec
+	m.opt.TempDir = tempDir
+	m.opt.KeepPartialOnFailure = keepPartialOnFailure
 	m.mu.Unlock()
 }
 
@@ -822,12 +977,34 @@ func (m *JobManager) DeleteJob(jobID string) error {
 		return fmt.Errorf("job %s not found", jobID)
 	}
 
+	// Cancel an in-flight transfer first so we don't race the download goroutine
+	// while removing its partial file (it would otherwise keep writing).
 	if cancel := job.GetCancelFunc(); cancel != nil {
 		cancel()
 	}
 
+	// An explicit delete always removes the on-disk partial + resume sidecar,
+	// regardless of KeepPartialOnFailure (that flag only governs *failures*). A
+	// completed download's final file is left in place — we only drop the resume
+	// sidecar in that case (RemovePartialData removes the file too only if it is
+	// still the partial; a finished file at the output path is the user's data, so
+	// guard on status).
+	outputPath := job.GetOutputPath()
+	status := job.GetStatus()
+
+	// Drop from the in-memory maps + URL index so a re-add isn't blocked by a stale
+	// dedup entry.
 	delete(m.jobs, jobID)
+	delete(m.urls, job.URL)
 	m.mu.Unlock()
+
+	// Remove partial data outside the lock (disk I/O). A completed job keeps its
+	// finished file; only its (usually already-removed) sidecar is cleaned.
+	if status == StatusCompleted {
+		removePartsMeta(outputPath)
+	} else {
+		RemovePartialData(outputPath)
+	}
 
 	if err := DeleteJobFromDisk(jobID); err != nil {
 		return fmt.Errorf("failed to delete job from disk: %w", err)
@@ -836,32 +1013,67 @@ func (m *JobManager) DeleteJob(jobID string) error {
 	return nil
 }
 
+// shouldDeleteForFilter reports whether a job matches a delete filter.
+//
+//	"all"               -> every job
+//	"completed"         -> StatusCompleted
+//	"error" / "failed"  -> StatusError
+//
+// An unknown filter matches nothing (safer than nuking everything on a typo).
+func shouldDeleteForFilter(job *Job, filter string) bool {
+	switch filter {
+	case "all":
+		return true
+	case "completed":
+		return job.GetStatus() == StatusCompleted
+	case "error", "failed":
+		return job.GetStatus() == StatusError
+	default:
+		return false
+	}
+}
+
+// DeleteJobsByFilter deletes all jobs matching the status filter ("all",
+// "completed", "error"/"failed") atomically w.r.t. the scheduler:
+//   - A targeted job that is still running is cancelled FIRST so deletion is safe
+//     (the download goroutine stops writing before we remove its partial).
+//   - Each deleted job's on-disk partial + resume sidecar are removed (an explicit
+//     delete always removes partials, regardless of KeepPartialOnFailure, which
+//     only governs failures). A completed job's finished file is kept; only its
+//     resume sidecar is cleaned.
+//   - The surviving set + the URL dedup index are rebuilt under the lock so a
+//     concurrent dispatch sees a consistent map.
 func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	if filter == "" {
 		filter = "all"
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
+	// Partition into deleted vs. remaining, cancelling running jobs that are being
+	// deleted so they stop writing before we remove their partials.
+	type partialTarget struct {
+		path      string
+		completed bool
+	}
+	var toClean []partialTarget
 	var remaining []*Job
 	for _, job := range m.jobs {
-		switch filter {
-		case "completed":
-			if job.GetStatus() == StatusCompleted {
-				continue // drop completed
+		if shouldDeleteForFilter(job, filter) {
+			if cancel := job.GetCancelFunc(); cancel != nil {
+				cancel() // pause/cancel an in-flight transfer before deleting it
 			}
-		case "error", "failed":
-			if job.GetStatus() == StatusError {
-				continue // drop errored/failed
-			}
-		case "all":
-			continue // drop everything
+			toClean = append(toClean, partialTarget{
+				path:      job.GetOutputPath(),
+				completed: job.GetStatus() == StatusCompleted,
+			})
+			continue
 		}
 		remaining = append(remaining, job)
 	}
 
 	if err := filesystem.WriteMetadataFile("jobs.json", remaining); err != nil {
+		m.mu.Unlock()
 		return err
 	}
 
@@ -873,6 +1085,17 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	for _, job := range remaining {
 		m.jobs[job.ID] = job
 		m.urls[job.URL] = job.ID
+	}
+	m.mu.Unlock()
+
+	// Remove partials outside the lock (disk I/O). A completed job keeps its
+	// finished file; only its sidecar is cleaned.
+	for _, t := range toClean {
+		if t.completed {
+			removePartsMeta(t.path)
+		} else {
+			RemovePartialData(t.path)
+		}
 	}
 
 	return nil

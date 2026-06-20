@@ -177,7 +177,10 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 
 func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn ProgressFunc) error {
 	url := utils.UrlValidation(job.URL)
-	fullPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
+	finalPath := PrepareOutputPath(opt, job.FileName, url, job.ContentType)
+	// Honor TempDir: download into a working path (under TempDir when set) and move
+	// to finalPath on success. No-op when TempDir is unset (working == final).
+	fullPath := resolveWorkingPath(opt, finalPath)
 	job.SetOutputPath(fullPath)
 
 	var existsFileSize int64 = 0
@@ -196,6 +199,9 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 		if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
 			return err
 		}
+		if err := finalizeWorkingMove(opt, job, fullPath, finalPath); err != nil {
+			return err
+		}
 		job.SetStatus(StatusCompleted)
 		job.SetDownloaded(existsFileSize)
 		return nil
@@ -204,6 +210,9 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	if job.TotalSize >= 1 && existsFileSize == int64(job.TotalSize) {
 		DebugLog("Found Completed File Pass")
 		if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+			return err
+		}
+		if err := finalizeWorkingMove(opt, job, fullPath, finalPath); err != nil {
 			return err
 		}
 		job.SetStatus(StatusCompleted)
@@ -234,7 +243,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	// partial file and resumes from its current size, so a transient failure
 	// mid-stream resumes where it left off instead of restarting. Permanent
 	// errors (HTTP 4xx) and context cancellation are not retried.
-	cfg := newRetryConfig(opt.MaxRetries)
+	cfg := newRetryConfig(opt)
 	if err := retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
 		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
 	}); err != nil {
@@ -245,6 +254,12 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	// A mismatch surfaces ErrChecksumMismatch and leaves the file in place so the
 	// user can inspect/retry. No-op when opt.Checksum == "".
 	if err := VerifyChecksum(fullPath, opt.ChecksumAlgo, opt.Checksum); err != nil {
+		return err
+	}
+
+	// Move the finished file out of TempDir to its real destination (no-op when
+	// TempDir is unset) before auto-organizing.
+	if err := finalizeWorkingMove(opt, job, fullPath, finalPath); err != nil {
 		return err
 	}
 
