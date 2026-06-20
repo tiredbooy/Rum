@@ -227,3 +227,163 @@ func TestUpdateTogglesDesktopFields(t *testing.T) {
 		t.Fatalf("desktop toggles not persisted by Update: %+v", reloaded)
 	}
 }
+
+// TestReliabilityDefaults verifies the safety-first defaults for the new
+// reliability/UX settings: integrity verification + auto-resume are ON, the
+// backoff base is the documented default, density is comfortable, and the
+// partial-on-failure guard is ON.
+func TestReliabilityDefaults(t *testing.T) {
+	var s Setting
+	s.setDefaults()
+
+	if !s.VerifyIntegrity {
+		t.Error("VerifyIntegrity should default to true (safety is the fix)")
+	}
+	if !s.AutoResumeOnReconnect {
+		t.Error("AutoResumeOnReconnect should default to true")
+	}
+	if !s.AutoResumeOnLaunch {
+		t.Error("AutoResumeOnLaunch should default to true")
+	}
+	if s.RetryBackoffSec != defaultRetryBackoffSec {
+		t.Errorf("RetryBackoffSec = %d, want %d", s.RetryBackoffSec, defaultRetryBackoffSec)
+	}
+	if s.AccentColor != "" {
+		t.Errorf("AccentColor = %q, want empty", s.AccentColor)
+	}
+	if s.UIDensity != "comfortable" {
+		t.Errorf("UIDensity = %q, want comfortable", s.UIDensity)
+	}
+	if s.ReducedMotion {
+		t.Error("ReducedMotion should default to false")
+	}
+	if s.TempDir != "" {
+		t.Errorf("TempDir = %q, want empty", s.TempDir)
+	}
+	if !s.KeepPartialOnFailure {
+		t.Error("KeepPartialOnFailure should default to true")
+	}
+}
+
+// TestValidateReliabilityClamps verifies the new clamps: retry backoff is bound
+// to [1,60], an invalid density falls back to comfortable, and an invalid accent
+// color is rejected to "" while a valid hex color is preserved.
+func TestValidateReliabilityClamps(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          Setting
+		wantBackoff int
+		wantDensity string
+		wantAccent  string
+	}{
+		{
+			name:        "zero backoff -> default, empty density -> comfortable",
+			in:          Setting{RetryBackoffSec: 0, UIDensity: ""},
+			wantBackoff: defaultRetryBackoffSec,
+			wantDensity: "comfortable",
+			wantAccent:  "",
+		},
+		{
+			name:        "negative backoff -> default",
+			in:          Setting{RetryBackoffSec: -5, UIDensity: "compact"},
+			wantBackoff: defaultRetryBackoffSec,
+			wantDensity: "compact",
+		},
+		{
+			name:        "over-max backoff -> 60",
+			in:          Setting{RetryBackoffSec: 999, UIDensity: "bogus"},
+			wantBackoff: maxRetryBackoffSec,
+			wantDensity: "comfortable",
+		},
+		{
+			name:        "valid 6-digit accent preserved",
+			in:          Setting{AccentColor: "#1A2B3C", RetryBackoffSec: 5, UIDensity: "compact"},
+			wantBackoff: 5,
+			wantDensity: "compact",
+			wantAccent:  "#1A2B3C",
+		},
+		{
+			name:        "valid 3-digit accent preserved",
+			in:          Setting{AccentColor: "#abc", RetryBackoffSec: 5},
+			wantBackoff: 5,
+			wantDensity: "comfortable",
+			wantAccent:  "#abc",
+		},
+		{
+			name:        "invalid accent rejected to empty",
+			in:          Setting{AccentColor: "not-a-color", RetryBackoffSec: 5},
+			wantBackoff: 5,
+			wantDensity: "comfortable",
+			wantAccent:  "",
+		},
+		{
+			name:        "accent without hash rejected",
+			in:          Setting{AccentColor: "1A2B3C", RetryBackoffSec: 5},
+			wantBackoff: 5,
+			wantDensity: "comfortable",
+			wantAccent:  "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := tc.in
+			s.Validate()
+			if s.RetryBackoffSec != tc.wantBackoff {
+				t.Errorf("RetryBackoffSec = %d, want %d", s.RetryBackoffSec, tc.wantBackoff)
+			}
+			if s.UIDensity != tc.wantDensity {
+				t.Errorf("UIDensity = %q, want %q", s.UIDensity, tc.wantDensity)
+			}
+			if s.AccentColor != tc.wantAccent {
+				t.Errorf("AccentColor = %q, want %q", s.AccentColor, tc.wantAccent)
+			}
+		})
+	}
+}
+
+// TestUpdateRoundTripsReliabilitySettings verifies a PATCH-style Update applies
+// and persists the new settings (and clamps an out-of-range backoff).
+func TestUpdateRoundTripsReliabilitySettings(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	var s Setting
+	s.setDefaults()
+	if err := s.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	no := false
+	backoff := 999 // should clamp to 60
+	density := "compact"
+	accent := "#0af"
+	tmp := t.TempDir()
+	if err := s.Update(SettingReq{
+		VerifyIntegrity: &no,
+		RetryBackoffSec: &backoff,
+		UIDensity:       &density,
+		AccentColor:     &accent,
+		TempDir:         &tmp,
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	var reloaded Setting
+	if err := reloaded.LoadSettingMetadata(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if reloaded.VerifyIntegrity {
+		t.Error("VerifyIntegrity should be false after update")
+	}
+	if reloaded.RetryBackoffSec != maxRetryBackoffSec {
+		t.Errorf("RetryBackoffSec = %d, want %d (clamped)", reloaded.RetryBackoffSec, maxRetryBackoffSec)
+	}
+	if reloaded.UIDensity != "compact" {
+		t.Errorf("UIDensity = %q, want compact", reloaded.UIDensity)
+	}
+	if reloaded.AccentColor != "#0af" {
+		t.Errorf("AccentColor = %q, want #0af", reloaded.AccentColor)
+	}
+	if reloaded.TempDir != tmp {
+		t.Errorf("TempDir = %q, want %q", reloaded.TempDir, tmp)
+	}
+}

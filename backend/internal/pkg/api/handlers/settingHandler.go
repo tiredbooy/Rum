@@ -95,13 +95,26 @@ func applyDownloadOptions(setting *config.Setting) {
 		Connections: setting.Connections,
 		Silent:      setting.Silent,
 		MaxRetries:  setting.MaxRetries,
+		// Reliability / UX settings.
+		VerifyIntegrity:      setting.VerifyIntegrity,
+		RetryBackoffSec:      setting.RetryBackoffSec,
+		TempDir:              setting.TempDir,
+		KeepPartialOnFailure: setting.KeepPartialOnFailure,
 	}
 	download.LoadOptions(opt)
 
 	// Push the connection count onto the live manager so a change takes effect for
 	// the next download without a restart (LoadOptions is a one-shot sync.Once).
+	// The reliability/UX options are also pushed so the next download picks them up
+	// without an app restart.
 	if GlobalManager != nil {
 		GlobalManager.SetConnections(setting.Connections)
+		GlobalManager.SetReliabilityOptions(
+			setting.VerifyIntegrity,
+			setting.RetryBackoffSec,
+			setting.TempDir,
+			setting.KeepPartialOnFailure,
+		)
 	}
 }
 

@@ -93,12 +93,28 @@ func Listen() (baseURL string, err error) {
 		MaxRetries:  setting.MaxRetries,
 		Silent:      setting.Silent,
 		Governor:    governor,
+		// Reliability / UX settings threaded into the engine: integrity
+		// verification on completion, retry backoff base, temp dir for in-progress
+		// files, and whether to keep partials on failure.
+		VerifyIntegrity:      setting.VerifyIntegrity,
+		RetryBackoffSec:      setting.RetryBackoffSec,
+		TempDir:              setting.TempDir,
+		KeepPartialOnFailure: setting.KeepPartialOnFailure,
 	}
 	opt.Downloader = download.NewDownloader("", "")
 
 	download.SetQuitFunc(AppQuitFunc)
 
 	handlers.InitAPI(opt)
+
+	// Auto-resume previously-running/paused jobs on launch when the setting is on.
+	// This is the AutoResumeOnLaunch hook: a restart picks up where the last
+	// session left off instead of leaving in-flight jobs stuck. AutoResumeOnReconnect
+	// is realized by the engine retry/backoff policy (it resumes transient network
+	// failures rather than failing); full OS network-event detection is a follow-up.
+	if setting.AutoResumeOnLaunch && handlers.GlobalManager != nil {
+		handlers.GlobalManager.ResumeInterruptedJobs(context.Background())
+	}
 
 	r := gin.Default()
 	middlewares.SetupMiddlewares(r)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -300,6 +301,105 @@ func DeleteDownloads(c *gin.Context) {
 
 func GetDownloadsStats(c *gin.Context) {
 	c.JSON(http.StatusOK, GlobalManager.GetDashboardStats())
+}
+
+// VerifyDownload checks an (already finished) download's integrity and returns
+// the engine VerifyResult. ?deep=true forces a network re-validation (re-HEAD to
+// confirm the source still matches). It never mutates the file, so it is always
+// safe to call. Errors map via the engine taxonomy: not-found -> 404,
+// remote-changed -> 409, checksum/integrity -> 422.
+func VerifyDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	deep := c.Query("deep") == "true" || c.Query("deep") == "1"
+
+	res, err := GlobalManager.VerifyJob(c.Request.Context(), jobID, deep)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
+}
+
+// RepairDownload re-fetches the bad/missing segments of a download and re-verifies
+// it. The optional body/query `segments` selects which segments to repair; when
+// absent the handler verifies first to localize the damage, then repairs those.
+// It is idempotent and safe on an already-good completed job (it returns a clean
+// verify result without re-downloading). Errors map via the engine taxonomy:
+// not-found -> 404, conflict (still downloading) -> 409, remote-changed -> 409,
+// checksum/integrity -> 422.
+func RepairDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	// Optional segments selector. Accept either a JSON body { "segments": [..] }
+	// or a comma-separated ?segments=0,2,5 query param. nil means "verify first to
+	// find bad segments, then repair them".
+	segments := parseRepairSegments(c)
+
+	res, err := GlobalManager.RepairJob(c.Request.Context(), jobID, segments)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
+}
+
+// parseRepairSegments extracts the optional segment indices to repair from the
+// request, preferring a JSON body and falling back to a ?segments= query param.
+// It returns nil when none are supplied (the handler then verifies to localize
+// damage), and a non-nil (possibly empty) slice when an explicit selection is
+// given. Invalid/negative entries are dropped.
+func parseRepairSegments(c *gin.Context) []int {
+	// Try a JSON body first (best-effort; an empty/absent body is fine).
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCreateBodyBytes)
+		var body struct {
+			Segments []int `json:"segments"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil && body.Segments != nil {
+			return sanitizeSegments(body.Segments)
+		}
+	}
+
+	// Fall back to a comma-separated query param.
+	if q := c.Query("segments"); q != "" {
+		var out []int
+		for _, part := range strings.Split(q, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if n, err := strconv.Atoi(part); err == nil && n >= 0 {
+				out = append(out, n)
+			}
+		}
+		return sanitizeSegments(out)
+	}
+
+	return nil
+}
+
+// sanitizeSegments drops negative indices and returns the cleaned slice. A
+// non-nil but empty result means "explicit empty selection" (repair nothing,
+// just re-verify), distinct from nil ("figure out what's bad").
+func sanitizeSegments(in []int) []int {
+	out := make([]int, 0, len(in))
+	for _, n := range in {
+		if n >= 0 {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // toDownloadResponse builds the single-job response (used by GET /downloads/:id).

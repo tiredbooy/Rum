@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
@@ -47,6 +48,42 @@ type Setting struct {
 	// toggle; rules are ignored when it is false.
 	EnableCategories bool           `json:"enable_categories"`
 	Categories       []CategoryRule `json:"categories,omitempty"`
+
+	// Reliability / integrity. VerifyIntegrity makes every finished download
+	// compute + store a full-file hash so it can later be re-verified server-free
+	// (the corruption fix — safety is the default, so this is true unless turned
+	// off). It is threaded into download.Options.VerifyIntegrity.
+	VerifyIntegrity bool `json:"verify_integrity"`
+
+	// Auto-retry / resume policy.
+	//   AutoResumeOnReconnect — resume interrupted transfers when connectivity
+	//     returns (today this is realized by the retry/backoff policy resuming
+	//     rather than failing on transient network errors; full network-event
+	//     detection is a follow-up).
+	//   AutoResumeOnLaunch — on app launch, re-queue jobs that were running/paused
+	//     last session so a restart picks up where it left off.
+	//   RetryBackoffSec — base exponential-backoff delay (seconds) for the engine
+	//     retry config; clamped to [1, 60].
+	AutoResumeOnReconnect bool `json:"auto_resume_on_reconnect"`
+	AutoResumeOnLaunch    bool `json:"auto_resume_on_launch"`
+	RetryBackoffSec       int  `json:"retry_backoff_sec"`
+
+	// Theme / appearance. These are consumed by the frontend theme provider.
+	//   AccentColor — "" = app default, otherwise a #RRGGBB or #RGB hex color.
+	//   UIDensity   — "comfortable" | "compact".
+	//   ReducedMotion — disable non-essential animations.
+	AccentColor   string `json:"accent_color"`
+	UIDensity     string `json:"ui_density"`
+	ReducedMotion bool   `json:"reduced_motion"`
+
+	// Temp / partial handling.
+	//   TempDir — when set, in-progress files are written here and moved to OutDir
+	//     on completion; "" = write next to the final output (legacy behavior).
+	//   KeepPartialOnFailure — when true, partial data is NOT deleted when a
+	//     download fails, so it can be resumed/repaired. (Explicit deletes always
+	//     remove partials regardless of this flag.)
+	TempDir              string `json:"temp_dir"`
+	KeepPartialOnFailure bool   `json:"keep_partial_on_failure"`
 
 	// Desktop / Wails preferences. These live in the backend config (the root
 	// module imports it) but are read/written by the desktop layer.
@@ -106,6 +143,18 @@ type SettingReq struct {
 	CloseToTray          *bool        `json:"close_to_tray"`
 	EnableClipboardWatch *bool        `json:"enable_clipboard_watch"`
 	WindowState          *WindowState `json:"window_state"`
+
+	// Reliability / integrity, auto-retry/resume, theme, temp/partial. All
+	// pointers so a PATCH only touches what it sends (partial update semantics).
+	VerifyIntegrity       *bool   `json:"verify_integrity"`
+	AutoResumeOnReconnect *bool   `json:"auto_resume_on_reconnect"`
+	AutoResumeOnLaunch    *bool   `json:"auto_resume_on_launch"`
+	RetryBackoffSec       *int    `json:"retry_backoff_sec"`
+	AccentColor           *string `json:"accent_color"`
+	UIDensity             *string `json:"ui_density"`
+	ReducedMotion         *bool   `json:"reduced_motion"`
+	TempDir               *string `json:"temp_dir"`
+	KeepPartialOnFailure  *bool   `json:"keep_partial_on_failure"`
 }
 
 type SpeedRule struct {
@@ -120,14 +169,39 @@ const (
 	// mirrors the engine default and IDM; maxConnections bounds the setting/slider.
 	defaultConnections = 8
 	maxConnections     = 16
+
+	// defaultRetryBackoffSec is the default base exponential-backoff delay in
+	// seconds, mirroring the engine's defaultRetryBaseDelay (500ms rounds up to a
+	// 1s base here, the minimum of the [1,60] clamp). Threaded into the engine
+	// retry config.
+	defaultRetryBackoffSec = 1
+	minRetryBackoffSec     = 1
+	maxRetryBackoffSec     = 60
 )
 
-// validActions / validConflicts / validLogLevels define the accepted enum values.
+// validActions / validConflicts / validLogLevels / validDensities define the
+// accepted enum values.
 var (
-	validActions   = map[string]bool{"none": true, "shutdown": true, "sleep": true, "close": true}
-	validConflicts = map[string]bool{"rename": true, "overwrite": true, "skip": true}
-	validLogLevels = map[string]bool{"info": true, "debug": true, "warn": true, "error": true}
+	validActions    = map[string]bool{"none": true, "shutdown": true, "sleep": true, "close": true}
+	validConflicts  = map[string]bool{"rename": true, "overwrite": true, "skip": true}
+	validLogLevels  = map[string]bool{"info": true, "debug": true, "warn": true, "error": true}
+	validDensities  = map[string]bool{"comfortable": true, "compact": true}
+	hexColorPattern = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 )
+
+// normalizeAccentColor returns the input trimmed if it is a valid #RGB / #RRGGBB
+// hex color, otherwise "" (the app-default sentinel). Empty input is valid and
+// stays "". This keeps an invalid color from ever reaching the theme provider.
+func normalizeAccentColor(c string) string {
+	c = strings.TrimSpace(c)
+	if c == "" {
+		return ""
+	}
+	if hexColorPattern.MatchString(c) {
+		return c
+	}
+	return "" // reject invalid -> app default
+}
 
 func (s *Setting) LoadSettingMetadata() error {
 	data, err := filesystem.ReadMetadataFile("settings.json")
@@ -237,6 +311,27 @@ func (s *Setting) Validate() {
 		}
 		s.Categories = valid
 	}
+
+	// Retry backoff base: clamp to [1, 60] seconds (0/negative means "use the
+	// default" rather than an impossible zero-delay retry storm).
+	if s.RetryBackoffSec <= 0 {
+		s.RetryBackoffSec = defaultRetryBackoffSec
+	}
+	if s.RetryBackoffSec < minRetryBackoffSec {
+		s.RetryBackoffSec = minRetryBackoffSec
+	}
+	if s.RetryBackoffSec > maxRetryBackoffSec {
+		s.RetryBackoffSec = maxRetryBackoffSec
+	}
+
+	// Theme/appearance: reject an invalid accent color (-> app default) and an
+	// unknown density (-> comfortable). TempDir is trimmed but otherwise free-form
+	// (path validity is checked at use-time when the dir is created).
+	s.AccentColor = normalizeAccentColor(s.AccentColor)
+	if !validDensities[s.UIDensity] {
+		s.UIDensity = "comfortable"
+	}
+	s.TempDir = strings.TrimSpace(s.TempDir)
 }
 
 func (s *Setting) Update(req SettingReq) error {
@@ -298,6 +393,35 @@ func (s *Setting) Update(req SettingReq) error {
 		s.WindowState = *req.WindowState
 	}
 
+	// Reliability / integrity, auto-retry/resume, theme, temp/partial.
+	if req.VerifyIntegrity != nil {
+		s.VerifyIntegrity = *req.VerifyIntegrity
+	}
+	if req.AutoResumeOnReconnect != nil {
+		s.AutoResumeOnReconnect = *req.AutoResumeOnReconnect
+	}
+	if req.AutoResumeOnLaunch != nil {
+		s.AutoResumeOnLaunch = *req.AutoResumeOnLaunch
+	}
+	if req.RetryBackoffSec != nil {
+		s.RetryBackoffSec = *req.RetryBackoffSec
+	}
+	if req.AccentColor != nil {
+		s.AccentColor = *req.AccentColor
+	}
+	if req.UIDensity != nil {
+		s.UIDensity = *req.UIDensity
+	}
+	if req.ReducedMotion != nil {
+		s.ReducedMotion = *req.ReducedMotion
+	}
+	if req.TempDir != nil {
+		s.TempDir = *req.TempDir
+	}
+	if req.KeepPartialOnFailure != nil {
+		s.KeepPartialOnFailure = *req.KeepPartialOnFailure
+	}
+
 	s.Validate()
 
 	path := filesystem.CreateMetadataFile("settings.json")
@@ -353,6 +477,19 @@ func (s *Setting) setDefaults() {
 	s.CloseToTray = false
 	s.EnableClipboardWatch = false
 	s.WindowState = WindowState{}
+
+	// Reliability / UX defaults. Safety-first: integrity verification and
+	// auto-resume are ON by default (this is the corruption fix). Theme/temp
+	// settings default to the app's existing look + "next to output" behavior.
+	s.VerifyIntegrity = true
+	s.AutoResumeOnReconnect = true
+	s.AutoResumeOnLaunch = true
+	s.RetryBackoffSec = defaultRetryBackoffSec
+	s.AccentColor = ""
+	s.UIDensity = "comfortable"
+	s.ReducedMotion = false
+	s.TempDir = ""
+	s.KeepPartialOnFailure = true
 }
 
 func (s *Setting) applyMissingDefaults() {
@@ -376,5 +513,19 @@ func (s *Setting) applyMissingDefaults() {
 	}
 	if s.PostDownload.Action == "" {
 		s.PostDownload.Action = "none"
+	}
+
+	// Reliability / UX backfill for configs written before these fields existed.
+	// Only zero-valued string/int fields are backfilled here: a JSON-missing field
+	// unmarshals to the zero value, which is indistinguishable from an explicit
+	// zero for bools, so the default-true bools (VerifyIntegrity, AutoResume*,
+	// KeepPartialOnFailure) are intentionally NOT forced on here — doing so would
+	// re-enable a setting a user deliberately turned off. New installs get the
+	// safe defaults via setDefaults(); upgraders can opt in from the settings UI.
+	if s.RetryBackoffSec == 0 {
+		s.RetryBackoffSec = defaultRetryBackoffSec
+	}
+	if s.UIDensity == "" {
+		s.UIDensity = "comfortable"
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
 )
 
 func init() {
@@ -127,6 +128,46 @@ func TestWriteServiceErrorMapping(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// TestVerifyRepairNotFound verifies the new verify/repair endpoints map an
+// unknown job id to a 404 not-found envelope (the full handler -> manager ->
+// engine error path). GlobalManager is initialized against an isolated config
+// dir so the test doesn't touch real state.
+func TestVerifyRepairNotFound(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	opt := &download.Options{Parallel: 1, Connections: 1, Silent: true}
+	InitAPI(opt)
+	defer GlobalManager.Shutdown()
+
+	for _, tc := range []struct {
+		name    string
+		method  string
+		path    string
+		handler gin.HandlerFunc
+	}{
+		{"verify", http.MethodPost, "/api/v1/downloads/missing/verify", VerifyDownload},
+		{"repair", http.MethodPost, "/api/v1/downloads/missing/repair", RepairDownload},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Params = gin.Params{{Key: "id", Value: "missing"}}
+			c.Request = httptest.NewRequest(tc.method, tc.path, nil)
+			tc.handler(c)
+
+			if w.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
+			}
+			var resp dto.ErrorResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("not an error envelope: %v (%s)", err, w.Body.String())
+			}
+			if resp.Code != dto.CodeNotFound {
+				t.Fatalf("code = %q, want %q", resp.Code, dto.CodeNotFound)
+			}
+		})
+	}
+}
 
 // TestSetDownloadPriorityValidation verifies the priority endpoint rejects a bad
 // body with the standard validation envelope BEFORE reaching the manager (so it
