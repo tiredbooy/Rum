@@ -19,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import StatsCards from "./StatsCards";
+import AggregateEtaBanner from "./AggregateEtaBanner";
 
 interface Stats {
   active: number;
@@ -52,6 +53,8 @@ export function DashboardToolbar({
       <div className="absolute inset-0 bg-background/70 backdrop-blur-2xl -z-10" />
 
       <StatsCards />
+
+      <AggregateEtaBanner />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
