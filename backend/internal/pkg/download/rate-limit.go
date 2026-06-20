@@ -7,7 +7,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const downloadBufferSize = 32 * 1024
+// downloadBufferSize is the read/write chunk for transfers. 128 KiB cuts syscalls
+// ~4x versus the old 32 KiB (better throughput and lower CPU on fast links) while
+// staying small enough that it doubles as the rate-limiter burst floor without
+// making a speed-limited download visibly bursty. NOTE: this is NOT what governs
+// UI smoothness — progress frames are time-throttled separately (see runDownload),
+// and the frontend interpolates the bar between them.
+const downloadBufferSize = 128 * 1024
 
 type rateLimitedReader struct {
 	reader  io.ReadCloser

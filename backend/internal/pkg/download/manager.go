@@ -456,14 +456,31 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	}
 
 	est := &speedEstimator{}
+	var lastPublish time.Time
+	const progressPublishInterval = 200 * time.Millisecond // ~5 frames/sec
 
 	progressFn := func(downloaded, total int64) {
+		now := time.Now()
+
 		// Speed is sampled over a real time window (see speedEstimator). The engine
-		// fires this callback on every ~32 KiB buffer from every segment, so the old
+		// fires this callback on every buffer from every segment, so the old
 		// per-callback delta — divided by the microseconds between two bursty
 		// callbacks — produced phantom hundreds-of-MB/s readings on an otherwise
-		// ~8 MB/s download.
-		smoothSpeed := est.sample(downloaded, time.Now())
+		// ~8 MB/s download. Keep the job's stored speed fresh on every call so the
+		// polled stats endpoint sees it even between published frames.
+		smoothSpeed := est.sample(downloaded, now)
+		job.SetSpeed(smoothSpeed)
+
+		// Throttle SSE progress frames to ~5/sec. This callback fires hundreds of
+		// times/sec on a fast download; the frontend interpolates the bar between
+		// frames, so a steady ~200ms cadence looks just as smooth at a fraction of
+		// the CPU/IPC cost. The terminal 100% frame is always sent so the bar
+		// reliably lands on complete.
+		done := total > 0 && downloaded >= total
+		if !done && !lastPublish.IsZero() && now.Sub(lastPublish) < progressPublishInterval {
+			return
+		}
+		lastPublish = now
 
 		var eta int64
 		if smoothSpeed > 0 && total > 0 {
@@ -472,8 +489,6 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 				eta = int64(float64(remaining) / smoothSpeed)
 			}
 		}
-
-		job.SetSpeed(smoothSpeed)
 
 		update := dto.ProgressUpdate{
 			JobID:      jobID,
