@@ -5,6 +5,7 @@ import {
   Download,
   DownloadPriority,
   DownloadReq,
+  VerifyResult,
 } from "@/_lib/types/download-types";
 import { request } from "./api";
 
@@ -75,6 +76,37 @@ export async function deleteDownload(id: string): Promise<void> {
 
 export async function retryDownload(id: string): Promise<void> {
   await request(`/api/v1/downloads/${id}/retry`, { method: "POST" });
+}
+
+/**
+ * Verify a (finished) download's integrity. `deep` forces a network
+ * re-validation (re-HEAD to confirm the source still matches). Never mutates the
+ * file, so it is always safe to call. Returns the engine VerifyResult.
+ */
+export async function verifyDownload(
+  id: string,
+  deep?: boolean,
+): Promise<VerifyResult> {
+  const query = deep ? "?deep=true" : "";
+  return request<VerifyResult>(`/api/v1/downloads/${id}/verify${query}`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Repair a download by re-fetching its bad/missing segments, then re-verifying.
+ * Pass explicit `segments` to repair only those; omit them to let the backend
+ * verify first and repair whatever it finds bad. Idempotent and safe on an
+ * already-good completed download. Returns the post-repair VerifyResult.
+ */
+export async function repairDownload(
+  id: string,
+  segments?: number[],
+): Promise<VerifyResult> {
+  return request<VerifyResult>(`/api/v1/downloads/${id}/repair`, {
+    method: "POST",
+    ...(segments ? { body: JSON.stringify({ segments }) } : {}),
+  });
 }
 
 export async function setDownloadPriority(

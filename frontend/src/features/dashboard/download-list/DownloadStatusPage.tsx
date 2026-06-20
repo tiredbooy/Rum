@@ -53,6 +53,10 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
       ? "All Downloads"
       : `${status.charAt(0).toUpperCase() + status.slice(1)} Downloads`);
 
+  // Drag-to-reorder is queue-like: only the pending and active lists, where
+  // vertical position maps to a priority bucket. Completed/error/all stay static.
+  const reorderable = status === "pending" || status === "running";
+
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-xl font-bold">{displayTitle}</h1>
@@ -68,6 +72,7 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
         onDelete={handleDelete}
         onRetry={handleRetry}
         onSetPriority={handleSetPriority}
+        reorderable={reorderable}
       />
     </div>
   );

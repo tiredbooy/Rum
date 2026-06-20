@@ -1,18 +1,23 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
-  Activity,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   CheckCheck,
-  CheckCircle2,
-  Gauge,
-  HardDrive,
   Pause,
   Play,
   Plus,
-  RotateCcw,
+  Trash2,
 } from "lucide-react";
-import StatCard from "./StatsCard";
 import StatsCards from "./StatsCards";
 
 interface Stats {
@@ -30,6 +35,8 @@ interface DashboardToolbarProps {
   onResumeAll: () => void;
   onRetryFailed: () => void;
   onClearCompleted: () => void;
+  /** Delete every download (running, queued, completed, failed). */
+  onDeleteAll: () => void;
 }
 
 export function DashboardToolbar({
@@ -37,8 +44,8 @@ export function DashboardToolbar({
   onAddDownload,
   onPauseAll,
   onResumeAll,
-  onRetryFailed,
   onClearCompleted,
+  onDeleteAll,
 }: DashboardToolbarProps) {
   return (
     <div className="sticky top-0 z-10 pb-8 space-y-5">
@@ -92,6 +99,39 @@ export function DashboardToolbar({
             <CheckCheck className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Clear completed</span>
           </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                title="Delete all downloads"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Delete all</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete all downloads?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently removes every download — running, queued,
+                  completed and failed — along with their partial files. This
+                  action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={onDeleteAll}
+                >
+                  Delete all
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     </div>

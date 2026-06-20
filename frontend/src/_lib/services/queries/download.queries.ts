@@ -15,11 +15,13 @@ import {
   fetchDownloadProgress,
   pauseAllDownloads,
   pauseDownload,
+  repairDownload,
   resumeDownload,
   retryDownload,
   setDownloadPriority,
   startAllDownloads,
   startDownload,
+  verifyDownload,
   fetchDashboardStats,
 } from "../api/download-api";
 import { useVisibilityChange } from "@/hooks/useVisibilityChange";
@@ -175,6 +177,74 @@ export function useRetryDownload() {
       patchDownloadInCaches(queryClient, id, { status: "error" });
       toast.error(
         err instanceof Error ? err.message : "Failed to retry download",
+      );
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+/**
+ * Verify a download's integrity. Read-only on the server (never mutates the
+ * file), so this does not patch the list cache; it just surfaces the result + a
+ * toast. Pass `{ id, deep }`; deep forces a network re-validation.
+ */
+export function useVerifyDownload() {
+  return useMutation({
+    mutationFn: ({ id, deep }: { id: string; deep?: boolean }) =>
+      verifyDownload(id, deep),
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("File verified — integrity OK");
+      } else {
+        const n = res.bad_segments?.length ?? 0;
+        toast.error(
+          res.detail ||
+            (n > 0
+              ? `Verification failed — ${n} bad segment(s)`
+              : "Verification failed"),
+        );
+      }
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to verify download",
+      );
+    },
+  });
+}
+
+/**
+ * Repair a download by re-fetching its bad/missing segments, then re-verifying.
+ * Mirrors the retry mutation: it changes job state, so on success it invalidates
+ * the list cache to reflect the repaired/completed status. Pass `{ id, segments? }`.
+ */
+export function useRepairDownload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, segments }: { id: string; segments?: number[] }) =>
+      repairDownload(id, segments),
+    onMutate: ({ id }) => {
+      // Optimistically flip to running while the repair re-fetches segments.
+      patchDownloadInCaches(queryClient, id, { status: "running" });
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("Repair complete — file is intact");
+      } else {
+        const n = res.bad_segments?.length ?? 0;
+        toast.error(
+          res.detail ||
+            (n > 0
+              ? `Repair incomplete — ${n} segment(s) still bad`
+              : "Repair incomplete"),
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err, { id }) => {
+      patchDownloadInCaches(queryClient, id, { status: "error" });
+      toast.error(
+        err instanceof Error ? err.message : "Failed to repair download",
       );
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },

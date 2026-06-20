@@ -29,6 +29,22 @@ export interface Download {
   category?: string;
 }
 
+/**
+ * Result of POST /downloads/:id/verify (and the post-repair verdict returned by
+ * POST /downloads/:id/repair). Mirrors download.VerifyResult (Go).
+ * - ok: the file is intact.
+ * - bad_segments: indices of bad/missing segments (empty when ok).
+ * - method: how the verdict was reached ("stored_hash" | "structural" | "deep"
+ *   | "missing").
+ * - detail: optional human-readable explanation.
+ */
+export interface VerifyResult {
+  ok: boolean;
+  bad_segments: number[];
+  method: string;
+  detail?: string;
+}
+
 export interface DownloadReq {
   urls: string[];
   dest_path?: string;

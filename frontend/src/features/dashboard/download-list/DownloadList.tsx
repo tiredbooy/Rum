@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
+import { useMemo } from "react";
 import { DownloadItemWrapper } from "./DownloadWrapper";
+import { ReorderableDownloadList } from "./ReorderableDownloadList";
+import { useSelection } from "../selection/useSelection";
 
 interface DownloadListProps {
   downloads?: Download[];
@@ -17,6 +20,11 @@ interface DownloadListProps {
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
   onSetPriority: (id: string, priority: DownloadPriority) => void;
+  /**
+   * Enable drag-to-reorder. Only meaningful for queue-like lists (pending /
+   * active), where vertical position is mapped to a priority bucket.
+   */
+  reorderable?: boolean;
 }
 
 function SkeletonItem() {
@@ -37,13 +45,16 @@ export function DownloadList({
   isError,
   error,
   onRetryFetch,
-  onPause,
-  onResume,
-  onStart,
-  onDelete,
-  onRetry,
-  onSetPriority,
+  reorderable = false,
+  ...actions
 }: DownloadListProps) {
+  const selectionActive = useSelection((s) => s.selectedIds.size > 0);
+
+  const orderedIds = useMemo(
+    () => downloads?.map((d) => d.id) ?? [],
+    [downloads],
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-2 p-4">
@@ -78,19 +89,30 @@ export function DownloadList({
     );
   }
 
+  // Reorder is only worthwhile for 2+ rows.
+  if (reorderable && downloads.length > 1) {
+    return (
+      <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
+        <ReorderableDownloadList
+          downloads={downloads}
+          orderedIds={orderedIds}
+          selectionActive={selectionActive}
+          {...actions}
+        />
+      </ScrollArea>
+    );
+  }
+
   return (
     <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
       <div className="space-y-2">
-        {downloads?.map((dl) => (
+        {downloads.map((dl) => (
           <DownloadItemWrapper
             key={dl.id}
             download={dl}
-            onPause={onPause}
-            onResume={onResume}
-            onStart={onStart}
-            onDelete={onDelete}
-            onRetry={onRetry}
-            onSetPriority={onSetPriority}
+            orderedIds={orderedIds}
+            selectionActive={selectionActive}
+            {...actions}
           />
         ))}
       </div>

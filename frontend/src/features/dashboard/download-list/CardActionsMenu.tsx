@@ -9,12 +9,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import type {
   Download,
   DownloadPriority,
 } from "@/_lib/types/download-types";
-import { Copy, FolderOpen, Link2, MoreVertical } from "lucide-react";
+import {
+  useRepairDownload,
+  useVerifyDownload,
+} from "@/_lib/services/queries/download.queries";
+import {
+  Copy,
+  FolderOpen,
+  Link2,
+  MoreVertical,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
 import { priorityConfig } from "./PriorityBadge";
 
 interface CardActionsMenuProps {
@@ -35,15 +47,25 @@ async function copyToClipboard(text: string, label: string) {
 
 /**
  * Per-card overflow menu: priority control (radio group → calls the priority
- * endpoint via onSetPriority), copy link/path quick actions, and an
- * "open folder" action that falls back to copying the path (no Wails binding
- * for revealing in the file manager exists yet).
+ * endpoint via onSetPriority), copy link/path quick actions, an "open folder"
+ * action that falls back to copying the path (no Wails binding for revealing in
+ * the file manager exists yet), and — for completed downloads — integrity
+ * Verify / Repair actions.
+ *
+ * Verify is read-only and always safe; if it reports the file is *not* ok we
+ * surface a Repair affordance (the toast handlers in the mutations summarize the
+ * VerifyResult). Repair re-fetches bad segments and re-verifies.
  */
 export function CardActionsMenu({
   download,
   onSetPriority,
 }: CardActionsMenuProps) {
-  const { id, url, dest_path, priority = "normal" } = download;
+  const { id, url, dest_path, priority = "normal", status } = download;
+
+  const verify = useVerifyDownload();
+  const repair = useRepairDownload();
+  const isCompleted = status === "completed";
+  const busy = verify.isPending || repair.isPending;
 
   const handleOpenFolder = () => {
     if (dest_path) {
@@ -52,6 +74,26 @@ export function CardActionsMenu({
     } else {
       toast.info("Destination path is not available yet");
     }
+  };
+
+  const handleVerify = () => {
+    // The mutation's onSuccess already toasts the VerifyResult. If verify
+    // reports not-ok, offer Repair as a one-click follow-up action.
+    verify.mutate(
+      { id },
+      {
+        onSuccess: (res) => {
+          if (!res.ok) {
+            toast.error("File failed verification", {
+              action: {
+                label: "Repair",
+                onClick: () => repair.mutate({ id }),
+              },
+            });
+          }
+        },
+      },
+    );
   };
 
   return (
@@ -64,7 +106,11 @@ export function CardActionsMenu({
           aria-label="More actions"
           title="More actions"
         >
-          <MoreVertical className="h-4 w-4" />
+          {busy ? (
+            <Spinner className="h-4 w-4" />
+          ) : (
+            <MoreVertical className="h-4 w-4" />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -87,6 +133,45 @@ export function CardActionsMenu({
             );
           })}
         </DropdownMenuRadioGroup>
+
+        {isCompleted && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+              Integrity
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              className="gap-2"
+              disabled={busy}
+              onSelect={(e) => {
+                e.preventDefault();
+                handleVerify();
+              }}
+            >
+              {verify.isPending ? (
+                <Spinner className="h-3.5 w-3.5" />
+              ) : (
+                <ShieldCheck className="h-3.5 w-3.5" />
+              )}
+              Verify integrity
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2"
+              disabled={busy}
+              onSelect={(e) => {
+                e.preventDefault();
+                repair.mutate({ id });
+              }}
+            >
+              {repair.isPending ? (
+                <Spinner className="h-3.5 w-3.5" />
+              ) : (
+                <Wrench className="h-3.5 w-3.5" />
+              )}
+              Repair
+            </DropdownMenuItem>
+          </>
+        )}
 
         <DropdownMenuSeparator />
 

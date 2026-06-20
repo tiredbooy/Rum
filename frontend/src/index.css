@@ -312,6 +312,18 @@
     transition: opacity 0.2s;
   }
 
+  /* Indeterminate progress shimmer (used by DownloadProgress when a running
+     download has no recent byte movement). Disabled by the reduced-motion
+     guard below. */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(200%);
+    }
+  }
+
   /* =============================================
      Accessibility: visible focus & touch targets
      ============================================= */
@@ -339,4 +351,70 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* =============================================
+   Theme provider hooks (F3 — settings-driven)
+   The ThemeProvider (src/_lib/theme) toggles these root classes from settings:
+   - `.reduce-motion` mirrors the prefers-reduced-motion guard above so the
+     in-app `reduced_motion` setting can force it on regardless of the OS pref.
+   - `.density-compact` tightens spacing/typography for the compact UI density.
+   Accent overrides are applied as inline CSS vars on :root by the provider
+   (--primary/--accent/--ring/...); the smooth transition below makes accent and
+   theme switches feel intentional rather than abrupt.
+   ============================================= */
+
+/* Explicit reduced-motion class (settings-driven). Kept outside @layer so it
+   reliably overrides component animations, matching the media-query guard. */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@layer base {
+  /* =============================================
+     Compact UI density
+     A subtle global tightening: smaller base radius + trimmed vertical rhythm
+     for the app's stacked card layouts. Scoped to opt-in utility patterns so it
+     never fights component-level spacing it shouldn't touch.
+     ============================================= */
+  .density-compact {
+    --radius: 0.6rem;
+  }
+  .density-compact .space-y-5 > * + * {
+    margin-top: 0.85rem;
+  }
+  .density-compact .space-y-6 > * + * {
+    margin-top: 1rem;
+  }
+  .density-compact .p-6 {
+    padding: 1.1rem;
+  }
+}
+
+/* Native color-input swatch: strip the default chrome so our styled wrapper
+   reads as a single premium control across browsers. */
+input[type="color"].rum-swatch {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="color"].rum-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+input[type="color"].rum-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: inherit;
+}
+input[type="color"].rum-swatch::-moz-color-swatch {
+  border: none;
+  border-radius: inherit;
 }

@@ -33,6 +33,9 @@ import type { SettingReq } from "@/_lib/types/setting-types";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
+import { IntegritySettings } from "./IntegritySettings";
+import { AppearanceSettings } from "./AppearanceSettings";
+import { StorageSettings } from "./StorageSettings";
 
 // Safe defaults – prevents any undefined field from crashing
 const defaultSettings: SettingReq = {
@@ -361,6 +364,15 @@ export function SettingsForm() {
           />
         </CardContent>
       </Card>
+
+      {/* Integrity & reliability (PATCH /settings) */}
+      <IntegritySettings />
+
+      {/* Appearance: accent / density / reduced-motion / sound (PATCH /settings + local) */}
+      <AppearanceSettings />
+
+      {/* Storage: temp dir + keep-partial-on-failure (PATCH /settings) */}
+      <StorageSettings />
       </div>
 
       {/* Bandwidth schedule + scheduled-start (PUT /settings/schedule) */}
