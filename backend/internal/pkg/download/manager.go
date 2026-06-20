@@ -455,30 +455,15 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		return
 	}
 
-	var lastDownloaded int64
-	var lastTime time.Time
-	var smoothSpeed float64
+	est := &speedEstimator{}
 
 	progressFn := func(downloaded, total int64) {
-		now := time.Now()
-
-		var instantSpeed float64
-		if !lastTime.IsZero() {
-			elapsed := now.Sub(lastTime).Seconds()
-			if elapsed > 0 {
-				instantSpeed = float64(downloaded-lastDownloaded) / elapsed
-			}
-		}
-
-		lastDownloaded = downloaded
-		lastTime = now
-
-		const alpha = 0.3
-		if smoothSpeed == 0 {
-			smoothSpeed = instantSpeed
-		} else {
-			smoothSpeed = alpha*instantSpeed + (1-alpha)*smoothSpeed
-		}
+		// Speed is sampled over a real time window (see speedEstimator). The engine
+		// fires this callback on every ~32 KiB buffer from every segment, so the old
+		// per-callback delta — divided by the microseconds between two bursty
+		// callbacks — produced phantom hundreds-of-MB/s readings on an otherwise
+		// ~8 MB/s download.
+		smoothSpeed := est.sample(downloaded, time.Now())
 
 		var eta int64
 		if smoothSpeed > 0 && total > 0 {
