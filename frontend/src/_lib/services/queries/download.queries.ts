@@ -53,7 +53,13 @@ export function useCreateDownloads() {
   return useMutation({
     mutationFn: (payload: DownloadReq) => createDownloads(payload),
     onSuccess: () => {
+      toast.success("Download added");
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to add download",
+      );
     },
   });
 }
@@ -81,6 +87,11 @@ export function useStartDownload() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to start download",
+      );
+    },
   });
 }
 
@@ -98,6 +109,11 @@ export function usePauseDownload() {
       if (pausedJob) {
         queryClient.setQueryData(downloadKeys.detail(id), pausedJob);
       }
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to pause download",
+      );
     },
   });
 }
@@ -125,6 +141,11 @@ export function useResumeDownload() {
     mutationFn: (id: string) => resumeDownload(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to resume download",
+      );
     },
   });
 }
@@ -282,6 +303,7 @@ export function useDeleteDownload() {
   return useMutation({
     mutationFn: (id: string) => deleteDownload(id),
     onSuccess: async (_, id) => {
+      toast.success("Download deleted");
       const downloads = await queryClient.fetchQuery({
         queryKey: downloadKeys.list("all"),
         queryFn: () => getDownloads("all"),
@@ -292,7 +314,10 @@ export function useDeleteDownload() {
         queryClient.setQueryData(downloadKeys.detail(id), deletedDownloads);
       }
     },
-    onError: async (_, id) => {
+    onError: async (err, id) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete download",
+      );
       const downloads = await queryClient.fetchQuery({
         queryKey: downloadKeys.list("all"),
         queryFn: () => getDownloads("all"),
