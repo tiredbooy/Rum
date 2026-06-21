@@ -2,8 +2,8 @@
 Type=Application
 Name=Rum
 Comment=Powerful, fast and modern download manager
-Exec=/home/tiredboy/Projects/Golang/Rum/build/bin/Rum
-Icon=/home/tiredboy/Projects/Golang/Rum/build/icon.png
+Exec=rum %U
+Icon=rum
 Terminal=false
 Categories=Network;FileTransfer;
 StartupWMClass=Rum
