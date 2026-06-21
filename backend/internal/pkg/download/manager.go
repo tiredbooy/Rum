@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -387,6 +388,20 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 			Status:       StatusPending,
 			CreatedAt:    time.Now(),
 		}
+
+		// Apply the file-conflict policy ONCE, here at creation, where the
+		// filename is known and the job has no partial of its own yet. We store
+		// the resolved name on the job so PrepareOutputPath stays deterministic
+		// (resume in a later session recomputes the same path). Without this a
+		// normal (non-categorized) download silently overwrote any existing file
+		// at the destination, ignoring the user's overwrite/skip/rename setting.
+		resolved, skip := m.applyConflictPolicy(job)
+		if skip {
+			log.Printf("skipping %s: a file already exists and the conflict policy is 'skip'", res.url)
+			continue
+		}
+		job.FileName = resolved
+
 		newJobs = append(newJobs, job)
 	}
 
@@ -404,6 +419,31 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	m.saveToDiskLocked()
 
 	return newJobs, nil
+}
+
+// applyConflictPolicy resolves the configured file-conflict policy against a new
+// job's would-be final output path. It returns the base file name to use and
+// skip=true when the policy is "skip" and a file already exists at the
+// destination. It removes nothing: "overwrite" keeps the name and lets the final
+// write/move replace the file; "rename" picks a free "name (n).ext"; "skip"
+// drops the job. Called only for brand-new jobs (no partial of their own yet),
+// so an existing file is always a genuine conflict with a different download.
+func (m *JobManager) applyConflictPolicy(job *Job) (fileName string, skip bool) {
+	var s config.Setting
+	_ = s.LoadSettingMetadata()
+
+	dest := PrepareOutputPath(*m.opt, job.FileName, job.URL, job.ContentType)
+	if !filesystem.IsFileExists(dest) {
+		return job.FileName, false
+	}
+	switch s.FileConflict {
+	case "skip":
+		return "", true
+	case "overwrite":
+		return job.FileName, false
+	default: // "rename" / anything else (validated to "rename" in config)
+		return filepath.Base(uniquePath(dest)), false
+	}
 }
 
 func (m *JobManager) extractFileName(rawURL string, info *HeaderInfo) string {
