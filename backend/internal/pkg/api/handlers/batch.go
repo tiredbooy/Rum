@@ -99,6 +99,11 @@ func CreateBatch(c *gin.Context) {
 		}
 		if req.Options != nil && req.Options.AutoStart {
 			for _, job := range jobs {
+				// Honor a per-download scheduled start (see ShouldDeferAutoStart):
+				// future-dated jobs stay pending for the schedule controller.
+				if download.ShouldDeferAutoStart(job) {
+					continue
+				}
 				go GlobalManager.StartJob(c.Request.Context(), job.ID)
 			}
 		}

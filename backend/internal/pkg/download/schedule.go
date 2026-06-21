@@ -147,9 +147,24 @@ func (c *ScheduleController) tick(ctx context.Context) {
 		c.manager.SetSpeedLimit(limit)
 	}
 
-	if setting.ScheduledStartEnabled && c.manager != nil {
+	// Per-download scheduled starts are honored regardless of the global
+	// scheduled-start toggle: a job only carries a non-zero StartAt if the user
+	// explicitly scheduled it on create, and it must never be stranded pending
+	// forever just because the global flag is off. The global flag still governs
+	// the schedule UI / bandwidth windows above.
+	if c.manager != nil {
 		c.startDueJobs(ctx, now)
 	}
+}
+
+// ShouldDeferAutoStart reports whether a freshly created job should be left
+// pending instead of started immediately on create, because it carries a future
+// scheduled-start time. The schedule controller starts it once StartAt is due. A
+// zero or already-past StartAt means "start now". Without this, a per-download
+// "scheduled start" was ignored whenever AutoStart was on (the default).
+func ShouldDeferAutoStart(job *Job) bool {
+	sa := job.GetStartAt()
+	return !sa.IsZero() && sa.After(time.Now())
 }
 
 // startDueJobs starts pending jobs whose StartAt is set and has passed. StartAt

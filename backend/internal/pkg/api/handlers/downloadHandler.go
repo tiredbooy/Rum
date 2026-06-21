@@ -51,6 +51,12 @@ func CreateDownload(c *gin.Context) {
 
 	if req.AutoStart {
 		for _, job := range jobs {
+			// Honor a per-download scheduled start: a job with a future StartAt is
+			// left pending for the schedule controller to start when due, even when
+			// AutoStart is on (the default).
+			if download.ShouldDeferAutoStart(job) {
+				continue
+			}
 			go GlobalManager.StartJob(context.Background(), job.ID)
 		}
 	}
