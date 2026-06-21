@@ -4,12 +4,9 @@ import (
 	"context"
 	"embed"
 	"log"
-	"os"
-	"path/filepath"
 	"runtime/debug"
 
 	"github.com/tiredbooy/Rum/backend/cmd/server"
-	"github.com/tiredbooy/Rum/backend/internal/pkg/logging"
 	"github.com/wailsapp/wails/v2/pkg/application"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -41,14 +38,8 @@ func main() {
 
 	// Send logs to a rotating file under the user config dir (in addition to
 	// stderr). In a packaged GUI build stderr is discarded, so this is the only
-	// way a user can retrieve logs for a bug report. Best-effort: if it fails we
-	// keep logging to stderr.
-	if cfgDir, err := os.UserConfigDir(); err == nil {
-		if w, path, err := logging.InitFileLogging(filepath.Join(cfgDir, "rum"), "info", false); err == nil {
-			log.SetOutput(w)
-			log.Printf("rum starting; logs at %s", path)
-		}
-	}
+	// way a user can retrieve logs for a bug report.
+	server.InitLogging()
 
 	app := NewApp()
 

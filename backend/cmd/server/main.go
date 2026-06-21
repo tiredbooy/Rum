@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -19,7 +20,27 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/routes"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/logging"
 )
+
+// InitLogging sends logs to a rotating file under <UserConfigDir>/rum/logs (in
+// addition to stderr) and redirects the stdlib log package there too. In a
+// packaged GUI build stderr is discarded, so this is the only way a user can
+// retrieve logs for a bug report. Best-effort: on any error we keep logging to
+// stderr. Exposed here (not in the internal logging package) so the root Wails
+// main can call it without importing an internal/ package.
+func InitLogging() {
+	cfgDir, err := os.UserConfigDir()
+	if err != nil {
+		return
+	}
+	w, path, err := logging.InitFileLogging(filepath.Join(cfgDir, "rum"), "info", false)
+	if err != nil {
+		return
+	}
+	log.SetOutput(w)
+	log.Printf("rum starting; logs at %s", path)
+}
 
 // preferredPort is the port the API tries first. If it is already in use the
 // server falls back to an OS-assigned free port (see Listen) so a second Rum
