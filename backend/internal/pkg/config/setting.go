@@ -447,6 +447,22 @@ func (s *Setting) Update(req SettingReq) error {
 	return nil
 }
 
+// DisarmDestructivePostDownload resets a persisted shutdown/sleep/close action
+// to "none" so it can never auto-fire after a restart — the user must re-arm it
+// in the current session. Called once at startup. Persisting a destructive power
+// action silently means a download finishing right after launch could power off
+// the machine unexpectedly (and a settings write could weaponize it). The
+// harmless AutoOpenDir flag is left untouched. Returns true if it changed.
+func (s *Setting) DisarmDestructivePostDownload() bool {
+	switch s.PostDownload.Action {
+	case "shutdown", "sleep", "close":
+		s.PostDownload.Action = "none"
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Setting) Save() error {
 	s.Validate()
 

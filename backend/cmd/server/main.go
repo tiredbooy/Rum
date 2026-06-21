@@ -79,6 +79,14 @@ func Listen() (baseURL string, err error) {
 		setting.SpeedLimitKB = 0
 	}
 
+	// Re-arm-per-session: never let a destructive post-download power action
+	// (shutdown/sleep/close) survive a restart and fire on the next completion.
+	if setting.DisarmDestructivePostDownload() {
+		if err := setting.Save(); err != nil {
+			log.Printf("could not disarm persisted post-download action: %v", err)
+		}
+	}
+
 	// Build a shared speed governor from the persisted limit. The schedule
 	// controller (started in Serve) updates it live as bandwidth windows open and
 	// close; the engine reads it per Read so changes apply mid-stream. Engine/CLI
