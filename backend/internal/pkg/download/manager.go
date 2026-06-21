@@ -14,7 +14,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/gen2brain/beeep"
 	"github.com/google/uuid"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
@@ -1238,10 +1237,11 @@ func (m *JobManager) completionOperations(job *Job) {
 		}
 	}
 
-	if !setting.Silent && job.GetStatus() == StatusCompleted {
-		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
-		beeep.Notify("Downlods Completed", "All Jobs Finished", "")
-	}
+	// Completion notifications are owned by the desktop poller (watchCompletions
+	// in desktop.go), which fires one native, per-download, Silent-respecting
+	// notification, and by the frontend (in-app sound). The duplicate beep +
+	// notify that used to live here fired per job with a misleading "All Jobs
+	// Finished" body (and a "Downlods" typo), so it has been removed.
 }
 
 func (m *JobManager) GetDashboardStats() DashboardStats {

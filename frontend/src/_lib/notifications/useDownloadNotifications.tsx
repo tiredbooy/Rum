@@ -99,12 +99,10 @@ export function useDownloadNotifications(): null {
 
         const name = labelFor(d);
         if (status === "completed") {
-          void notify({
-            title: "Download complete",
-            body: name,
-            silent: silentRef.current,
-            tag: `rum-dl-${id}`,
-          });
+          // The native "X finished" popup is owned by the desktop poller
+          // (watchCompletions) so completed downloads aren't announced twice.
+          // The frontend only plays the in-app completion sound (gated by the
+          // user's sound preference).
           playCompletionSound();
         } else {
           void notify({
