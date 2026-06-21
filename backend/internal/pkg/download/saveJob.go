@@ -17,12 +17,18 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 	for _, job := range jobs {
 		allJobs = append(allJobs, job)
 	}
+	return PersistJobs(allJobs)
+}
 
-	if err := filesystem.WriteMetadataFile("jobs.json", allJobs); err != nil {
+// PersistJobs atomically writes a pre-built jobs slice to jobs.json. Callers that
+// hold the manager lock pass an already-snapshotted slice, so the live jobs map
+// is never ranged outside the lock (which would be a fatal "concurrent map
+// iteration and map write"). Each *Job marshals under its own lock.
+func PersistJobs(jobs []*Job) error {
+	if err := filesystem.WriteMetadataFile("jobs.json", jobs); err != nil {
 		writeErrorLog("Failed to save jobs: " + err.Error())
 		return err
 	}
-
 	return nil
 }
 
@@ -49,28 +55,6 @@ func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 	}
 
 	fmt.Printf("Loaded %d jobs (%d incomplete, paused).\n", len(items), incomplete)
-}
-
-func DeleteJobFromDisk(jobID string) error {
-	items := readJobsFile()
-
-	var updated []*Job
-	for _, item := range items {
-		if item.ID == jobID {
-			updated = append(updated, item)
-		}
-	}
-
-	if len(updated) == len(items) {
-		return fmt.Errorf("Item with id %s Not Found", jobID)
-	}
-
-	err := filesystem.WriteMetadataFile("jobs.json", updated)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func readJobsFile() []*Job {

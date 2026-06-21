@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -181,6 +182,7 @@ func (m *JobManager) dispatch() {
 
 		go func(id string, ctx context.Context, cancel context.CancelFunc, release func()) {
 			defer release()
+			defer m.recoverJob(id) // turn a panic into one failed job, not a dead app
 			m.runDownload(ctx, id, cancel, release)
 		}(id, bgCtx, cancel, release)
 	}
@@ -190,8 +192,51 @@ func (m *JobManager) loadFromDisk() {
 	LoadJobsFromDisk(m.jobs, m.urls)
 }
 
+// recoverJob is the deferred panic safety net for download goroutines. An
+// unrecovered panic in a goroutine crashes the entire process, taking every
+// other in-flight download with it. Instead we recover, log with a stack, mark
+// just this job failed, and persist — the app and other downloads survive.
+func (m *JobManager) recoverJob(jobID string) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	log.Printf("PANIC in download goroutine job=%s: %v\n%s", jobID, r, debug.Stack())
+	m.mu.Lock()
+	if job := m.jobs[jobID]; job != nil {
+		job.SetStatus(StatusError)
+		job.SetError(fmt.Errorf("internal error: %v", r))
+	}
+	m.mu.Unlock()
+	m.saveToDisk()
+}
+
+// saveJobsSnapshotLocked copies the job pointers into a fresh slice. The caller
+// MUST hold m.mu (read or write): ranging the live map without the lock while
+// another goroutine writes it is a fatal, unrecoverable "concurrent map
+// iteration and map write" crash.
+func (m *JobManager) saveJobsSnapshotLocked() []*Job {
+	snap := make([]*Job, 0, len(m.jobs))
+	for _, j := range m.jobs {
+		snap = append(snap, j)
+	}
+	return snap
+}
+
+// saveToDisk persists the job set. Safe to call WITHOUT holding m.mu: it takes a
+// read lock just long enough to snapshot the map, then writes outside the lock.
 func (m *JobManager) saveToDisk() {
-	SaveJobsToDisk(m.jobs)
+	m.mu.RLock()
+	snap := m.saveJobsSnapshotLocked()
+	m.mu.RUnlock()
+	PersistJobs(snap)
+}
+
+// saveToDiskLocked persists the job set when the caller ALREADY holds m.mu
+// (re-locking would deadlock — sync.RWMutex is not reentrant). The atomic file
+// write happens under the held lock.
+func (m *JobManager) saveToDiskLocked() {
+	PersistJobs(m.saveJobsSnapshotLocked())
 }
 
 func (m *JobManager) GetJobIDByURL(url string) (string, bool) {
@@ -238,7 +283,7 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 	}
 
 	m.mu.Lock()
-	m.saveToDisk()
+	m.saveToDiskLocked()
 	m.mu.Unlock()
 	return jobs, nil
 }
@@ -356,7 +401,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		m.jobs[job.ID] = job
 		m.urls[job.URL] = job.ID
 	}
-	m.saveToDisk()
+	m.saveToDiskLocked()
 
 	return newJobs, nil
 }
@@ -1006,9 +1051,11 @@ func (m *JobManager) DeleteJob(jobID string) error {
 		RemovePartialData(outputPath)
 	}
 
-	if err := DeleteJobFromDisk(jobID); err != nil {
-		return fmt.Errorf("failed to delete job from disk: %w", err)
-	}
+	// Persist the current in-memory set (the job was already removed from m.jobs
+	// above) — same path as every other mutation. The old DeleteJobFromDisk
+	// re-read jobs.json and rewrote it with an inverted filter that kept ONLY the
+	// deleted job, wiping all history on every single delete.
+	m.saveToDisk()
 
 	return nil
 }
