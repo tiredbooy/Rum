@@ -16,10 +16,11 @@ import (
 // limiter so that even a rejected request still carries the right CORS headers
 // (and so preflight OPTIONS aren't charged a token). gzip compression is last.
 func SetupMiddlewares(r *gin.Engine) {
-	r.Use(Recovery())   // outermost: catch panics from every later layer
-	r.Use(RequestID())  // correlation ID for logs + response header
-	r.Use(gin.Logger()) // request logging
-	r.Use(Cors(nil))    // nil -> env allowlist or localhost dev defaults
+	r.Use(Recovery())     // outermost: catch panics from every later layer
+	r.Use(RequestID())    // correlation ID for logs + response header
+	r.Use(AllowedHosts()) // anti-DNS-rebind: only loopback Host headers allowed
+	r.Use(gin.Logger())   // request logging
+	r.Use(Cors(nil))      // nil -> env allowlist or localhost dev defaults
 	r.Use(RateLimit(RateLimitConfig{}))
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 }
