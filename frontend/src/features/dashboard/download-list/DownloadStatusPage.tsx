@@ -1,4 +1,15 @@
+import { useState } from "react";
 import { DownloadList } from "./DownloadList";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type {
   Download,
   DownloadPriority,
@@ -37,8 +48,13 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
   const handleResume = (id: string) => {
     resumeDownload.mutateAsync(id);
   };
-  const handleDelete = (id: string) => {
-    deleteDownload.mutateAsync(id);
+  // Single-card delete removes the file from disk, so confirm first (the bulk
+  // actions already confirm). handleDelete just arms the dialog.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const handleDelete = (id: string) => setPendingDeleteId(id);
+  const confirmDelete = () => {
+    if (pendingDeleteId) deleteDownload.mutateAsync(pendingDeleteId);
+    setPendingDeleteId(null);
   };
   const handleRetry = (id: string) => {
     retryDownload.mutate(id);
@@ -74,6 +90,29 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
         onSetPriority={handleSetPriority}
         reorderable={reorderable}
       />
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this download?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the download and deletes its file from disk. This
+              can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
