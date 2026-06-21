@@ -84,6 +84,17 @@ func finalizeCategorize(opt Options, job *Job) error {
 // category folder is a clean top-level directory rather than nested under the
 // content-type subfolder where the file currently sits. An absolute DestDir is
 // left untouched.
+// isWithinDir reports whether target is baseDir itself or a descendant of it,
+// after cleaning both. Used to keep a relative category destination from
+// escaping the download root via "..".
+func isWithinDir(baseDir, target string) bool {
+	rel, err := filepath.Rel(filepath.Clean(baseDir), filepath.Clean(target))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
 func categoryRulesFor(cfgRules []config.CategoryRule, category, baseDir string) []filesystem.CategoryRule {
 	category = strings.TrimSpace(category)
 	out := make([]filesystem.CategoryRule, 0, len(cfgRules))
@@ -93,7 +104,15 @@ func categoryRulesFor(cfgRules []config.CategoryRule, category, baseDir string) 
 		}
 		dest := r.DestDir
 		if d := strings.TrimSpace(dest); d != "" && !filepath.IsAbs(d) && strings.TrimSpace(baseDir) != "" {
-			dest = filepath.Join(baseDir, d)
+			joined := filepath.Join(baseDir, d)
+			// Confine a relative DestDir to the download root. Without this a value
+			// like "../../etc" escapes via filepath.Join and would move finished
+			// downloads into a system directory (config-driven path traversal). If
+			// it escapes, fall back to the leaf name as a plain subfolder of baseDir.
+			if !isWithinDir(baseDir, joined) {
+				joined = filepath.Join(baseDir, filepath.Base(filepath.Clean(d)))
+			}
+			dest = joined
 		}
 		out = append(out, filesystem.CategoryRule{
 			Name:       r.Name,
