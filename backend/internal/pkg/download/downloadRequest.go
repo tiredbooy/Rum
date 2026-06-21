@@ -42,11 +42,12 @@ type RequestHeaders struct {
 
 func NewDownloader(userAgent, referer string) *Downloader {
 	jar, _ := cookiejar.New(nil)
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
 	baseTransport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		DialContext:         dialer.DialContext,
 		MaxConnsPerHost:     maxConnsPerHost,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
@@ -55,7 +56,13 @@ func NewDownloader(userAgent, referer string) *Downloader {
 	// setting was persisted and shown in the UI but never applied to any
 	// transport — a dead feature (and a no-op for the Iran/Persian audience where
 	// a proxy is usually required).
-	baseTransport.Proxy = proxyTransportFunc()
+	proxy := proxyTransportFunc()
+	baseTransport.Proxy = proxy
+	// Opt-in SSRF guard: when enabled (and no proxy is in play — with a proxy the
+	// proxy, not us, dials the target), refuse to connect to internal hosts.
+	if proxy == nil && blockPrivateHostsEnabled() {
+		baseTransport.DialContext = ssrfGuardedDialContext(dialer)
+	}
 	client := &http.Client{
 		Jar: jar,
 		// SecureTransport enforces a TLS 1.2 floor and stall timeouts;
@@ -116,6 +123,42 @@ func proxyTransportFunc() func(*http.Request) (*url.URL, error) {
 		return nil
 	}
 	return http.ProxyURL(u)
+}
+
+// blockPrivateHostsEnabled reports whether the opt-in SSRF guard is turned on in
+// settings. Read once when a Downloader is built (same lifecycle as the proxy).
+func blockPrivateHostsEnabled() bool {
+	var s config.Setting
+	if err := s.LoadSettingMetadata(); err != nil {
+		return false
+	}
+	return s.BlockPrivateHosts
+}
+
+// ssrfGuardedDialContext resolves the target host and refuses to connect when it
+// maps to a loopback / link-local (incl. cloud metadata) / private IP. It dials
+// the exact IP it validated, so a DNS rebind between the check and the dial
+// cannot slip an internal address through.
+func ssrfGuardedDialContext(d *net.Dialer) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no addresses found for host %q", host)
+		}
+		for _, ip := range ips {
+			if isPrivateIP(ip.IP) {
+				return nil, fmt.Errorf("refusing to connect to private/internal host %q (%s)", host, ip.IP)
+			}
+		}
+		return d.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+	}
 }
 
 func isSupportedProxyScheme(scheme string) bool {

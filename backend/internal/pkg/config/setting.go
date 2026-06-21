@@ -55,6 +55,13 @@ type Setting struct {
 	// off). It is threaded into download.Options.VerifyIntegrity.
 	VerifyIntegrity bool `json:"verify_integrity"`
 
+	// BlockPrivateHosts is an opt-in SSRF guard. When true, a download whose host
+	// resolves to a loopback / link-local (incl. cloud-metadata 169.254.169.254) /
+	// private IP is refused at dial time, re-checked against the resolved IP to
+	// defeat DNS rebinding. Off by default so legitimate LAN/NAS downloads work.
+	// Ignored when a Proxy is set (the proxy, not us, dials the target).
+	BlockPrivateHosts bool `json:"block_private_hosts,omitempty"`
+
 	// Auto-retry / resume policy.
 	//   AutoResumeOnReconnect — resume interrupted transfers when connectivity
 	//     returns (today this is realized by the retry/backoff policy resuming
@@ -147,6 +154,7 @@ type SettingReq struct {
 	// Reliability / integrity, auto-retry/resume, theme, temp/partial. All
 	// pointers so a PATCH only touches what it sends (partial update semantics).
 	VerifyIntegrity       *bool   `json:"verify_integrity"`
+	BlockPrivateHosts     *bool   `json:"block_private_hosts,omitempty"`
 	AutoResumeOnReconnect *bool   `json:"auto_resume_on_reconnect"`
 	AutoResumeOnLaunch    *bool   `json:"auto_resume_on_launch"`
 	RetryBackoffSec       *int    `json:"retry_backoff_sec"`
@@ -397,6 +405,9 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.VerifyIntegrity != nil {
 		s.VerifyIntegrity = *req.VerifyIntegrity
 	}
+	if req.BlockPrivateHosts != nil {
+		s.BlockPrivateHosts = *req.BlockPrivateHosts
+	}
 	if req.AutoResumeOnReconnect != nil {
 		s.AutoResumeOnReconnect = *req.AutoResumeOnReconnect
 	}
@@ -482,6 +493,7 @@ func (s *Setting) setDefaults() {
 	// auto-resume are ON by default (this is the corruption fix). Theme/temp
 	// settings default to the app's existing look + "next to output" behavior.
 	s.VerifyIntegrity = true
+	s.BlockPrivateHosts = false
 	s.AutoResumeOnReconnect = true
 	s.AutoResumeOnLaunch = true
 	s.RetryBackoffSec = defaultRetryBackoffSec
