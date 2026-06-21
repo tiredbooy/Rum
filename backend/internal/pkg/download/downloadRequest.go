@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 )
 
 // maxConnsPerHost bounds the number of TCP connections the shared client keeps
@@ -48,6 +50,12 @@ func NewDownloader(userAgent, referer string) *Downloader {
 		MaxConnsPerHost:     maxConnsPerHost,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
+	// Route outbound downloads through the user-configured proxy, if any. This is
+	// preserved by SecureTransport's base.Clone() below. Without this the Proxy
+	// setting was persisted and shown in the UI but never applied to any
+	// transport — a dead feature (and a no-op for the Iran/Persian audience where
+	// a proxy is usually required).
+	baseTransport.Proxy = proxyTransportFunc()
 	client := &http.Client{
 		Jar: jar,
 		// SecureTransport enforces a TLS 1.2 floor and stall timeouts;
@@ -78,6 +86,44 @@ func NewDownloader(userAgent, referer string) *Downloader {
 	return &Downloader{
 		Client:  client,
 		Headers: headers,
+	}
+}
+
+// proxyTransportFunc returns an http.Transport.Proxy function for the
+// user-configured proxy, or nil when no (valid) proxy is set. net/http natively
+// dials http, https, and socks5/socks5h proxy URLs, so a single ProxyURL covers
+// all three. A bare "host:port" is treated as an http proxy. An invalid or
+// unsupported value is ignored (logged) rather than breaking every download.
+//
+// The proxy is read once when a Downloader is built; downloads started after a
+// settings change pick up the new value because the engine builds a fresh
+// Downloader on the create/repair paths.
+func proxyTransportFunc() func(*http.Request) (*url.URL, error) {
+	var setting config.Setting
+	if err := setting.LoadSettingMetadata(); err != nil {
+		return nil
+	}
+	raw := strings.TrimSpace(setting.Proxy)
+	if raw == "" {
+		return nil
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw // bare host:port -> http proxy
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || !isSupportedProxyScheme(u.Scheme) {
+		log.Printf("download: ignoring invalid proxy %q", setting.Proxy)
+		return nil
+	}
+	return http.ProxyURL(u)
+}
+
+func isSupportedProxyScheme(scheme string) bool {
+	switch strings.ToLower(scheme) {
+	case "http", "https", "socks5", "socks5h":
+		return true
+	default:
+		return false
 	}
 }
 
