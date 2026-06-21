@@ -17,12 +17,20 @@ func InitLogFile() error {
 		return err
 	}
 
-	filePath := filepath.Join(path, "rum", "debug.log")
-
-	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		debugFile = f
+	dir := filepath.Join(path, "rum", "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
 	}
+	filePath := filepath.Join(dir, "debug.log")
+
+	// The error check was inverted (`if err != nil { debugFile = f }`), so the
+	// handle was only ever stored on failure — leaving debugFile nil and DebugLog
+	// a permanent no-op. Append (not truncate) so debug history survives restarts.
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	debugFile = f
 
 	return nil
 }
