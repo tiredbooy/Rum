@@ -22,5 +22,12 @@ func SetupMiddlewares(r *gin.Engine) {
 	r.Use(gin.Logger())   // request logging
 	r.Use(Cors(nil))      // nil -> env allowlist or localhost dev defaults
 	r.Use(RateLimit(RateLimitConfig{}))
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	// Exclude the SSE progress streams (".../stream") from gzip: the compressor
+	// buffers the response to compress it, which holds back the per-frame
+	// Server-Sent Events and defeats real-time progress. Everything else is
+	// still compressed.
+	r.Use(gzip.Gzip(
+		gzip.DefaultCompression,
+		gzip.WithExcludedPathsRegexs([]string{`/stream$`}),
+	))
 }
