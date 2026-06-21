@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Globe, CheckSquare, Square } from "lucide-react";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
+import { useDownloadRequestStore } from "@/stores/download-request-store";
 
 interface ParsedLine {
   index: number;
@@ -16,8 +17,12 @@ interface ParsedLine {
 export function LoadFromUrlForm() {
   const { readRawText } = useClipboardUrl();
 
+  const draft = useDownloadRequestStore((s) => s.draft);
+  const updateDraft = useDownloadRequestStore((s) => s.updateDraft);
+
+  const outputFolder = draft.dest_path ?? "";
+
   const [sourceUrl, setSourceUrl] = useState("");
-  const [outputFolder, setOutputFolder] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
@@ -25,6 +30,15 @@ export function LoadFromUrlForm() {
 
   const totalUrls = parsedLines.length;
   const selectedCount = parsedLines.filter((l) => l.selected).length;
+
+  // Mirror the selected URLs (and chosen folder) into the shared draft so the
+  // dialog's Save button actually receives them.
+  useEffect(() => {
+    const selectedUrls = parsedLines
+      .filter((l) => l.selected)
+      .map((l) => l.url);
+    updateDraft({ urls: selectedUrls, dest_path: outputFolder });
+  }, [parsedLines, outputFolder, updateDraft]);
 
   const validateSource = (url: string) => {
     if (!url.trim()) {
@@ -119,7 +133,7 @@ export function LoadFromUrlForm() {
           id="url-output"
           placeholder="downloads/from-url"
           value={outputFolder}
-          onChange={(e) => setOutputFolder(e.target.value)}
+          onChange={(e) => updateDraft({ dest_path: e.target.value })}
           className="bg-background text-foreground"
         />
       </div>
