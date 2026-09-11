@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AllProgressStream } from "./hooks/useAllProgressStream";
 import DropProvider from "@/features/drag-drop/DropProvider";
+import { ClipboardLinkWatcher } from "@/features/clipboard/ClipboardLinkWatcher";
 import { ThemeProvider } from "@/_lib/theme";
 import { useDownloadNotifications } from "@/_lib/notifications";
 
@@ -41,6 +42,7 @@ function App() {
           <AllProgressStream />
           <NotificationWatcher />
           <DropProvider />
+          <ClipboardLinkWatcher />
           <RouterProvider router={router} />
           {import.meta.env.DEV && (
             <Suspense fallback={null}>

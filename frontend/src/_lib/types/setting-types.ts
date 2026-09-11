@@ -1,6 +1,13 @@
 /** UI density mode. Mirrors config.Setting.UIDensity (Go). */
 export type UIDensity = "comfortable" | "compact";
 
+/**
+ * How much the app logs. Mirrors config.Setting.LogLevel (Go). Only "debug"
+ * changes observable behaviour today — it turns on the verbose per-download
+ * trace in logs/debug.log; the rest leave it off.
+ */
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
 export interface Setting {
   confirm_on_exit?: boolean;
   silent?: boolean;
@@ -12,6 +19,8 @@ export interface Setting {
   connections?: number;
   max_retries?: number;
   preferred_theme: "system" | "light" | "dark";
+  // log_level: "debug" writes a verbose download trace to logs/debug.log.
+  log_level?: LogLevel;
   // Desktop preferences (persisted via PATCH /api/v1/settings). snake_case to
   // match the Go json tags on config.Setting.
   launch_on_startup?: boolean;
@@ -23,6 +32,16 @@ export interface Setting {
   // verify_integrity: verify every finished download (server-free re-verify via
   // a stored full-file hash). Default true — this is the corruption fix.
   verify_integrity?: boolean;
+  // block_private_hosts: opt-in SSRF guard; refuses downloads whose host
+  // resolves to a loopback/link-local/private IP. Default false so LAN/NAS
+  // downloads keep working.
+  block_private_hosts?: boolean;
+
+  // enable_categories mirrors the master auto-organize switch. It is edited
+  // through PUT /settings/categories but GET /settings reports it too.
+  enable_categories?: boolean;
+  // scheduled_start_enabled mirrors the schedule toggle (PUT /settings/schedule).
+  scheduled_start_enabled?: boolean;
 
   // --- Auto-retry / resume policy ---
   // auto_resume_on_reconnect / auto_resume_on_launch default true.

@@ -49,54 +49,49 @@ done once.)
 
 ## Path 2 — Build from source
 
-> **One-time setup first.** Building Rum needs a few free tools present first.
-> It's a copy-and-paste command, and you only do it **once**. Each section below
-> tells you exactly what to paste. The installer scripts also detect anything
-> missing and print the exact command for your system.
+The from-source scripts detect OS, CPU, package manager, and whether they
+can use root; retry failed downloads; and install into `~/.local` when there
+is no root. `--yes` is implied when stdin is not a TTY (CI, pipes).
+
+**Automatic when possible:** Go, Node.js / npm, the Wails CLI, and (on Linux,
+**as root or with passwordless sudo**) gcc, pkg-config, GTK3, and WebKit2GTK.
+
+**Still needs you:**
+
+- **Linux GUI:** GTK3 + WebKit2GTK packages cannot be installed without root.
+  Run the GUI installer as root / with passwordless sudo, or install those
+  packages yourself first.
+- **macOS:** Xcode Command Line Tools need a one-time Apple dialog
+  (`xcode-select --install`) if they are missing. The script cannot click it.
+- **Windows from-source** and **macOS from-source** have not been executed
+  end-to-end in the current hardening work. Treat them as best-effort.
+
+Pass `--dry-run` to print the plan and exit. Re-running an installer is safe
+(it skips tools that already meet the minimum and replaces the binary).
 
 ### 🐧 Linux
 
 #### A) The Desktop app (the one with a window)
 
-**Step 1 — Install the one-time tools.** Open your **Terminal** and paste the
-line that matches your system:
-
-- **Ubuntu / Linux Mint / Debian:**
-  ```bash
-  sudo apt update && sudo apt install -y golang nodejs npm build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-  ```
-- **Fedora:**
-  ```bash
-  sudo dnf install -y golang nodejs npm gcc pkg-config gtk3-devel webkit2gtk4.1-devel
-  ```
-- **Arch / Manjaro / Garuda:**
-  ```bash
-  sudo pacman -S --needed go nodejs npm base-devel gtk3 webkit2gtk-4.1
-  ```
-
-**Step 2 — Install Rum.** Go into the Rum folder and run the installer:
 ```bash
-cd path/to/Rum          # the folder you downloaded
+cd path/to/Rum
 ./installers/gui/install-linux.sh
 ```
 
-The script builds the app, installs it, and adds **Rum** (with its icon) to your
-application menu. When it finishes, search for **Rum** in your apps menu. 🎉
+That's it. The script prints a short plan (what's missing, what it will
+install), then proceeds. Search for **Rum** in your apps menu when it finishes.
 
 To remove it later: `./installers/gui/install-linux.sh --uninstall`
 
+(The repo-root `./build-linux.sh` is the same installer.)
+
 #### B) The CLI (terminal) version
 
-**Step 1 — One-time tool:** install Go (only Go is needed for the CLI):
-- Ubuntu/Debian: `sudo apt install -y golang`
-- Fedora: `sudo dnf install -y golang`
-- Arch: `sudo pacman -S --needed go`
-
-**Step 2 — Install:**
 ```bash
 cd path/to/Rum
 ./installers/cli/install-linux.sh
 ```
+
 When it's done, open a **new** terminal and type `rum --help`.
 
 To remove it later: `./installers/cli/install-linux.sh --uninstall`
@@ -109,17 +104,14 @@ To remove it later: `./installers/cli/install-linux.sh --uninstall`
 
 #### A) The Desktop app
 
-**Step 1 — Install the one-time tools** (download and click through each):
-- **Go** — https://go.dev/dl/  (Windows installer → Next → Next → Finish)
-- **Node.js** — https://nodejs.org  (the "LTS" version)
-
-**Step 2 — Install Rum.**
 ```powershell
 cd C:\path\to\Rum
 .\installers\gui\install-windows.ps1
 ```
-The script builds and installs the app, then adds **Rum** to your **Start Menu**
-and **Desktop**. 🎉
+
+The script installs Go / Node / Wails if they're missing (via winget, choco,
+or scoop, otherwise an official zip), builds the app, and adds **Rum** to
+your **Start Menu** and **Desktop**.
 
 > With **Inno Setup** installed, the same script instead produces a classic
 > `Rum-Setup.exe` you can share — others just double-click it.
@@ -128,35 +120,33 @@ To remove it later: `.\installers\gui\install-windows.ps1 -Uninstall`
 
 #### B) The CLI version
 
-**Step 1 — One-time tool:** install **Go** from https://go.dev/dl/.
-
-**Step 2 — Install:**
 ```powershell
 cd C:\path\to\Rum
 .\installers\cli\install-windows.ps1
 ```
+
 Open a **new** PowerShell window and type `rum --version`.
 
 To remove it later: `.\installers\cli\install-windows.ps1 -Uninstall`
 
 ### 🍎 macOS (build from source)
 
-**Step 1 — One-time tools:**
-```bash
-xcode-select --install            # Apple's command-line tools (C toolchain)
-brew install go node              # via Homebrew — https://brew.sh
-```
+Xcode Command Line Tools still need a one-time Apple dialog (`xcode-select
+--install`) if they aren't already present — the script will tell you. Go and
+Node are installed via Homebrew when available, otherwise from official
+tarballs into `~/.local`.
 
-**Step 2 — Install:**
 ```bash
 cd path/to/Rum
-./installers/gui/install-macos.sh      # Desktop app → /Applications
+./installers/gui/install-macos.sh      # Desktop app → /Applications (or ~/Applications)
 # or
-./installers/cli/install-macos.sh      # CLI → /usr/local/bin/rum
+./installers/cli/install-macos.sh      # CLI → /usr/local/bin/rum (or ~/.local/bin)
 ```
+
 The GUI script builds a universal app and copies **Rum.app** into
 **/Applications**, clearing the Gatekeeper quarantine flag for you. Because the
 build is unsigned, if macOS still refuses to open it run once:
+
 ```bash
 xattr -dr com.apple.quarantine /Applications/Rum.app
 ```
@@ -174,8 +164,20 @@ nothing to build. Build from source if you want the CLI, want to use your own
 icon, or no prebuilt file matches your machine.
 
 **Do the from-source scripts really do everything?**
-Yes — once the one-time tools are installed, a single script builds Rum,
-installs it, and puts it in your menu/Start Menu with its icon.
+They auto-detect your system, install what they can without prompting, build
+Rum, and install it. Re-running is safe. They do **not** magically get root
+for GTK/WebKit, and they cannot finish the macOS Xcode CLT dialog for you.
+A timestamped log is written under `$XDG_STATE_HOME/rum/` (or
+`~/.local/state/rum/`, `/tmp`, or `%LOCALAPPDATA%\Rum\logs` on Windows).
+Pass `--verbose` / `-Verbose` to stream it; `--dry-run` prints the plan and
+exits.
+
+**Which Go version does the GUI use?**
+The CLI accepts any Go at or above `go.mod` (currently 1.25.7). The GUI
+installer, if it finds a *newer* system Go (1.26/1.27), installs **exactly**
+the `go.mod` version via the official tarball/zip and sets `GOTOOLCHAIN=local`.
+Wails v2.12.0 cannot typecheck against Go 1.27. The installer pins the
+compatible toolchain directly and keeps module checksum verification enabled.
 
 **Will it use my icon and app name?**
 Yes. The app is named **Rum** and ships with the Rum icon. To use a different
@@ -183,26 +185,52 @@ icon, replace `build/appicon.png` (a square PNG, e.g. 512×512) and run the
 installer again.
 
 **Downloads fail with "403 Forbidden" or time out (restricted networks).**
-Your network may be blocking Go's default download servers (common in Iran).
-Every from-source installer can use a **mirror** — answer **y** when it asks
-"Use a Go module mirror?", or pass the flag up front:
+The scripts retry with backoff, then try extra Go tarball URLs (including
+Aliyun) and, if `proxy.golang.org` looks unreachable, an Iranian module-proxy
+chain (Runflare → Liara → ParsPack → DevNeeds) before the official proxy.
+
+If *every* Go tarball URL fails, the installer falls back to fetching the
+toolchain through the Go module proxy instead
+(`golang.org/toolchain@v0.0.1-go<version>.<os>-<arch>`), which reaches a
+different host. That route needs an existing `go` on the machine to drive the
+download, so it can rescue a too-new Go but not a machine with no Go at all;
+the installer says which route it used. It is always checksum-verified against
+`sum.golang.org` — set `RUM_GO_SUMDB` to point elsewhere if you run your own.
+
+The installer prefers whichever route it can actually verify. If the official
+checksum index is unreachable — so an archive download could not be checked — it
+tries the module proxy first, because that route is verified against
+`sum.golang.org` or it fails. It only installs an unverified archive when there is
+no alternative (typically a machine with no Go at all, which cannot use the module
+route), and it says so:
+
+> `Go 1.25.7 obtained via the tarball but could NOT be verified: ...`
+
+Set `RUM_REQUIRE_VERIFIED_GO=1` to refuse to install in that case instead of
+warning. It is not the default because on restricted networks the verification
+services are often unreachable too, and that would block installation entirely.
+
+`--mirror` (no URL) or `-Mirror` forces the built-in Iranian proxy chain;
+`--mirror=URL` / `-Mirror URL` tries your proxy first, then that chain. The
+installer keeps `GOSUMDB=sum.golang.org` enabled so downloaded modules are
+authenticated. You can pass any Go module proxy:
 
 ```bash
 # Linux / macOS
-./installers/gui/install-linux.sh --mirror          # default mirror
-./installers/cli/install-linux.sh --mirror=https://your-mirror.example/   # custom
+./installers/gui/install-linux.sh --mirror
+./installers/cli/install-linux.sh --mirror=https://your-proxy.example/
 ```
+
 ```powershell
 # Windows
-.\installers\gui\install-windows.ps1 -Mirror https://go.devneeds.ir/
+.\installers\gui\install-windows.ps1 -Mirror https://your-proxy.example/
 ```
-The default mirror is `https://go.devneeds.ir/`; any Go proxy URL works.
 
 **Something else went wrong.** Re-read the message the script printed — it names
-exactly what's missing and the command to fix it. The most common cause is
-skipping the one-time tools.
+exactly what's missing and the command to fix it. The last line always points
+at the log file.
 
 ---
 
-For the technical reference (flags like `--prefix`, `--yes`, building installers,
-the release pipeline), see [`installers/README.md`](installers/README.md).
+For the technical reference (flags like `--prefix`, `--yes`, `--dry-run`,
+building installers, the release pipeline), see [`installers/README.md`](installers/README.md).

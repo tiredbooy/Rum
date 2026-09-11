@@ -2,7 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -11,7 +14,24 @@ import (
 )
 
 type Setting struct {
+	// SettingsVersion stamps the schema this file was written with, so a
+	// behaviour change can migrate an older file instead of silently changing
+	// what the app does for existing users. 0 / absent means "written before
+	// versioning" — see migrate.
+	SettingsVersion int `json:"settings_version"`
+
 	// App behaviour
+	//
+	// StartOnLaunch is DEPRECATED: it is a legacy duplicate of
+	// AutoResumeOnLaunch ("pick up unfinished downloads when Rum starts") that no
+	// code ever read, so it was persisted and could be PATCHed while changing
+	// nothing. AutoResumeOnLaunch is the canonical field — it is the one the
+	// server acts on and the one the settings UI shows.
+	//
+	// The key is kept (never dropped from settings.json) and is now a read-back
+	// alias: Validate mirrors AutoResumeOnLaunch into it on every load and save,
+	// and an Update that sets it is redirected to AutoResumeOnLaunch, so an older
+	// client or a hand-edited file still behaves sensibly.
 	StartOnLaunch bool `json:"start_on_launch"`
 	ConfirmOnExit bool `json:"confirm_on_exit"`
 	Silent        bool `json:"silent"`
@@ -122,10 +142,15 @@ type CategoryRule struct {
 }
 
 type SettingReq struct {
-	// App behaviour
+	// App behaviour. StartOnLaunch is the deprecated alias of
+	// AutoResumeOnLaunch (see Setting) and is applied to it.
 	StartOnLaunch *bool `json:"start_on_launch"`
 	ConfirmOnExit *bool `json:"confirm_on_exit"`
 	Silent        *bool `json:"silent"`
+	// LogLevel selects how much the app logs: "debug" turns on the verbose
+	// per-download trace (logs/debug.log); "info" (the default), "warn" and
+	// "error" leave it off.
+	LogLevel *string `json:"log_level"`
 
 	// Download limits
 	OutDir       *string `json:"out_dir"`
@@ -211,6 +236,58 @@ func normalizeAccentColor(c string) string {
 	return "" // reject invalid -> app default
 }
 
+// proxySchemes are the outbound proxy schemes net/http can dial natively. Kept
+// here (rather than only in the download package) so the settings API can reject
+// an unusable proxy at save time instead of silently ignoring it later.
+var proxySchemes = map[string]bool{"http": true, "https": true, "socks5": true, "socks5h": true}
+
+// NormalizeProxy canonicalizes a user-entered proxy value and reports whether it
+// is usable. "" is valid and means "no proxy". A bare "host:port" is promoted to
+// an http proxy. Anything else — an unsupported scheme, a missing host, an
+// unparseable URL — is rejected so the UI can say so instead of the engine
+// quietly dropping it at download time.
+func NormalizeProxy(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", true
+	}
+	candidate := raw
+	if !strings.Contains(candidate, "://") {
+		candidate = "http://" + candidate // bare host:port -> http proxy
+	}
+	u, err := url.Parse(candidate)
+	if err != nil || u.Host == "" || !proxySchemes[strings.ToLower(u.Scheme)] {
+		return "", false
+	}
+	if _, port, splitErr := net.SplitHostPort(u.Host); splitErr == nil && port == "" {
+		return "", false
+	}
+	return candidate, true
+}
+
+// ValidThemes / ValidDensities / ValidActions / ValidConflicts expose the accepted
+// enum values so the API layer can return a precise field error rather than
+// letting Validate() silently rewrite a typo to the default.
+func ValidTheme(v string) bool    { return v == "system" || v == "light" || v == "dark" }
+func ValidDensity(v string) bool  { return validDensities[v] }
+func ValidAction(v string) bool   { return validActions[v] }
+func ValidConflict(v string) bool { return validConflicts[v] }
+func ValidLogLevel(v string) bool { return validLogLevels[v] }
+
+// ValidAccentColor reports whether c is empty (app default) or a #RGB/#RRGGBB hex.
+func ValidAccentColor(c string) bool {
+	c = strings.TrimSpace(c)
+	return c == "" || hexColorPattern.MatchString(c)
+}
+
+// ErrRecovered marks a load that FAILED to read the stored settings but has
+// already recovered: the receiver holds valid defaults and a clean file has been
+// rewritten. Callers should log it and carry on rather than treating it as a
+// fatal error — a corrupt settings.json used to make GET /settings answer 500,
+// so the settings page said "Could not load preferences" once even though the
+// file had just been repaired and the very next request succeeded.
+var ErrRecovered = errors.New("settings recovered with defaults")
+
 func (s *Setting) LoadSettingMetadata() error {
 	data, err := filesystem.ReadMetadataFile("settings.json")
 	if err != nil {
@@ -222,19 +299,70 @@ func (s *Setting) LoadSettingMetadata() error {
 		// rewrite a clean file.
 		s.setDefaults()
 		_ = s.Save()
-		return fmt.Errorf("read settings (using defaults): %w", err)
+		return fmt.Errorf("read settings (using defaults): %w: %w", ErrRecovered, err)
 	}
 
 	if err := json.Unmarshal(data, s); err != nil {
 		// Corrupt/partial config: recover with defaults instead of failing hard.
 		s.setDefaults()
 		_ = s.Save()
-		return fmt.Errorf("parse settings (using defaults): %w", err)
+		return fmt.Errorf("parse settings (using defaults): %w: %w", ErrRecovered, err)
 	}
 
-	s.applyMissingDefaults()
+	s.applyMissingDefaults(presentKeys(data))
+	s.migrate()  // bring an older file's behaviour forward before validating
 	s.Validate() // clamp out-of-range values to safe defaults
 	return nil
+}
+
+// currentSettingsVersion is the schema version this build writes.
+//
+//	1 — scheduled_start_enabled became a real gate on auto-starting due
+//	    scheduled downloads. Before it, the flag was persisted but ignored and
+//	    due jobs ALWAYS started.
+const currentSettingsVersion = 1
+
+// migrate brings a settings file written by an older build forward so a
+// behaviour change never silently alters what the app does for an existing user.
+// It is a no-op for a file already at the current version.
+func (s *Setting) migrate() {
+	if s.SettingsVersion >= currentSettingsVersion {
+		s.SettingsVersion = currentSettingsVersion
+		return
+	}
+
+	// v0 -> v1. Every pre-v1 file carries scheduled_start_enabled written
+	// EXPLICITLY (Save always wrote the whole struct) and almost always as the
+	// old default, false — while the controller started due jobs regardless. Now
+	// that the flag is honoured, keeping that false would quietly stop scheduled
+	// downloads from starting for everyone upgrading. Adopt the behaviour they
+	// actually had; from here on the switch means what it says.
+	s.ScheduledStartEnabled = true
+
+	s.SettingsVersion = currentSettingsVersion
+}
+
+// presentKeys returns the set of top-level keys actually written in the settings
+// file. It is what lets applyMissingDefaults tell "the user turned this off"
+// (key present, value false) apart from "this key predates the field" (key
+// absent) — a distinction plain json.Unmarshal into a struct destroys, since
+// both land on the zero value. Without it, every default-TRUE setting
+// (verify_integrity, auto_resume_*, keep_partial_on_failure) silently came back
+// as OFF for anyone upgrading from a settings.json written before those fields
+// existed, while the UI cheerfully rendered them as ON.
+//
+// A body that is not a JSON object yields a nil map, i.e. "nothing present", so
+// every default is applied.
+func presentKeys(data []byte) map[string]bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	keys := make(map[string]bool, len(raw))
+	for k := range raw {
+		keys[k] = true
+	}
+	return keys
 }
 
 // Validate clamps every field to a sane range and replaces invalid enum values
@@ -339,12 +467,40 @@ func (s *Setting) Validate() {
 	if !validDensities[s.UIDensity] {
 		s.UIDensity = "comfortable"
 	}
+	if !ValidTheme(s.PreferredTheme) {
+		s.PreferredTheme = "system"
+	}
 	s.TempDir = strings.TrimSpace(s.TempDir)
+
+	// An unusable proxy is dropped rather than kept: the engine would ignore it
+	// anyway, and leaving it in the file made the UI show a proxy that was not in
+	// force. The API rejects bad values up front (see NormalizeProxy); this is the
+	// defence for a hand-edited file.
+	if normalized, ok := NormalizeProxy(s.Proxy); ok {
+		s.Proxy = normalized
+	} else {
+		s.Proxy = ""
+	}
+
+	// Keep the deprecated start_on_launch key in step with the field that
+	// actually drives behaviour, so the two can never disagree on disk and an
+	// old reader of the legacy key sees the truth. AutoResumeOnLaunch always
+	// wins: nothing has ever acted on StartOnLaunch, so its stored value only
+	// reflects an old default, never a choice the user made.
+	s.StartOnLaunch = s.AutoResumeOnLaunch
+
+	// Anything this build writes is in the current schema, so stamp it here —
+	// Validate is the one thing both Save and Update call before marshalling.
+	// The load path runs migrate() BEFORE Validate, so an older file is still
+	// brought forward first and the stamp never masks a pending migration.
+	s.SettingsVersion = currentSettingsVersion
 }
 
 func (s *Setting) Update(req SettingReq) error {
+	// Deprecated alias, applied FIRST so an explicit auto_resume_on_launch in the
+	// same body wins when a client sends both.
 	if req.StartOnLaunch != nil {
-		s.StartOnLaunch = *req.StartOnLaunch
+		s.AutoResumeOnLaunch = *req.StartOnLaunch
 	}
 	if req.ConfirmOnExit != nil {
 		s.ConfirmOnExit = *req.ConfirmOnExit
@@ -375,6 +531,9 @@ func (s *Setting) Update(req SettingReq) error {
 	}
 	if req.Proxy != nil {
 		s.Proxy = *req.Proxy
+	}
+	if req.LogLevel != nil {
+		s.LogLevel = *req.LogLevel
 	}
 
 	if req.PostDownload.Action != nil {
@@ -477,6 +636,9 @@ func (s *Setting) Save() error {
 }
 
 func (s *Setting) setDefaults() {
+	// A fresh install is written at the current schema, so migrate never runs on it.
+	s.SettingsVersion = currentSettingsVersion
+	// Deprecated alias of AutoResumeOnLaunch; Validate re-syncs it from there.
 	s.StartOnLaunch = true
 	s.ConfirmOnExit = true
 	s.Silent = false
@@ -491,7 +653,10 @@ func (s *Setting) setDefaults() {
 	s.PostDownload.Action = "none"
 	s.PostDownload.AutoOpenDir = false
 	s.BandwidthSchedule = nil
-	s.ScheduledStartEnabled = false
+	// On by default: a download the user scheduled for a specific time should
+	// start at that time without a second opt-in. Turning it off means "leave it
+	// pending and I'll start it myself".
+	s.ScheduledStartEnabled = true
 	s.Proxy = ""
 
 	// Auto-organize: off by default with no rules.
@@ -520,7 +685,24 @@ func (s *Setting) setDefaults() {
 	s.KeepPartialOnFailure = true
 }
 
-func (s *Setting) applyMissingDefaults() {
+// defaultTrueBools maps the JSON key of every setting that defaults to ON to its
+// field pointer. applyMissingDefaults turns each of them on only when the key is
+// absent from the stored file, so an explicit `false` a user chose is preserved.
+func (s *Setting) defaultTrueBools() map[string]*bool {
+	return map[string]*bool{
+		"verify_integrity":         &s.VerifyIntegrity,
+		"auto_resume_on_reconnect": &s.AutoResumeOnReconnect,
+		"auto_resume_on_launch":    &s.AutoResumeOnLaunch,
+		"keep_partial_on_failure":  &s.KeepPartialOnFailure,
+		"scheduled_start_enabled":  &s.ScheduledStartEnabled,
+	}
+}
+
+// applyMissingDefaults fills in fields the stored settings file did not carry.
+// present is the set of top-level keys the file actually contained (see
+// presentKeys); a nil/empty map means "treat everything as missing", which is
+// the right behaviour for a file that could not be read as an object.
+func (s *Setting) applyMissingDefaults(present map[string]bool) {
 	if s.MaxParallel == 0 {
 		s.MaxParallel = 1
 	}
@@ -544,12 +726,17 @@ func (s *Setting) applyMissingDefaults() {
 	}
 
 	// Reliability / UX backfill for configs written before these fields existed.
-	// Only zero-valued string/int fields are backfilled here: a JSON-missing field
-	// unmarshals to the zero value, which is indistinguishable from an explicit
-	// zero for bools, so the default-true bools (VerifyIntegrity, AutoResume*,
-	// KeepPartialOnFailure) are intentionally NOT forced on here — doing so would
-	// re-enable a setting a user deliberately turned off. New installs get the
-	// safe defaults via setDefaults(); upgraders can opt in from the settings UI.
+	// A JSON-missing bool unmarshals to false, which used to be indistinguishable
+	// from a deliberate "off" — so the default-TRUE flags were left off and every
+	// upgrader silently ran with integrity verification and auto-resume disabled
+	// while the UI showed them enabled. presentKeys removes the ambiguity: only a
+	// key that is genuinely absent gets its default applied.
+	for key, field := range s.defaultTrueBools() {
+		if !present[key] {
+			*field = true
+		}
+	}
+
 	if s.RetryBackoffSec == 0 {
 		s.RetryBackoffSec = defaultRetryBackoffSec
 	}

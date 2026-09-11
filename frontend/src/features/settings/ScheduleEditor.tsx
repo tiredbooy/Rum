@@ -6,30 +6,10 @@ import {
 import type { ScheduleSettings, SpeedRule } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
-import { CalendarClock, Gauge, Loader2, Plus, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const DAYS = [
-  { value: 0, short: "S", label: "Sunday" },
-  { value: 1, short: "M", label: "Monday" },
-  { value: 2, short: "T", label: "Tuesday" },
-  { value: 3, short: "W", label: "Wednesday" },
-  { value: 4, short: "T", label: "Thursday" },
-  { value: 5, short: "F", label: "Friday" },
-  { value: 6, short: "S", label: "Saturday" },
-];
-
-function pad(h: number): string {
-  return `${h.toString().padStart(2, "0")}:00`;
-}
+import { CalendarClock, Gauge, Loader2, Plus } from "lucide-react";
+import { SpeedWindowRow } from "./SpeedWindowRow";
 
 const emptyRule: SpeedRule = {
   start_hour: 9,
@@ -50,6 +30,11 @@ function normalize(s: ScheduleSettings): ScheduleSettings {
   };
 }
 
+/**
+ * Bandwidth schedule + scheduled-start toggle (PUT /settings/schedule). Edits
+ * are a draft until "Save schedule"; saving applies the newly-active window to
+ * the running engine immediately rather than at the next controller tick.
+ */
 export function ScheduleEditor() {
   const { data, isLoading, isError } = useSchedule();
   const updateMutation = useUpdateSchedule();
@@ -95,8 +80,6 @@ export function ScheduleEditor() {
       }),
     }));
 
-  const handleSave = () => updateMutation.mutate(draft);
-
   return (
     <Card>
       <CardHeader>
@@ -115,15 +98,13 @@ export function ScheduleEditor() {
           </p>
         ) : (
           <>
-            {/* Scheduled-start toggle */}
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-0.5">
                 <Label htmlFor="scheduled-start" className="text-sm">
                   Scheduled start
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Start downloads automatically when their scheduled time
-                  arrives.
+                  Off: scheduled downloads wait for you to start them.
                 </p>
               </div>
               <Switch
@@ -152,147 +133,30 @@ export function ScheduleEditor() {
               </div>
 
               {draft.rules.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border px-4 py-6 text-center">
+                <div className="rounded-md border border-dashed border-border px-4 py-6 text-center space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    No speed-limit windows yet.
+                    No speed limits by time of day.
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    e.g. throttle to 500 kB/s during 09:00–18:00 on weekdays.
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addRule}
+                  >
+                    Add window
+                  </Button>
                 </div>
               ) : (
                 <ul className="space-y-3">
                   {draft.rules.map((rule, i) => (
-                    <li
+                    <SpeedWindowRow
                       key={i}
-                      className="rounded-md border border-border p-3 space-y-3"
-                    >
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="space-y-1">
-                          <Label
-                            htmlFor={`start-${i}`}
-                            className="text-xs text-muted-foreground"
-                          >
-                            From
-                          </Label>
-                          <NativeSelect
-                            id={`start-${i}`}
-                            value={rule.start_hour}
-                            onChange={(e) =>
-                              setRule(i, { start_hour: Number(e.target.value) })
-                            }
-                            className="w-24"
-                            aria-label={`Window ${i + 1} start hour`}
-                          >
-                            {HOURS.map((h) => (
-                              <NativeSelectOption key={h} value={h}>
-                                {pad(h)}
-                              </NativeSelectOption>
-                            ))}
-                          </NativeSelect>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label
-                            htmlFor={`end-${i}`}
-                            className="text-xs text-muted-foreground"
-                          >
-                            To
-                          </Label>
-                          <NativeSelect
-                            id={`end-${i}`}
-                            value={rule.end_hour}
-                            onChange={(e) =>
-                              setRule(i, { end_hour: Number(e.target.value) })
-                            }
-                            className="w-24"
-                            aria-label={`Window ${i + 1} end hour`}
-                          >
-                            {HOURS.map((h) => (
-                              <NativeSelectOption key={h} value={h}>
-                                {pad(h)}
-                              </NativeSelectOption>
-                            ))}
-                          </NativeSelect>
-                        </div>
-
-                        <div className="space-y-1 flex-1 min-w-[10rem]">
-                          <Label
-                            htmlFor={`limit-${i}`}
-                            className="text-xs text-muted-foreground"
-                          >
-                            Limit (kB/s, 0 = unlimited)
-                          </Label>
-                          <Input
-                            id={`limit-${i}`}
-                            type="number"
-                            min={0}
-                            value={rule.limit_kbps}
-                            onChange={(e) =>
-                              setRule(i, {
-                                limit_kbps:
-                                  e.target.value === ""
-                                    ? 0
-                                    : Math.max(0, Number(e.target.value)),
-                              })
-                            }
-                            placeholder="0"
-                          />
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeRule(i)}
-                          aria-label={`Remove window ${i + 1}`}
-                          title="Remove window"
-                          className="text-destructive shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <span className="text-xs text-muted-foreground">
-                          Days (none = every day)
-                        </span>
-                        <div
-                          className="flex flex-wrap gap-1.5"
-                          role="group"
-                          aria-label={`Window ${i + 1} days of week`}
-                        >
-                          {DAYS.map((d) => {
-                            const active = (rule.days ?? []).includes(d.value);
-                            return (
-                              <button
-                                key={d.value}
-                                type="button"
-                                onClick={() => toggleDay(i, d.value)}
-                                aria-pressed={active}
-                                aria-label={d.label}
-                                title={d.label}
-                                className={cn(
-                                  "inline-flex size-8 items-center justify-center rounded-md border text-xs font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                                  active
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                                )}
-                              >
-                                {d.short}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {rule.start_hour === rule.end_hour && (
-                        <p className="text-xs text-amber-500">
-                          Start and end are the same hour — this window covers
-                          the full day.
-                        </p>
-                      )}
-                    </li>
+                      index={i}
+                      rule={rule}
+                      onChange={(patch) => setRule(i, patch)}
+                      onToggleDay={(day) => toggleDay(i, day)}
+                      onRemove={() => removeRule(i)}
+                    />
                   ))}
                 </ul>
               )}
@@ -306,7 +170,7 @@ export function ScheduleEditor() {
               )}
               <Button
                 type="button"
-                onClick={handleSave}
+                onClick={() => updateMutation.mutate(draft)}
                 disabled={!dirty || updateMutation.isPending}
                 className="gap-2"
               >

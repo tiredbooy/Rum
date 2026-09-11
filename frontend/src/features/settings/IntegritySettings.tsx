@@ -1,83 +1,114 @@
 import { useEffect, useState } from "react";
 import {
   useSettings,
-  useUpdateSettings,
+  useSettingsPatch,
 } from "@/_lib/services/queries/settings.queries";
 import type { Setting, SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Wifi, Power, Timer, Hash } from "lucide-react";
+import { Hash, Power, ShieldCheck, ShieldAlert, Timer, Wifi } from "lucide-react";
+import { SettingInput, SettingToggle } from "./controls";
+import { NUM_BOUNDS, clampNum, rangeError, type NumField } from "./numeric-bounds";
 
 type IntegrityToggle =
   | "verify_integrity"
   | "auto_resume_on_reconnect"
-  | "auto_resume_on_launch";
+  | "auto_resume_on_launch"
+  | "block_private_hosts";
 
-const TOGGLES: { field: IntegrityToggle; label: string; help: string }[] = [
+const TOGGLES: {
+  field: IntegrityToggle;
+  label: string;
+  help: string;
+  icon: React.ReactNode;
+  /** Toggles that are ON unless the user turned them off. */
+  defaultOn: boolean;
+}[] = [
   {
     field: "verify_integrity",
     label: "Verify integrity",
-    help: "Check every finished download for corruption and store a hash for server-free re-verification. Recommended.",
+    help: "Hash every finished download so it can be re-checked later.",
+    icon: <ShieldCheck className="w-4 h-4" />,
+    defaultOn: true,
   },
   {
     field: "auto_resume_on_reconnect",
     label: "Auto-resume on reconnect",
-    help: "Automatically continue interrupted downloads when the network comes back.",
+    help: "Retry failed downloads once their host is reachable again.",
+    icon: <Wifi className="w-4 h-4" />,
+    defaultOn: true,
   },
   {
     field: "auto_resume_on_launch",
     label: "Auto-resume on launch",
     help: "Resume unfinished downloads the next time Rum starts.",
+    icon: <Power className="w-4 h-4" />,
+    defaultOn: true,
+  },
+  {
+    field: "block_private_hosts",
+    label: "Block private hosts",
+    help: "Refuse downloads from LAN and loopback addresses. Off for NAS use.",
+    icon: <ShieldAlert className="w-4 h-4" />,
+    defaultOn: false,
   },
 ];
 
-const RETRY_ICONS: Record<IntegrityToggle, React.ReactNode> = {
-  verify_integrity: <ShieldCheck className="w-4 h-4" />,
-  auto_resume_on_reconnect: <Wifi className="w-4 h-4" />,
-  auto_resume_on_launch: <Power className="w-4 h-4" />,
-};
-
-function clampBackoff(n: number): number {
-  if (Number.isNaN(n)) return 1;
-  return Math.min(60, Math.max(1, Math.round(n)));
-}
+const NUMBERS: {
+  field: Extract<NumField, "retry_backoff_sec" | "max_retries">;
+  label: string;
+  icon: React.ReactNode;
+  hint: string;
+}[] = [
+  {
+    field: "max_retries",
+    label: "Retry attempts",
+    icon: <Hash className="w-4 h-4" />,
+    hint: "Tries before a download is marked failed.",
+  },
+  {
+    field: "retry_backoff_sec",
+    label: "Retry backoff (seconds)",
+    icon: <Timer className="w-4 h-4" />,
+    hint: "Delay before the first retry; doubles each attempt.",
+  },
+];
 
 /**
- * Integrity & reliability settings (PATCH /settings). Surfaces the corruption
- * fix (verify_integrity) plus the auto-retry/resume policy: reconnect/launch
- * resume, retry backoff, and the existing max_retries for context.
+ * Integrity & reliability settings (PATCH /settings): the corruption fix
+ * (verify_integrity), the auto-retry/resume policy and the opt-in SSRF guard.
  */
 export function IntegritySettings() {
   const { data: settings, isLoading, isError } = useSettings();
-  const updateMutation = useUpdateSettings();
-  const [savedField, setSavedField] = useState<string | null>(null);
+  const { patch, savedField, errorFor } = useSettingsPatch();
 
-  // Local controlled values for the numeric inputs (commit on blur).
-  const [backoff, setBackoff] = useState<string>("1");
-  const [retries, setRetries] = useState<string>("3");
+  const [nums, setNums] = useState<Record<string, string>>({
+    max_retries: "3",
+    retry_backoff_sec: "1",
+  });
 
   useEffect(() => {
     if (!settings) return;
-    setBackoff(String(settings.retry_backoff_sec ?? 1));
-    setRetries(String(settings.max_retries ?? 3));
+    setNums({
+      max_retries: String(settings.max_retries ?? 3),
+      retry_backoff_sec: String(settings.retry_backoff_sec ?? 1),
+    });
   }, [settings]);
 
-  const value = (field: IntegrityToggle): boolean => {
-    const s = settings as Setting | undefined;
-    // verify_integrity / auto_resume_* default true.
-    return s?.[field] ?? true;
-  };
+  const toggleValue = (field: IntegrityToggle, defaultOn: boolean): boolean =>
+    (settings as Setting | undefined)?.[field] ?? defaultOn;
 
-  const flash = (field: string) => {
-    setSavedField(field);
-    setTimeout(() => setSavedField((f) => (f === field ? null : f)), 2000);
-  };
-
-  const patch = (field: string, payload: Partial<SettingReq>) => {
-    updateMutation.mutate(payload, { onSuccess: () => flash(field) });
+  const commitNum = (field: NumField) => {
+    const { fallback } = NUM_BOUNDS[field];
+    const v = clampNum(nums[field], field);
+    setNums((prev) => ({ ...prev, [field]: String(v) }));
+    if (v === (settings?.[field] ?? fallback)) return;
+    patch(field, { [field]: v } as Partial<SettingReq>, {
+      onError: () =>
+        setNums((prev) => ({
+          ...prev,
+          [field]: String(settings?.[field] ?? fallback),
+        })),
+    });
   };
 
   return (
@@ -98,122 +129,44 @@ export function IntegritySettings() {
           </p>
         ) : (
           <>
-            {TOGGLES.map(({ field, label, help }) => (
-              <div
+            {TOGGLES.map(({ field, label, help, icon, defaultOn }) => (
+              <SettingToggle
                 key={field}
-                className="flex items-start justify-between gap-4"
-              >
-                <div className="space-y-0.5">
-                  <Label
-                    htmlFor={`integrity-${field}`}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    {RETRY_ICONS[field]}
-                    {label}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">{help}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {savedField === field && (
-                    <Badge
-                      variant="outline"
-                      className="text-green-600 border-green-600"
-                    >
-                      Saved
-                    </Badge>
-                  )}
-                  <Switch
-                    id={`integrity-${field}`}
-                    checked={value(field)}
-                    onCheckedChange={(v) =>
-                      patch(field, { [field]: v } as Partial<SettingReq>)
-                    }
-                  />
-                </div>
-              </div>
+                id={`integrity-${field}`}
+                icon={icon}
+                label={label}
+                help={help}
+                checked={toggleValue(field, defaultOn)}
+                onCheckedChange={(v) =>
+                  patch(field, { [field]: v } as Partial<SettingReq>)
+                }
+                saved={savedField === field}
+                error={errorFor(field)}
+              />
             ))}
 
-            {/* Retry backoff (1–60s) */}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="integrity-backoff"
-                className="flex items-center gap-2 text-sm"
-              >
-                <Timer className="w-4 h-4" /> Retry backoff (seconds)
-              </Label>
-              <div className="relative">
-                <Input
-                  id="integrity-backoff"
+            {NUMBERS.map(({ field, label, icon, hint }) => {
+              const { min, max } = NUM_BOUNDS[field];
+              return (
+                <SettingInput
+                  key={field}
+                  id={`integrity-${field}`}
+                  label={label}
+                  icon={icon}
                   type="number"
-                  min={1}
-                  max={60}
-                  className="pr-16"
-                  value={backoff}
-                  onChange={(e) => setBackoff(e.target.value)}
-                  onBlur={() => {
-                    const v = clampBackoff(Number(backoff));
-                    setBackoff(String(v));
-                    if (v !== (settings?.retry_backoff_sec ?? 1)) {
-                      patch("retry_backoff_sec", { retry_backoff_sec: v });
-                    }
-                  }}
+                  min={min}
+                  max={max}
+                  hint={hint}
+                  value={nums[field]}
+                  onChange={(e) =>
+                    setNums((prev) => ({ ...prev, [field]: e.target.value }))
+                  }
+                  onBlur={() => commitNum(field)}
+                  saved={savedField === field}
+                  error={rangeError(nums[field], field) ?? errorFor(field)}
                 />
-                {savedField === "retry_backoff_sec" && (
-                  <Badge
-                    variant="outline"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-green-600 border-green-600"
-                  >
-                    Saved
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Base delay before the first retry; doubles each attempt
-                (1–60&nbsp;s).
-              </p>
-            </div>
-
-            {/* Max retries (existing field, surfaced here) */}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="integrity-retries"
-                className="flex items-center gap-2 text-sm"
-              >
-                <Hash className="w-4 h-4" /> Retry attempts
-              </Label>
-              <div className="relative">
-                <Input
-                  id="integrity-retries"
-                  type="number"
-                  min={0}
-                  max={10}
-                  className="pr-16"
-                  value={retries}
-                  onChange={(e) => setRetries(e.target.value)}
-                  onBlur={() => {
-                    const v = Math.min(
-                      10,
-                      Math.max(0, Math.round(Number(retries) || 0)),
-                    );
-                    setRetries(String(v));
-                    if (v !== (settings?.max_retries ?? 3)) {
-                      patch("max_retries", { max_retries: v });
-                    }
-                  }}
-                />
-                {savedField === "max_retries" && (
-                  <Badge
-                    variant="outline"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-green-600 border-green-600"
-                  >
-                    Saved
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                How many times to retry a failed download (0–10).
-              </p>
-            </div>
+              );
+            })}
           </>
         )}
       </CardContent>

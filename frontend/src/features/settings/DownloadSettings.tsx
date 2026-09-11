@@ -1,46 +1,63 @@
 import { useEffect, useState } from "react";
 import {
   useSettings,
-  useUpdateSettings,
+  useSettingsPatch,
 } from "@/_lib/services/queries/settings.queries";
 import type { SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, FileWarning, Gauge, Repeat, Zap } from "lucide-react";
-import { SettingInput, SettingSelect, useSavedFlash } from "./controls";
+import { Download, FileWarning, Gauge, Zap } from "lucide-react";
+import { SettingInput, SettingSelect } from "./controls";
+import { NUM_BOUNDS, clampNum, rangeError, type NumField } from "./numeric-bounds";
 
-/** Clamp a typed numeric string into [min, max], falling back to `fallback`. */
-function clampNum(raw: string, min: number, max: number, fallback: number) {
-  const n = raw === "" ? fallback : Math.round(Number(raw));
-  if (Number.isNaN(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
+/** The numeric fields this card owns (retries/backoff live in Integrity). */
+type DownloadNumField = Extract<
+  NumField,
+  "speed_limit_kb" | "max_parallel" | "connections"
+>;
 
-type NumField = "speed_limit_kb" | "max_parallel" | "connections" | "max_retries";
-
-const NUM_BOUNDS: Record<NumField, { min: number; max: number; fallback: number }> = {
-  speed_limit_kb: { min: 0, max: 1_000_000, fallback: 0 },
-  max_parallel: { min: 1, max: 64, fallback: 3 },
-  connections: { min: 1, max: 16, fallback: 8 },
-  max_retries: { min: 0, max: 10, fallback: 3 },
-};
+const FIELDS: {
+  field: DownloadNumField;
+  label: string;
+  icon: React.ReactNode;
+  hint: string;
+  placeholder?: string;
+}[] = [
+  {
+    field: "speed_limit_kb",
+    label: "Speed limit (kB/s)",
+    icon: <Gauge className="w-4 h-4" />,
+    hint: "0 is unlimited.",
+    placeholder: "Unlimited",
+  },
+  {
+    field: "max_parallel",
+    label: "Parallel downloads",
+    icon: <Zap className="w-4 h-4" />,
+    hint: "How many downloads run at once.",
+  },
+  {
+    field: "connections",
+    label: "Connections per download",
+    icon: <Zap className="w-4 h-4" />,
+    hint: "Segments per file. More beats CDN throttling.",
+    placeholder: "8",
+  },
+];
 
 /**
- * Download limits (PATCH /settings): global speed cap, parallel-download count,
- * connections-per-download (segments) and retry attempts, plus the file-name
- * conflict policy. Numeric fields keep a local draft and commit (clamped) on
- * blur; the conflict select persists instantly. Self-contained so typing here
- * never re-renders the rest of the settings page.
+ * Download limits (PATCH /settings): global speed cap, parallel-download count
+ * and connections-per-download (segments), plus the file-name conflict policy.
+ * Numeric fields keep a local draft, show an inline range message while the
+ * typed value is out of bounds, and commit (clamped) on blur.
  */
 export function DownloadSettings() {
   const { data: settings, isLoading, isError } = useSettings();
-  const updateMutation = useUpdateSettings();
-  const [savedField, flash] = useSavedFlash();
+  const { patch, savedField, errorFor } = useSettingsPatch();
 
-  const [nums, setNums] = useState<Record<NumField, string>>({
+  const [nums, setNums] = useState<Record<DownloadNumField, string>>({
     speed_limit_kb: "0",
     max_parallel: "3",
     connections: "8",
-    max_retries: "3",
   });
 
   useEffect(() => {
@@ -49,24 +66,20 @@ export function DownloadSettings() {
       speed_limit_kb: String(settings.speed_limit_kb ?? 0),
       max_parallel: String(settings.max_parallel ?? 3),
       connections: String(settings.connections ?? 8),
-      max_retries: String(settings.max_retries ?? 3),
     });
   }, [settings]);
 
-  const patch = (field: string, payload: Partial<SettingReq>) => {
-    updateMutation.mutate(payload, { onSuccess: () => flash(field) });
-  };
-
-  const setNum = (field: NumField, value: string) =>
+  const setNum = (field: DownloadNumField, value: string) =>
     setNums((prev) => ({ ...prev, [field]: value }));
 
-  const commitNum = (field: NumField) => {
-    const { min, max, fallback } = NUM_BOUNDS[field];
-    const v = clampNum(nums[field], min, max, fallback);
+  const commitNum = (field: DownloadNumField) => {
+    const { fallback } = NUM_BOUNDS[field];
+    const v = clampNum(nums[field], field);
     setNum(field, String(v));
-    if (v !== (settings?.[field] ?? fallback)) {
-      patch(field, { [field]: v } as Partial<SettingReq>);
-    }
+    if (v === (settings?.[field] ?? fallback)) return;
+    patch(field, { [field]: v } as Partial<SettingReq>, {
+      onError: () => setNum(field, String(settings?.[field] ?? fallback)),
+    });
   };
 
   return (
@@ -87,56 +100,30 @@ export function DownloadSettings() {
           </p>
         ) : (
           <>
-            <SettingInput
-              label="Speed limit (kB/s)"
-              icon={<Gauge className="w-4 h-4" />}
-              type="number"
-              min={0}
-              placeholder="Unlimited"
-              value={nums.speed_limit_kb}
-              onChange={(e) => setNum("speed_limit_kb", e.target.value)}
-              onBlur={() => commitNum("speed_limit_kb")}
-              saved={savedField === "speed_limit_kb"}
-            />
-
-            <SettingInput
-              label="Parallel downloads"
-              icon={<Zap className="w-4 h-4" />}
-              type="number"
-              min={1}
-              max={64}
-              value={nums.max_parallel}
-              onChange={(e) => setNum("max_parallel", e.target.value)}
-              onBlur={() => commitNum("max_parallel")}
-              saved={savedField === "max_parallel"}
-            />
-
-            <SettingInput
-              label="Connections per download"
-              icon={<Zap className="w-4 h-4" />}
-              type="number"
-              min={1}
-              max={16}
-              placeholder="8"
-              value={nums.connections}
-              onChange={(e) => setNum("connections", e.target.value)}
-              onBlur={() => commitNum("connections")}
-              saved={savedField === "connections"}
-            />
-
-            <SettingInput
-              label="Retry attempts"
-              icon={<Repeat className="w-4 h-4" />}
-              type="number"
-              min={0}
-              max={10}
-              value={nums.max_retries}
-              onChange={(e) => setNum("max_retries", e.target.value)}
-              onBlur={() => commitNum("max_retries")}
-              saved={savedField === "max_retries"}
-            />
+            {FIELDS.map(({ field, label, icon, hint, placeholder }) => {
+              const { min, max } = NUM_BOUNDS[field];
+              return (
+                <SettingInput
+                  key={field}
+                  id={`download-${field}`}
+                  label={label}
+                  icon={icon}
+                  type="number"
+                  min={min}
+                  max={Number.isFinite(max) ? max : undefined}
+                  placeholder={placeholder}
+                  hint={hint}
+                  value={nums[field]}
+                  onChange={(e) => setNum(field, e.target.value)}
+                  onBlur={() => commitNum(field)}
+                  saved={savedField === field}
+                  error={rangeError(nums[field], field) ?? errorFor(field)}
+                />
+              );
+            })}
 
             <SettingSelect
+              id="download-file-conflict"
               label="If file exists"
               icon={<FileWarning className="w-4 h-4" />}
               value={settings?.file_confilict ?? "rename"}
@@ -151,6 +138,7 @@ export function DownloadSettings() {
                 })
               }
               saved={savedField === "file_confilict"}
+              error={errorFor("file_confilict")}
             />
           </>
         )}

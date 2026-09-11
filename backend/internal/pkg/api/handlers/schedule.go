@@ -12,9 +12,8 @@ import (
 //
 //	GET /api/v1/settings/schedule -> { scheduled_start_enabled, rules: SpeedRule[] }
 func GetSchedule(c *gin.Context) {
-	var setting config.Setting
-	if err := setting.LoadSettingMetadata(); err != nil {
-		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to load settings")
+	setting, ok := loadSettings(c)
+	if !ok {
 		return
 	}
 
@@ -47,9 +46,8 @@ func PutSchedule(c *gin.Context) {
 		return
 	}
 
-	var setting config.Setting
-	if err := setting.LoadSettingMetadata(); err != nil {
-		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to load settings")
+	setting, ok := loadSettings(c)
+	if !ok {
 		return
 	}
 
@@ -60,6 +58,10 @@ func PutSchedule(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to save schedule")
 		return
 	}
+
+	// Apply the newly-active bandwidth window immediately instead of waiting up
+	// to a full 30s controller tick.
+	applyDownloadOptions(&setting)
 
 	rules := setting.BandwidthSchedule
 	if rules == nil {

@@ -12,9 +12,8 @@ import (
 //
 //	GET /api/v1/settings/categories -> { enabled, rules: CategoryRule[] }
 func GetCategories(c *gin.Context) {
-	var setting config.Setting
-	if err := setting.LoadSettingMetadata(); err != nil {
-		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to load settings")
+	setting, ok := loadSettings(c)
+	if !ok {
 		return
 	}
 
@@ -47,9 +46,8 @@ func PutCategories(c *gin.Context) {
 		return
 	}
 
-	var setting config.Setting
-	if err := setting.LoadSettingMetadata(); err != nil {
-		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to load settings")
+	setting, ok := loadSettings(c)
+	if !ok {
 		return
 	}
 
@@ -60,6 +58,11 @@ func PutCategories(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, dto.CodeInternal, "failed to save categories")
 		return
 	}
+
+	// Push the master switch onto the live engine: without this, enabling
+	// auto-organize only took effect after an app restart (opt.Categorize is what
+	// finalizeCategorize gates on).
+	applyDownloadOptions(&setting)
 
 	rules := setting.Categories
 	if rules == nil {

@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   useSettings,
-  useUpdateSettings,
+  useSettingsPatch,
 } from "@/_lib/services/queries/settings.queries";
-import type { Setting, SettingReq } from "@/_lib/types/setting-types";
+import type { Setting } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { HardDrive, FolderOpen, FileArchive } from "lucide-react";
-import { chooseDir, hasChooseDir } from "@/_lib/wails";
+import { FileArchive, HardDrive } from "lucide-react";
+import { SettingToggle } from "./controls";
+import { SettingPathInput } from "./SettingPathInput";
+import { useFolderPicker } from "./useFolderPicker";
 
 /**
  * Storage settings (PATCH /settings): the temp directory for in-progress files
@@ -20,34 +17,27 @@ import { chooseDir, hasChooseDir } from "@/_lib/wails";
  */
 export function StorageSettings() {
   const { data: settings, isLoading, isError } = useSettings();
-  const updateMutation = useUpdateSettings();
-  const [savedField, setSavedField] = useState<string | null>(null);
+  const { patch, savedField, errorFor } = useSettingsPatch();
+  const { canPick, pick } = useFolderPicker();
+
   const [tempDir, setTempDir] = useState<string>("");
-  const canPick = hasChooseDir();
 
   useEffect(() => {
     if (!settings) return;
     setTempDir(settings.temp_dir ?? "");
   }, [settings]);
 
-  const flash = (field: string) => {
-    setSavedField(field);
-    setTimeout(() => setSavedField((f) => (f === field ? null : f)), 2000);
-  };
-
-  const patch = (field: string, payload: Partial<SettingReq>) => {
-    updateMutation.mutate(payload, { onSuccess: () => flash(field) });
-  };
-
   const commitTempDir = (value: string) => {
-    setTempDir(value);
-    if (value !== (settings?.temp_dir ?? "")) {
-      patch("temp_dir", { temp_dir: value });
-    }
+    const next = value.trim();
+    setTempDir(next);
+    if (next === (settings?.temp_dir ?? "")) return;
+    patch("temp_dir", { temp_dir: next }, {
+      onError: () => setTempDir(settings?.temp_dir ?? ""),
+    });
   };
 
   const pickFolder = async () => {
-    const dir = await chooseDir();
+    const dir = await pick();
     if (dir) commitTempDir(dir);
   };
 
@@ -72,84 +62,33 @@ export function StorageSettings() {
           </p>
         ) : (
           <>
-            {/* Temp directory */}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="storage-temp-dir"
-                className="flex items-center gap-2 text-sm"
-              >
-                <FolderOpen className="w-4 h-4" /> Temp directory
-              </Label>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    id="storage-temp-dir"
-                    className="pr-16"
-                    placeholder="Next to the final file"
-                    value={tempDir}
-                    onChange={(e) => setTempDir(e.target.value)}
-                    onBlur={() => commitTempDir(tempDir)}
-                  />
-                  {savedField === "temp_dir" && (
-                    <Badge
-                      variant="outline"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-green-600 border-green-600"
-                    >
-                      Saved
-                    </Badge>
-                  )}
-                </div>
-                {canPick && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void pickFolder()}
-                  >
-                    <FolderOpen className="w-4 h-4" /> Browse
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Where in-progress files live until they finish. Leave empty to
-                write next to the final file.
-              </p>
-            </div>
+            <SettingPathInput
+              label="Temp directory"
+              value={tempDir}
+              placeholder="Next to the final file"
+              hint="Where in-progress files live until they finish."
+              saved={savedField === "temp_dir"}
+              error={errorFor("temp_dir")}
+              canBrowse={canPick}
+              onChange={setTempDir}
+              onCommit={commitTempDir}
+              onBrowse={() => void pickFolder()}
+            />
 
-            {/* Keep partial on failure */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="storage-keep-partial"
-                  className="flex items-center gap-2 text-sm"
-                >
-                  <FileArchive className="w-4 h-4" /> Keep partial on failure
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Keep downloaded data when a download fails so it can be resumed
-                  or repaired. Explicit deletes always remove partials.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {savedField === "keep_partial_on_failure" && (
-                  <Badge
-                    variant="outline"
-                    className="text-green-600 border-green-600"
-                  >
-                    Saved
-                  </Badge>
-                )}
-                <Switch
-                  id="storage-keep-partial"
-                  checked={keepPartial}
-                  onCheckedChange={(v) =>
-                    patch("keep_partial_on_failure", {
-                      keep_partial_on_failure: v,
-                    })
-                  }
-                />
-              </div>
-            </div>
+            <SettingToggle
+              id="storage-keep-partial"
+              icon={<FileArchive className="w-4 h-4" />}
+              label="Keep partial on failure"
+              help="Keep downloaded data when a download fails so it can be resumed."
+              checked={keepPartial}
+              onCheckedChange={(v) =>
+                patch("keep_partial_on_failure", {
+                  keep_partial_on_failure: v,
+                })
+              }
+              saved={savedField === "keep_partial_on_failure"}
+              error={errorFor("keep_partial_on_failure")}
+            />
           </>
         )}
       </CardContent>

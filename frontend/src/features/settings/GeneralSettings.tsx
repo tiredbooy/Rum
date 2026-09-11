@@ -1,54 +1,46 @@
 import { useEffect, useState } from "react";
 import {
   useSettings,
-  useUpdateSettings,
+  useSettingsPatch,
 } from "@/_lib/services/queries/settings.queries";
-import type { SettingReq } from "@/_lib/types/setting-types";
+import type { LogLevel } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { FolderOpen, Monitor } from "lucide-react";
-import { chooseDir, hasChooseDir } from "@/_lib/wails";
-import {
-  SettingInput,
-  SettingSelect,
-  SettingToggle,
-  useSavedFlash,
-} from "./controls";
+import { Monitor, ScrollText } from "lucide-react";
+import { SettingSelect, SettingToggle } from "./controls";
+import { SettingPathInput } from "./SettingPathInput";
+import { useFolderPicker } from "./useFolderPicker";
 
 /**
  * General preferences (PATCH /settings): exit confirmation, silent
  * notifications, preferred theme and the default save location. Each control
  * reads live from the settings cache and persists the moment it changes
- * (toggles/select) or on blur (the save-location path), matching the
- * Appearance card — no shared form state, so editing here never re-renders the
- * other settings cards.
+ * (toggles/select) or on blur (the save-location path).
  */
 export function GeneralSettings() {
   const { data: settings, isLoading, isError } = useSettings();
-  const updateMutation = useUpdateSettings();
-  const [savedField, flash] = useSavedFlash();
+  const { patch, savedField, errorFor } = useSettingsPatch();
+  const { canPick, pick } = useFolderPicker();
 
   const [outDir, setOutDir] = useState<string>("");
-  const canPick = hasChooseDir();
 
   useEffect(() => {
     if (!settings) return;
     setOutDir(settings.out_dir ?? "");
   }, [settings]);
 
-  const patch = (field: string, payload: Partial<SettingReq>) => {
-    updateMutation.mutate(payload, { onSuccess: () => flash(field) });
-  };
-
   const commitOutDir = (value: string) => {
-    setOutDir(value);
-    if (value !== (settings?.out_dir ?? "")) {
-      patch("out_dir", { out_dir: value });
-    }
+    const next = value.trim();
+    setOutDir(next);
+    if (next === (settings?.out_dir ?? "")) return;
+    patch("out_dir", { out_dir: next }, {
+      // Put the field back to what the server still holds, so a rejected path
+      // never lingers in the box looking saved.
+      onError: () => setOutDir(settings?.out_dir ?? ""),
+    });
   };
 
   const pickFolder = async () => {
-    const dir = await chooseDir();
+    const dir = await pick();
     if (dir) commitOutDir(dir);
   };
 
@@ -65,9 +57,7 @@ export function GeneralSettings() {
             Loading preferences…
           </p>
         ) : isError ? (
-          <p className="text-destructive text-sm">
-            Could not load preferences.
-          </p>
+          <p className="text-destructive text-sm">Could not load preferences.</p>
         ) : (
           <>
             <SettingToggle
@@ -78,6 +68,7 @@ export function GeneralSettings() {
                 patch("confirm_on_exit", { confirm_on_exit: v })
               }
               saved={savedField === "confirm_on_exit"}
+              error={errorFor("confirm_on_exit")}
             />
 
             <SettingToggle
@@ -86,9 +77,11 @@ export function GeneralSettings() {
               checked={settings?.silent ?? false}
               onCheckedChange={(v) => patch("silent", { silent: v })}
               saved={savedField === "silent"}
+              error={errorFor("silent")}
             />
 
             <SettingSelect
+              id="general-theme"
               label="Theme"
               icon={<Monitor className="w-4 h-4" />}
               value={settings?.preferred_theme ?? "system"}
@@ -103,29 +96,40 @@ export function GeneralSettings() {
                 })
               }
               saved={savedField === "preferred_theme"}
+              error={errorFor("preferred_theme")}
             />
 
-            <div className="space-y-1.5">
-              <SettingInput
-                label="Save location"
-                icon={<FolderOpen className="w-4 h-4" />}
-                value={outDir}
-                placeholder="~/Downloads"
-                onChange={(e) => setOutDir(e.target.value)}
-                onBlur={() => commitOutDir(outDir)}
-                saved={savedField === "out_dir"}
-              />
-              {canPick && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void pickFolder()}
-                >
-                  <FolderOpen className="w-4 h-4" /> Browse
-                </Button>
-              )}
-            </div>
+            <SettingSelect
+              id="general-log-level"
+              label="Logging"
+              icon={<ScrollText className="w-4 h-4" />}
+              // Only "debug" changes behaviour; a legacy warn/error value logs
+              // like Normal, so show it as Normal rather than as no selection.
+              value={settings?.log_level === "debug" ? "debug" : "info"}
+              options={[
+                { value: "info", label: "Normal" },
+                { value: "debug", label: "Debug" },
+              ]}
+              onValueChange={(v) =>
+                patch("log_level", { log_level: v as LogLevel })
+              }
+              saved={savedField === "log_level"}
+              error={errorFor("log_level")}
+              hint="Debug records a detailed download log for bug reports."
+            />
+
+            <SettingPathInput
+              label="Save location"
+              value={outDir}
+              placeholder="~/Downloads"
+              hint="Empty uses your Downloads folder."
+              saved={savedField === "out_dir"}
+              error={errorFor("out_dir")}
+              canBrowse={canPick}
+              onChange={setOutDir}
+              onCommit={commitOutDir}
+              onBrowse={() => void pickFolder()}
+            />
           </>
         )}
       </CardContent>

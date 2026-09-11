@@ -1,11 +1,15 @@
 /**
- * Typed, defensive wrappers around the Wails JS bindings that the desktop shell
- * injects on `window.go.main.App`. These bindings are ONLY present when the app
- * runs inside the Wails webview — in `wails dev`, plain browser dev, or Vite
- * preview they are `undefined`. Every accessor therefore uses optional chaining
- * and a graceful fallback so the TypeScript build never depends on the generated
- * bindings existing at runtime.
+ * Typed, defensive wrappers around the Wails bindings the desktop shell injects
+ * on `window.go.main.App`. The bindings only exist inside the Wails webview — in
+ * plain browser dev or Vite preview they are `undefined` — so every call goes
+ * through the generated binding module when the runtime is present and falls
+ * back gracefully when it is not.
+ *
+ * The generated modules (`frontend/wailsjs/go/main/App`) are imported directly
+ * rather than re-implemented here: they are what `wails build` regenerates, so
+ * calling them keeps this file honest if a binding signature ever changes.
  */
+import * as App from "../../wailsjs/go/main/App";
 
 declare global {
   interface Window {
@@ -14,11 +18,30 @@ declare global {
         App?: {
           GetApiBase?: () => string | Promise<string>;
           ChooseDir?: () => Promise<string> | string;
+          Capabilities?: () => Promise<DesktopCapabilities>;
         };
       };
     };
+    runtime?: {
+      EventsOn?: (event: string, cb: (...data: unknown[]) => void) => () => void;
+      EventsOff?: (event: string, ...extra: string[]) => void;
+    };
   }
 }
+
+/** Platform features the running desktop build actually has. */
+export interface DesktopCapabilities {
+  tray: boolean;
+  folderPicker: boolean;
+  platform: string;
+}
+
+/** Conservative defaults for browser/dev, where no desktop shell is present. */
+const NO_CAPABILITIES: DesktopCapabilities = {
+  tray: false,
+  folderPicker: false,
+  platform: "web",
+};
 
 /** Fallback base URL used in browser/dev when no Wails binding is available. */
 const FALLBACK_API_BASE =
@@ -27,6 +50,11 @@ const FALLBACK_API_BASE =
 /** Strip a single trailing slash so callers can safely append `/api/...`. */
 function normalizeBase(base: string): string {
   return base.replace(/\/+$/, "");
+}
+
+/** Whether the Wails desktop runtime has injected its bindings. */
+export function hasWailsRuntime(): boolean {
+  return typeof window.go?.main?.App?.GetApiBase === "function";
 }
 
 // The resolved base is cached after the first successful resolution so the
@@ -45,9 +73,8 @@ export async function getApiBase(): Promise<string> {
   if (resolved) return resolvedBase;
 
   try {
-    const fn = window.go?.main?.App?.GetApiBase;
-    if (typeof fn === "function") {
-      const value = await fn();
+    if (hasWailsRuntime()) {
+      const value = await App.GetApiBase();
       if (value && typeof value === "string") {
         resolvedBase = normalizeBase(value);
       }
@@ -70,24 +97,76 @@ export function apiBaseSync(): string {
 }
 
 /**
- * Open the native folder picker via the Wails binding. Returns the chosen
- * absolute path, or `null` when the binding is unavailable (browser/dev) or the
- * user cancelled the dialog.
+ * Outcome of a folder-picker request. `cancelled` and `failed` used to be
+ * indistinguishable (both came back as `null`), which is exactly why a picker
+ * that could not open looked like a button that did nothing.
  */
-export async function chooseDir(): Promise<string | null> {
-  try {
-    const fn = window.go?.main?.App?.ChooseDir;
-    if (typeof fn === "function") {
-      const dir = await fn();
-      return dir && typeof dir === "string" ? dir : null;
-    }
-  } catch {
-    // Ignore — fall through to null so the caller can show a text input.
+export type ChooseDirResult =
+  | { status: "picked"; path: string }
+  | { status: "cancelled" }
+  | { status: "unavailable" }
+  | { status: "failed"; message: string };
+
+/** Open the native folder picker via the generated Wails binding. */
+export async function chooseDir(): Promise<ChooseDirResult> {
+  if (typeof window.go?.main?.App?.ChooseDir !== "function") {
+    return { status: "unavailable" };
   }
-  return null;
+  try {
+    const dir = await App.ChooseDir();
+    if (typeof dir === "string" && dir.trim()) {
+      return { status: "picked", path: dir };
+    }
+    return { status: "cancelled" };
+  } catch (err) {
+    return {
+      status: "failed",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /** Whether the native folder picker binding is present (desktop runtime). */
 export function hasChooseDir(): boolean {
   return typeof window.go?.main?.App?.ChooseDir === "function";
+}
+
+/**
+ * Read the desktop feature matrix. Returns web-safe defaults when the shell is
+ * absent or the binding is older than this frontend.
+ */
+export async function getCapabilities(): Promise<DesktopCapabilities> {
+  if (typeof window.go?.main?.App?.Capabilities !== "function") {
+    return { ...NO_CAPABILITIES, folderPicker: hasChooseDir() };
+  }
+  try {
+    const caps = await App.Capabilities();
+    return {
+      tray: !!caps?.tray,
+      folderPicker: !!caps?.folderPicker,
+      platform: caps?.platform ?? "unknown",
+    };
+  } catch {
+    return { ...NO_CAPABILITIES, folderPicker: hasChooseDir() };
+  }
+}
+
+/**
+ * Subscribe to a Wails runtime event. Returns an unsubscribe function; a no-op
+ * outside the desktop shell so callers need no environment checks.
+ */
+export function onWailsEvent(
+  event: string,
+  handler: (...data: unknown[]) => void,
+): () => void {
+  const on = window.runtime?.EventsOn;
+  if (typeof on !== "function") return () => {};
+  try {
+    const off = on(event, handler);
+    return typeof off === "function"
+      ? off
+      : () => window.runtime?.EventsOff?.(event);
+  } catch {
+    return () => {};
+  }
 }

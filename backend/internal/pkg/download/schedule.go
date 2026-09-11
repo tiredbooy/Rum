@@ -73,6 +73,15 @@ func activeLimitKBps(rules []config.SpeedRule, now time.Time, fallback int) int 
 	return best
 }
 
+// EffectiveSpeedLimitKBps reports the bandwidth cap (KB/s, 0 = unlimited) that
+// applies right now: the most restrictive active bandwidth window, or the plain
+// global limit when no window is open. Exported so a settings save can apply the
+// same limit the schedule controller would, instead of stomping an active
+// window with the base value until the next 30s tick.
+func EffectiveSpeedLimitKBps(setting config.Setting, now time.Time) int {
+	return activeLimitKBps(setting.BandwidthSchedule, now, setting.SpeedLimitKB)
+}
+
 // ScheduleController periodically applies the active bandwidth window to the
 // shared SpeedGovernor (and the manager's stored limit) and, when scheduled
 // start is enabled, starts pending jobs whose StartAt is due. It runs a single
@@ -147,12 +156,12 @@ func (c *ScheduleController) tick(ctx context.Context) {
 		c.manager.SetSpeedLimit(limit)
 	}
 
-	// Per-download scheduled starts are honored regardless of the global
-	// scheduled-start toggle: a job only carries a non-zero StartAt if the user
-	// explicitly scheduled it on create, and it must never be stranded pending
-	// forever just because the global flag is off. The global flag still governs
-	// the schedule UI / bandwidth windows above.
-	if c.manager != nil {
+	// ScheduledStartEnabled decides what happens when a scheduled job comes due:
+	// on, the controller starts it; off, it stays pending for the user to start
+	// by hand. Previously this ran unconditionally, which made the setting dead —
+	// it persisted, round-tripped and was rendered as a switch that changed
+	// nothing. Bandwidth windows above are deliberately NOT gated on it.
+	if c.manager != nil && setting.ScheduledStartEnabled {
 		c.startDueJobs(ctx, now)
 	}
 }

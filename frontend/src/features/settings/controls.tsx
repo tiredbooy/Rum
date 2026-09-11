@@ -1,10 +1,9 @@
 // Shared, presentational setting controls used by the self-contained settings
-// cards (General / Downloads / Post-download). They render the row + a "Saved"
-// badge and delegate persistence to the caller. Toggles and selects persist
-// immediately in their change handler (no fragile onBlur dependency); free-text
-// / numeric inputs commit on blur. This mirrors the AppearanceSettings pattern
-// so every card saves live and reliably.
-import { useCallback, useRef, useState } from "react";
+// cards. They render the row, the "Saved" pill and any inline error, and
+// delegate persistence to the caller (see useSettingsPatch). Toggles and selects
+// persist immediately in their change handler; free-text / numeric inputs commit
+// on blur.
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -18,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-/** Small "Saved ✓" pill shown briefly after a successful persist. */
+/** Small "Saved" pill shown briefly after a successful persist. */
 export function SavedBadge({ className }: { className?: string }) {
   return (
     <Badge
@@ -30,25 +29,13 @@ export function SavedBadge({ className }: { className?: string }) {
   );
 }
 
-/**
- * Per-card "which field just saved" flash state. Returns the currently-flashing
- * field name and a `flash(field)` callback that clears itself after 2s. The
- * timeout is tracked in a ref so rapid edits don't leak overlapping timers.
- */
-export function useSavedFlash(): [string | null, (field: string) => void] {
-  const [savedField, setSavedField] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const flash = useCallback((field: string) => {
-    setSavedField(field);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(
-      () => setSavedField((f) => (f === field ? null : f)),
-      2000,
-    );
-  }, []);
-
-  return [savedField, flash];
+/** Inline field error. Rendered under the control and wired via aria-describedby. */
+export function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p id={id} role="alert" className="text-xs text-destructive">
+      {children}
+    </p>
+  );
 }
 
 export function SettingToggle({
@@ -57,31 +44,50 @@ export function SettingToggle({
   checked,
   onCheckedChange,
   saved,
+  error,
   id,
+  disabled,
+  icon,
 }: {
   label: string;
   help?: string;
   checked?: boolean;
   onCheckedChange: (v: boolean) => void;
   saved: boolean;
+  error?: string;
   id?: string;
+  disabled?: boolean;
+  icon?: React.ReactNode;
 }) {
+  const generated = useId();
+  const switchId = id ?? generated;
+  const errorId = `${switchId}-error`;
+
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="space-y-0.5">
-        <Label htmlFor={id} className="text-sm">
-          {label}
-        </Label>
-        {help && <p className="text-xs text-muted-foreground">{help}</p>}
+    <div className="space-y-1">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-0.5">
+          <Label
+            htmlFor={switchId}
+            className={cn("flex items-center gap-2 text-sm", disabled && "opacity-60")}
+          >
+            {icon}
+            {label}
+          </Label>
+          {help && <p className="text-xs text-muted-foreground">{help}</p>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {saved && <SavedBadge />}
+          <Switch
+            id={switchId}
+            checked={checked ?? false}
+            onCheckedChange={onCheckedChange}
+            disabled={disabled}
+            aria-describedby={error ? errorId : undefined}
+          />
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {saved && <SavedBadge />}
-        <Switch
-          id={id}
-          checked={checked ?? false}
-          onCheckedChange={onCheckedChange}
-        />
-      </div>
+      {error && <FieldError id={errorId}>{error}</FieldError>}
     </div>
   );
 }
@@ -90,24 +96,50 @@ export function SettingInput({
   label,
   icon,
   saved,
+  error,
+  hint,
+  id,
+  className,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   icon?: React.ReactNode;
   saved: boolean;
+  error?: string;
+  hint?: string;
 }) {
+  const generated = useId();
+  const inputId = id ?? generated;
+  const errorId = `${inputId}-error`;
+  const hintId = `${inputId}-hint`;
+
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-center gap-2 text-sm">
+      <Label htmlFor={inputId} className="flex items-center gap-2 text-sm">
         {icon}
         {label}
       </Label>
       <div className="relative">
-        <Input {...props} className={cn("pr-16", props.className)} />
+        <Input
+          {...props}
+          id={inputId}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : hint ? hintId : undefined}
+          className={cn("pr-16", className)}
+        />
         {saved && (
           <SavedBadge className="absolute right-2 top-1/2 -translate-y-1/2" />
         )}
       </div>
+      {error ? (
+        <FieldError id={errorId}>{error}</FieldError>
+      ) : (
+        hint && (
+          <p id={hintId} className="text-xs text-muted-foreground">
+            {hint}
+          </p>
+        )
+      )}
     </div>
   );
 }
@@ -119,6 +151,9 @@ export function SettingSelect({
   options,
   onValueChange,
   saved,
+  error,
+  hint,
+  id,
 }: {
   label: string;
   icon?: React.ReactNode;
@@ -126,16 +161,29 @@ export function SettingSelect({
   options: { value: string; label: string }[];
   onValueChange: (value: string) => void;
   saved: boolean;
+  error?: string;
+  hint?: string;
+  id?: string;
 }) {
+  const generated = useId();
+  const triggerId = id ?? generated;
+  const errorId = `${triggerId}-error`;
+  const hintId = `${triggerId}-hint`;
+
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-center gap-2 text-sm">
+      <Label htmlFor={triggerId} className="flex items-center gap-2 text-sm">
         {icon}
         {label}
       </Label>
       <div className="flex items-center gap-2">
         <Select value={value ?? ""} onValueChange={onValueChange}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger
+            id={triggerId}
+            className="w-full"
+            aria-invalid={!!error}
+            aria-describedby={error ? errorId : hint ? hintId : undefined}
+          >
             <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
@@ -148,6 +196,15 @@ export function SettingSelect({
         </Select>
         {saved && <SavedBadge className="shrink-0" />}
       </div>
+      {error ? (
+        <FieldError id={errorId}>{error}</FieldError>
+      ) : (
+        hint && (
+          <p id={hintId} className="text-xs text-muted-foreground">
+            {hint}
+          </p>
+        )
+      )}
     </div>
   );
 }

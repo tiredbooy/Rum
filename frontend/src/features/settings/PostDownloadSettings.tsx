@@ -1,30 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   useSettings,
-  useUpdateSettings,
+  useSettingsPatch,
 } from "@/_lib/services/queries/settings.queries";
-import type { SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CheckCircle, Globe, Zap } from "lucide-react";
-import {
-  SettingInput,
-  SettingSelect,
-  SettingToggle,
-  useSavedFlash,
-} from "./controls";
+import { SettingInput, SettingSelect, SettingToggle } from "./controls";
+import { isValidProxy } from "./proxy";
 
 /**
  * Post-download actions + proxy (PATCH /settings): open the folder when a
  * download finishes, an optional system action (shutdown / sleep / close), and
  * the outbound proxy URL. Toggle/select persist instantly; the proxy field
- * commits on blur. Self-contained, so it no longer shares form state with the
- * rest of the page.
+ * validates locally and commits on blur.
  */
 export function PostDownloadSettings() {
   const { data: settings, isLoading, isError } = useSettings();
-  const updateMutation = useUpdateSettings();
-  const [savedField, flash] = useSavedFlash();
+  const { patch, savedField, errorFor } = useSettingsPatch();
 
   const [proxy, setProxy] = useState<string>("");
 
@@ -33,15 +26,16 @@ export function PostDownloadSettings() {
     setProxy(settings.proxy ?? "");
   }, [settings]);
 
-  const patch = (field: string, payload: Partial<SettingReq>) => {
-    updateMutation.mutate(payload, { onSuccess: () => flash(field) });
-  };
+  const proxyInvalid = !isValidProxy(proxy);
 
   const commitProxy = (value: string) => {
-    setProxy(value);
-    if (value !== (settings?.proxy ?? "")) {
-      patch("proxy", { proxy: value });
-    }
+    const next = value.trim();
+    setProxy(next);
+    if (!isValidProxy(next)) return; // leave the inline message up; don't save
+    if (next === (settings?.proxy ?? "")) return;
+    patch("proxy", { proxy: next }, {
+      onError: () => setProxy(settings?.proxy ?? ""),
+    });
   };
 
   const autoOpenDir = settings?.post_download?.auto_open_dir ?? false;
@@ -75,9 +69,11 @@ export function PostDownloadSettings() {
                 })
               }
               saved={savedField === "post_download.auto_open_dir"}
+              error={errorFor("post_download.auto_open_dir")}
             />
 
             <SettingSelect
+              id="post-download-action"
               label="System action"
               icon={<Zap className="w-4 h-4" />}
               value={action}
@@ -95,6 +91,8 @@ export function PostDownloadSettings() {
                 })
               }
               saved={savedField === "post_download.action"}
+              error={errorFor("post_download.action")}
+              hint="Resets to Nothing when Rum restarts."
             />
 
             <Separator className="my-1" />
@@ -104,13 +102,20 @@ export function PostDownloadSettings() {
             </div>
 
             <SettingInput
+              id="post-download-proxy"
               label="Proxy server"
               icon={<Globe className="w-4 h-4" />}
               value={proxy}
               placeholder="http://user:pass@host:port"
+              hint="Leave empty for a direct connection."
               onChange={(e) => setProxy(e.target.value)}
               onBlur={() => commitProxy(proxy)}
               saved={savedField === "proxy"}
+              error={
+                proxyInvalid
+                  ? "Use host:port, or an http/https/socks5 URL."
+                  : errorFor("proxy")
+              }
             />
           </>
         )}

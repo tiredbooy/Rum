@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	goruntime "runtime"
 
 	"github.com/tiredbooy/Rum/backend/cmd/server"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -53,6 +55,10 @@ func (a *App) startup(ctx context.Context) {
 	// Opt-in clipboard watcher: emits "clipboard:url" events for the frontend.
 	go a.watchClipboard(bgCtx)
 
+	// Keep the OS login entry in step with the "Launch on startup" toggle while
+	// the app runs (reconcileAutostart above only covers launch time).
+	go a.watchAutostart(bgCtx)
+
 	// Best-effort minimize-to-tray (Wails v2.12 has no OnMinimise callback). Only
 	// started where a tray exists to minimize into — otherwise hiding the window
 	// on minimize would strand it with no tray icon to restore it from (see
@@ -81,13 +87,49 @@ func (a *App) GetApiBase() string {
 
 // ChooseDir opens the native folder picker and returns the selected directory.
 // An empty string with a nil error means the user cancelled.
+//
+// Failures are logged before being returned: a rejected promise on the frontend
+// used to be swallowed by the caller, so a picker that could not open was
+// indistinguishable from a cancel — the button simply "did nothing", with
+// nothing in the logs either. The frontend now surfaces the message; this keeps
+// a copy where a bug report can find it.
 func (a *App) ChooseDir() (string, error) {
 	if a.ctx == nil {
-		return "", fmt.Errorf("app not started")
+		log.Println("desktop: ChooseDir called before startup")
+		return "", fmt.Errorf("the window is not ready yet")
 	}
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Choose download folder",
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:                "Choose folder",
+		CanCreateDirectories: true,
 	})
+	if err != nil {
+		log.Printf("desktop: folder picker failed: %v", err)
+		return "", fmt.Errorf("could not open the folder picker")
+	}
+	return dir, nil
+}
+
+// DesktopCapabilities reports which platform-specific desktop features this
+// build actually has, so the settings UI can disable a control instead of
+// offering a switch that silently does nothing.
+type DesktopCapabilities struct {
+	// Tray is true only where a real system tray exists (Windows in this build —
+	// see trayAvailable / tray_others.go). Minimize-to-tray and close-to-tray are
+	// inert without it.
+	Tray bool `json:"tray"`
+	// FolderPicker is true when the native directory dialog is usable.
+	FolderPicker bool `json:"folderPicker"`
+	// Platform is the GOOS this build runs on ("linux", "windows", "darwin").
+	Platform string `json:"platform"`
+}
+
+// Capabilities returns the desktop feature matrix for the running build.
+func (a *App) Capabilities() DesktopCapabilities {
+	return DesktopCapabilities{
+		Tray:         trayAvailable,
+		FolderPicker: a.ctx != nil,
+		Platform:     goruntime.GOOS,
+	}
 }
 
 // Greet is retained from the Wails template. Kept (rather than removed) because

@@ -34,12 +34,20 @@ func InitLogging() {
 	if err != nil {
 		return
 	}
-	w, path, err := logging.InitFileLogging(filepath.Join(cfgDir, "rum"), "info", false)
+
+	// Honour the persisted log_level. It was validated and round-tripped by the
+	// settings store but the level here was hard-coded to "info", so switching to
+	// "debug" for a bug report produced no extra output. A failed read just leaves
+	// the level empty, which parseLevel maps to the info default.
+	var setting config.Setting
+	_ = setting.LoadSettingMetadata()
+
+	w, path, err := logging.InitFileLogging(filepath.Join(cfgDir, "rum"), setting.LogLevel, false)
 	if err != nil {
 		return
 	}
 	log.SetOutput(w)
-	log.Printf("rum starting; logs at %s", path)
+	log.Printf("rum starting; logs at %s (level=%s)", path, setting.LogLevel)
 }
 
 // preferredPort is the port the API tries first. If it is already in use the
@@ -70,6 +78,9 @@ var (
 	// controller, when set in Listen, is the bandwidth/scheduled-start ticker; it
 	// is stopped on graceful shutdown.
 	controller *download.ScheduleController
+	// resumer implements the auto-resume-on-reconnect setting; stopped alongside
+	// the schedule controller on graceful shutdown.
+	resumer *download.ResumeController
 	// manager is the live job manager (handlers.GlobalManager) captured at Listen
 	// time so Serve can shut its dispatcher down cleanly.
 	manager *download.JobManager
@@ -129,6 +140,10 @@ func Listen() (baseURL string, err error) {
 		RetryBackoffSec:      setting.RetryBackoffSec,
 		TempDir:              setting.TempDir,
 		KeepPartialOnFailure: setting.KeepPartialOnFailure,
+		// Auto-organize master switch. finalizeCategorize gates on opt.Categorize,
+		// so without this the enable_categories setting + its rules were persisted
+		// and displayed but never moved a finished file anywhere.
+		Categorize: setting.EnableCategories,
 	}
 	opt.Downloader = download.NewDownloader("", "")
 
@@ -174,6 +189,7 @@ func Listen() (baseURL string, err error) {
 	manager = handlers.GlobalManager
 	if manager != nil {
 		controller = download.NewScheduleController(manager, governor, setting)
+		resumer = download.NewResumeController(manager)
 	}
 	base := apiBase
 	srvMu.Unlock()
@@ -247,6 +263,7 @@ func Serve() {
 	s := srv
 	l := ln
 	ctrl := controller
+	res := resumer
 	mgr := manager
 	srvMu.Unlock()
 
@@ -266,6 +283,12 @@ func Serve() {
 	// Start the schedule controller (bandwidth windows + scheduled starts).
 	if ctrl != nil {
 		ctrl.Start(rootCtx)
+	}
+
+	// Start the reconnect watcher (auto_resume_on_reconnect). It re-queues
+	// network-failed downloads once their host is reachable again.
+	if res != nil {
+		res.Start(rootCtx)
 	}
 
 	// Start the idle-gated memory controller so the runtime returns freed heap
@@ -293,6 +316,9 @@ func Serve() {
 	// server so no new downloads are scheduled mid-shutdown.
 	if ctrl != nil {
 		ctrl.Stop()
+	}
+	if res != nil {
+		res.Stop()
 	}
 	srvMu.Lock()
 	if rootCancel != nil {

@@ -245,6 +245,54 @@ func reconcileAutostart() {
 	}
 }
 
+// autostartPollInterval is how often the autostart watcher re-reads the
+// preference. The check is a single small file read, so a couple of seconds is
+// cheap and makes the toggle feel immediate. A variable, not a const, so a test
+// can drive the loop without waiting.
+var autostartPollInterval = 2 * time.Second
+
+// syncAutostart brings the OS login entry in line with the persisted preference
+// and returns the value now in force. applied is what was last written; when the
+// preference has not changed this is a no-op, so the autostart entry is never
+// rewritten on a quiet loop. On failure it returns applied unchanged so the
+// caller retries on the next tick instead of latching a wrong state.
+func syncAutostart(applied bool) bool {
+	want := loadDesktopSettings().LaunchOnStartup
+	if want == applied {
+		return applied
+	}
+	if err := SetAutostart(want); err != nil {
+		log.Printf("desktop: apply autostart (enable=%v): %v", want, err)
+		return applied
+	}
+	return want
+}
+
+// watchAutostart keeps the OS login entry in step with the LaunchOnStartup
+// preference while the app is running.
+//
+// The preference is written by the settings UI through the HTTP API (like every
+// other setting), and reconcileAutostart only ran once at startup — so toggling
+// "Launch on startup" persisted the value, showed "Saved", and then did nothing
+// at all until the next launch. This watcher applies the change within a couple
+// of seconds. Leak-free: returns on ctx cancellation.
+func (a *App) watchAutostart(ctx context.Context) {
+	ticker := time.NewTicker(autostartPollInterval)
+	defer ticker.Stop()
+
+	// Seeded from the value reconcileAutostart applied at startup.
+	applied := loadDesktopSettings().LaunchOnStartup
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			applied = syncAutostart(applied)
+		}
+	}
+}
+
 // postNoBody issues a fire-and-forget POST (no request body, response discarded)
 // to the given API path. Used by the tray quick actions. Errors are logged, not
 // surfaced.

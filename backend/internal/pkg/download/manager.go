@@ -71,6 +71,15 @@ type JobManager struct {
 	dispatchCancel context.CancelFunc
 	dispatchWG     sync.WaitGroup
 	shutdownOnce   sync.Once
+
+	// appliedProxy / appliedBlockPrivate remember the transport-shaping settings
+	// the current opt.Downloader was built with. ApplySettings rebuilds the
+	// Downloader only when one of them actually changes, so a routine settings
+	// PATCH does not needlessly throw away the connection pool and cookie jar.
+	// transportApplied guards the zero value (an empty proxy is a real state).
+	appliedProxy        string
+	appliedBlockPrivate bool
+	transportApplied    bool
 }
 
 type SortField string
@@ -604,6 +613,16 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		effectiveOpt.Category = ""
 	}
 
+	// Trace the settings this download actually ran with. Every existing DebugLog
+	// call sits on an unusual branch (resume, categorize failure, changed remote),
+	// so turning log_level to "debug" for a bug report produced an EMPTY
+	// debug.log for an ordinary download — useless to whoever asked for it. These
+	// two lines make the trace answer the first question a maintainer has: which
+	// options were in force, and how did it end. No-op when debug is off.
+	DebugLog(fmt.Sprintf("start job=%s url=%s out=%s connections=%d limit=%dkB/s retries=%d verify=%v tempdir=%q categorize=%v",
+		jobID, job.GetURL(), effectiveOpt.Out, effectiveOpt.Connections, effectiveOpt.SpeedLimit,
+		effectiveOpt.MaxRetries, effectiveOpt.VerifyIntegrity, effectiveOpt.TempDir, effectiveOpt.Categorize))
+
 	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
 
 	m.mu.Lock()
@@ -629,6 +648,12 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	totalSize := job.GetTotalSize()
 	finalStatus := job.GetStatus()
 	m.mu.Unlock()
+
+	if err != nil {
+		DebugLog(fmt.Sprintf("end   job=%s status=%s %d/%d bytes error=%v", jobID, finalStatus, downloaded, totalSize, err))
+	} else {
+		DebugLog(fmt.Sprintf("end   job=%s status=%s %d/%d bytes", jobID, finalStatus, downloaded, totalSize))
+	}
 
 	finalUpdate := dto.ProgressUpdate{
 		JobID:      jobID,
@@ -878,6 +903,84 @@ func (m *JobManager) SetReliabilityOptions(verifyIntegrity bool, retryBackoffSec
 	m.opt.TempDir = tempDir
 	m.opt.KeepPartialOnFailure = keepPartialOnFailure
 	m.mu.Unlock()
+}
+
+// ApplySettings pushes EVERY live-tunable persisted setting onto the running
+// manager, so a change made in the settings UI takes effect on the next download
+// instead of at the next app launch.
+//
+// Before this existed only Connections and the four reliability options were
+// forwarded: the download directory, global speed limit, parallel-download
+// count, retry count, silent flag, auto-organize master switch, proxy and SSRF
+// guard all persisted correctly, were shown correctly in the UI, and were then
+// ignored by the engine until a restart.
+//
+// Already-running downloads keep the options they started with (changing the
+// segment plan or output path mid-flight would invalidate the resume sidecar);
+// the shared SpeedGovernor is the exception — it is read per Read, so a new
+// speed limit applies to in-flight transfers immediately.
+func (m *JobManager) ApplySettings(s config.Setting) {
+	parallel := s.MaxParallel
+	if parallel < 1 {
+		parallel = 1
+	}
+	connections := s.Connections
+	if connections < 1 {
+		connections = defaultConnections
+	}
+	if connections > maxConnections {
+		connections = maxConnections
+	}
+	retries := s.MaxRetries
+	if retries < 0 {
+		retries = 0
+	}
+	// Honour an active bandwidth window: a plain settings save must not blow away
+	// the tighter limit the schedule controller has in force right now.
+	limit := EffectiveSpeedLimitKBps(s, time.Now())
+
+	m.mu.Lock()
+	m.opt.SpeedLimit = limit
+	m.opt.Out = s.OutDir
+	m.opt.Parallel = parallel
+	m.opt.Connections = connections
+	m.opt.MaxRetries = retries
+	m.opt.Silent = s.Silent
+	m.opt.VerifyIntegrity = s.VerifyIntegrity
+	m.opt.RetryBackoffSec = s.RetryBackoffSec
+	m.opt.TempDir = s.TempDir
+	m.opt.KeepPartialOnFailure = s.KeepPartialOnFailure
+	// Auto-organize master switch. Without this, EnableCategories + rules were
+	// persisted and listed in the UI but finalizeCategorize never ran, because
+	// opt.Categorize was only ever set for a job with an explicit per-job category.
+	m.opt.Categorize = s.EnableCategories
+	m.config = s
+
+	governor := m.opt.Governor
+	// Rebuild the HTTP transport only when the proxy or the SSRF guard actually
+	// changed — NewDownloader reads both from the settings file it is built from.
+	transportChanged := !m.transportApplied ||
+		m.appliedProxy != s.Proxy ||
+		m.appliedBlockPrivate != s.BlockPrivateHosts
+	if transportChanged {
+		m.opt.Downloader = NewDownloader(m.opt.UserAgent, m.opt.Referer)
+		m.appliedProxy = s.Proxy
+		m.appliedBlockPrivate = s.BlockPrivateHosts
+		m.transportApplied = true
+	}
+	m.mu.Unlock()
+
+	// Outside the lock: the scheduler has its own mutex, the governor is
+	// lock-free, and the debug sink takes its own.
+	m.sched.SetMax(parallel)
+	if governor != nil {
+		governor.SetLimitKBps(limit)
+	}
+	// Verbose tracing follows log_level live, so switching to "debug" for a bug
+	// report starts writing debug.log without an app restart.
+	if err := SetDebugLogging(s.LogLevel == debugLogLevel); err != nil {
+		log.Printf("could not apply log level %q: %v", s.LogLevel, err)
+	}
 }
 
 // Shutdown stops the dispatcher and closes the scheduler. It cancels the
