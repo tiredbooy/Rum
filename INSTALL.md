@@ -173,11 +173,9 @@ Pass `--verbose` / `-Verbose` to stream it; `--dry-run` prints the plan and
 exits.
 
 **Which Go version does the GUI use?**
-The CLI accepts any Go at or above `go.mod` (currently 1.25.7). The GUI
-installer, if it finds a *newer* system Go (1.26/1.27), installs **exactly**
-the `go.mod` version via the official tarball/zip and sets `GOTOOLCHAIN=local`.
-Wails v2.12.0 cannot typecheck against Go 1.27. The installer pins the
-compatible toolchain directly and keeps module checksum verification enabled.
+Both accept any Go at or above `go.mod` (currently 1.25.7), including 1.26/1.27,
+and set `GOTOOLCHAIN=local` so nothing is downloaded. Wails v2.17.0 pins a
+`golang.org/x/tools` new enough to read newer Go export data (v2.12.0 did not).
 
 **Will it use my icon and app name?**
 Yes. The app is named **Rum** and ships with the Rum icon. To use a different

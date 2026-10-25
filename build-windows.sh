@@ -24,7 +24,7 @@ GO_DL_BASE="${RUM_GO_DL_BASE:-https://go.dev/dl}"
 GO_GOOGLE_DL="${RUM_GO_GOOGLE_DL:-https://dl.google.com/go}"
 GO_FALLBACK_DL="${RUM_GO_FALLBACK_DL:-$DEFAULT_MIRROR}"
 NODE_MIN="18.0.0"
-WAILS_FALLBACK="v2.12.0"
+WAILS_FALLBACK="v2.17.0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -245,6 +245,9 @@ go_meets_min() {
 }
 
 pin_wails_go() {
+  # Wails >= 2.17 pins golang.org/x/tools >= 0.47, which reads newer Go export
+  # data, so any Go >= GO_MIN works; only pin when RUM_PIN_GO=1.
+  [[ "${RUM_PIN_GO:-0}" == "1" ]] || return 0
   command -v go >/dev/null 2>&1 || return 0
   local cur min
   cur="$(go_ver_norm "$(go env GOVERSION 2>/dev/null || go version 2>/dev/null || true)")"

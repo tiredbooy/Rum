@@ -57,7 +57,7 @@ $script:IranianGoProxies = @(
 )
 $RetryMax = if ($env:RUM_RETRY_MAX) { [int]$env:RUM_RETRY_MAX } else { 5 }
 $NodeMin = [version]"18.0.0"
-$WailsFallback = "v2.12.0"
+$WailsFallback = "v2.17.0"
 
 $script:IsTTY = $true
 try {
@@ -369,7 +369,7 @@ function Add-AppShortcut {
 }
 
 # The desktop build needs go.mod's minor line (Wails cannot typecheck newer Go).
-$script:RumSameMinor = $true
+$script:RumSameMinor = $false   # Wails >= 2.17 pins a new-enough x/tools; any Go >= go.mod works
 $RumGoLib = Join-Path $RepoRoot "installers\lib\rum-go.ps1"
 if (-not (Test-Path $RumGoLib)) {
     Write-Host "ERR Missing $RumGoLib - run this script from a full checkout of the repository." -ForegroundColor Red

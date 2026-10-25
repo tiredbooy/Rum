@@ -93,7 +93,7 @@ CLT on macOS). See <https://wails.io/docs/gettingstarted/installation>.
 
 ```bash
 # install the Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 
 # run the desktop app with hot-reload (frontend + Go)
 wails dev

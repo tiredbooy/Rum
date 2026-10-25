@@ -49,7 +49,7 @@ GO_DL_BASE="${RUM_GO_DL_BASE:-https://go.dev/dl}"
 GO_GOOGLE_DL="${RUM_GO_GOOGLE_DL:-https://dl.google.com/go}"
 GO_FALLBACK_DL="${RUM_GO_FALLBACK_DL:-$DEFAULT_MIRROR}"
 NODE_MIN="18.0.0"
-WAILS_FALLBACK="v2.12.0"
+WAILS_FALLBACK="v2.17.0"
 PREFIX="${PREFIX:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -317,7 +317,7 @@ detect_shell_rc() {
 SHELL_RC="$(detect_shell_rc)"
 
 RUM_GO_OS=darwin
-RUM_GO_SAME_MINOR=1
+RUM_GO_SAME_MINOR=0   # Wails >= 2.17 pins a new-enough x/tools; any Go >= go.mod works
 if [[ ! -r "$REPO_ROOT/installers/lib/rum-go.sh" ]]; then
   printf 'Missing %s\nRun this script from a full checkout of the repository.\n' "$REPO_ROOT/installers/lib/rum-go.sh" >&2
   exit 1

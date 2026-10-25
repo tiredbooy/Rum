@@ -58,13 +58,14 @@ re-runs; user-local `~/.local` when there is no root; PATH lines in
 
 CLI: any Go **≥** `go.mod` (currently **1.25.7**) is kept.
 
-GUI / `build-windows.sh`: Wails **v2.12.0** cannot typecheck with Go 1.26+
-(`golang.org/x/tools` v0.30.0). If the system Go is **newer** than
-`GO_MIN`, the installer downloads **exactly** `go$GO_MIN` (tarball/zip)
-and sets `GOTOOLCHAIN=local` before `wails build`.
+GUI / `build-windows.sh`: same rule. Wails **v2.17.0** pins
+`golang.org/x/tools` v0.47.0, which reads Go 1.26/1.27 export data (v2.12.0
+pinned v0.30.0 and failed on Go 1.27), so a newer system Go is used as-is with
+`GOTOOLCHAIN=local`. `build-windows.sh` only downloads `go$GO_MIN` when
+`RUM_PIN_GO=1`.
 
 Node ≥ **18**. Wails CLI version comes from the root `go.mod` (fallback
-**v2.12.0**). Linux GUI tries WebKit 4.1 then 4.0 and passes
+**v2.17.0**). Linux GUI tries WebKit 4.1 then 4.0 and passes
 `-tags webkit2_41` when only 4.1 is present.
 
 ## Go toolchain, mirrors and shared helpers
