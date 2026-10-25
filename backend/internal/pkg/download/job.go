@@ -32,6 +32,9 @@ type Job struct {
 	Speed         float64            `json:"speed"`
 	RemainingTime time.Duration      `json:"remaining_time"`
 	Error         error              `json:"error"`
+	// ErrorCode/Retryable classify Error (see error_codes.go); set by SetError.
+	ErrorCode string `json:"error_code,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
 	BatchID       string             `json:"batch_id"`
 	CancelFunc    context.CancelFunc `json:"-"`
 	CreatedAt     time.Time          `json:"created_at"`
@@ -90,7 +93,19 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 	j.RemainingTime = d
 }
 func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
-func (j *Job) SetError(e error) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Error = e }
+func (j *Job) SetError(e error) {
+	code, retry := ClassifyJobError(e)
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.Error, j.ErrorCode, j.Retryable = e, code, retry
+}
+
+// GetErrorCode returns the machine error code and retryable flag for Error.
+func (j *Job) GetErrorCode() (string, bool) {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.ErrorCode, j.Retryable
+}
 
 func (j *Job) GetCreatedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
 func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
@@ -150,6 +165,8 @@ type jobJSON struct {
 	Speed             float64       `json:"speed"`
 	RemainingTime     time.Duration `json:"remaining_time"`
 	Error             string        `json:"error,omitempty"`
+	ErrorCode         string        `json:"error_code,omitempty"`
+	Retryable         bool          `json:"retryable,omitempty"`
 	BatchID           string        `json:"batch_id"`
 	CreatedAt         time.Time     `json:"created_at"`
 	CompletedAt       time.Time     `json:"completed_at"`
@@ -184,6 +201,8 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Speed:             j.Speed,
 		RemainingTime:     j.RemainingTime,
 		Error:             errString(j.Error),
+		ErrorCode:         j.ErrorCode,
+		Retryable:         j.Retryable,
 		BatchID:           j.BatchID,
 		CreatedAt:         j.CreatedAt,
 		CompletedAt:       j.CompletedAt,
@@ -229,6 +248,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		Speed             float64         `json:"speed"`
 		RemainingTime     time.Duration   `json:"remaining_time"`
 		Error             json.RawMessage `json:"error"`
+		ErrorCode         string          `json:"error_code"`
+		Retryable         bool            `json:"retryable"`
 		BatchID           string          `json:"batch_id"`
 		CreatedAt         time.Time       `json:"created_at"`
 		CompletedAt       time.Time       `json:"completed_at"`
@@ -256,6 +277,11 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Speed = in.Speed
 	j.RemainingTime = in.RemainingTime
 	j.Error = parseJobError(in.Error)
+	j.ErrorCode, j.Retryable = in.ErrorCode, in.Retryable
+	if j.Error != nil && j.ErrorCode == "" {
+		// Older files carry only the message: classify it so history gets codes too.
+		j.ErrorCode, j.Retryable = ClassifyJobError(j.Error)
+	}
 	j.BatchID = in.BatchID
 	j.CreatedAt = in.CreatedAt
 	j.CompletedAt = in.CompletedAt

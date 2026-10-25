@@ -6,6 +6,11 @@ import { useProgressStore } from "@/stores/download-progress-store";
 
 export default function Layout() {
   const online = useProgressStore((s) => s.online);
+  const networkBlocked = useProgressStore((s) => s.networkBlocked);
+  // Two honest states: Rum's own backend is down, or the internet is the problem.
+  const message = online
+    ? `Network problem. ${networkBlocked} ${networkBlocked === 1 ? "download" : "downloads"} can't continue. Check internet or VPN.`
+    : "Rum's engine isn't responding. Retrying…";
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -19,8 +24,8 @@ export default function Layout() {
             <h2 className="text-lg font-semibold">Rum</h2>
           </header>
 
-          {/* Live-connection banner: shown when the SSE stream drops. */}
-          <ConnectionBanner online={online} />
+          {/* Banner: backend unreachable, or downloads blocked by the network. */}
+          <ConnectionBanner online={online && networkBlocked === 0} message={message} />
 
           <main className="flex-1 overflow-y-auto p-6">
             <Outlet />

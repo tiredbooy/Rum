@@ -23,6 +23,7 @@ import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
+import { DownloadErrorNote } from "./DownloadErrorNote";
 
 interface DownloadCardProps {
   download: Download;
@@ -230,12 +231,7 @@ function DownloadCardImpl({
         )}
 
         {status === "error" && error && (
-          <p
-            className="text-[10px] text-destructive truncate"
-            title={error}
-          >
-            {error}
-          </p>
+          <DownloadErrorNote code={download.error_code} error={error} />
         )}
       </div>
 
