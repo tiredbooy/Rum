@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -86,11 +87,62 @@ func isGenericType(ct string) bool {
 	return false
 }
 
+// textExts are extensions whose files are legitimately plain text, so a
+// text/plain answer for them is never suspicious.
+var textExts = map[string]bool{
+	".txt": true, ".log": true, ".md": true, ".csv": true, ".tsv": true, ".json": true,
+	".xml": true, ".yaml": true, ".yml": true, ".ini": true, ".conf": true, ".cfg": true,
+	".toml": true, ".srt": true, ".vtt": true, ".sub": true, ".ass": true, ".ssa": true,
+	".css": true, ".js": true, ".ts": true, ".py": true, ".go": true, ".c": true, ".h": true,
+	".cpp": true, ".java": true, ".sh": true, ".bat": true, ".sql": true, ".tex": true,
+	".rtf": true, ".svg": true, ".m3u": true, ".m3u8": true, ".nfo": true, ".php": true,
+	".rb": true, ".rs": true, ".pl": true, ".lua": true, ".diff": true, ".patch": true,
+}
+
+// expectsBinary reports whether the job is clearly a binary file: by extension
+// (anything not known to be text) or, for names without one, by the originally
+// recorded Content-Type. Unknown stays false so text is never wrongly rejected.
+func expectsBinary(job *Job) bool {
+	if ext := strings.ToLower(filepath.Ext(job.GetFileName())); ext != "" {
+		return !textExts[ext] && !htmlExts[ext]
+	}
+	ct := strings.ToLower(strings.TrimSpace(job.ContentType))
+	if ct == "" || isGenericType(ct) {
+		return false
+	}
+	for _, p := range []string{"text/", "application/json", "application/xml", "application/javascript"} {
+		if strings.HasPrefix(ct, p) {
+			return false
+		}
+	}
+	return true
+}
+
+func isPlainTextType(ct string) bool {
+	mt, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		mt = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	}
+	return mt == "text/plain"
+}
+
+// startsAtFileHead reports whether the body begins at byte 0 of the file, so a
+// text sniff is meaningful (a middle segment of a binary file may look like text).
+func startsAtFileHead(resp *http.Response) bool {
+	if resp.StatusCode != http.StatusPartialContent {
+		return true
+	}
+	cr := strings.TrimSpace(resp.Header.Get("Content-Range"))
+	return strings.HasPrefix(cr, "bytes 0-")
+}
+
 // checkBlockedPage inspects a download response before any byte is written. It
 // returns *blockedPageError for an HTML response to a non-HTML job (declared, or
-// sniffed from the first 512 bytes of a 200 body whose type is missing/generic).
-// Sniffing buffers the body, so resp.Body is replaced with an equivalent reader.
-// The one-time override (Job.AllowBlockedPage) disables the check.
+// sniffed from the first 512 bytes of a 200/206 body whose type is missing or
+// generic). A text/plain answer to a clearly binary job is also suspicious when
+// the body sniffs as text. Sniffing buffers the body, so resp.Body is replaced
+// with an equivalent reader. The one-time override (Job.AllowBlockedPage)
+// disables the check.
 func checkBlockedPage(job *Job, resp *http.Response) error {
 	if job == nil || job.GetAllowBlockedPage() || expectsHTML(job) {
 		return nil
@@ -99,7 +151,11 @@ func checkBlockedPage(job *Job, resp *http.Response) error {
 	if isHTMLType(ct) {
 		return &blockedPageError{}
 	}
-	if resp.StatusCode != http.StatusOK || !isGenericType(ct) {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return nil
+	}
+	plain := isPlainTextType(ct) && expectsBinary(job) && startsAtFileHead(resp)
+	if !plain && !isGenericType(ct) {
 		return nil
 	}
 	br := bufio.NewReaderSize(resp.Body, 4096)
@@ -108,8 +164,36 @@ func checkBlockedPage(job *Job, resp *http.Response) error {
 		io.Reader
 		io.Closer
 	}{br, resp.Body}
-	if strings.HasPrefix(http.DetectContentType(head), "text/html") {
+	sniffed := http.DetectContentType(head)
+	if strings.HasPrefix(sniffed, "text/html") || (plain && len(head) > 0 && strings.HasPrefix(sniffed, "text/")) {
 		return &blockedPageError{}
 	}
 	return nil
+}
+
+// probeBlockedPage validates the first response of a fresh segmented download
+// (status, Content-Type, 512-byte sniff) BEFORE the output file is allocated, so
+// a block page never leaves a pre-sized, zero-filled file behind. It fetches
+// only the head of the file. Only a block page is reported: any other probe
+// failure is ignored, because the real workers surface and retry those.
+func probeBlockedPage(ctx context.Context, opt Options, job *Job, url string) error {
+	if job == nil || job.GetAllowBlockedPage() || expectsHTML(job) {
+		return nil
+	}
+	req, err := opt.Downloader.NewRequest("GET", url)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Range", "bytes=0-"+strconv.Itoa(sniffLen-1))
+	resp, err := opt.Downloader.Client.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	return checkBlockedPage(job, resp)
+}
+
+func jobBlockedErr(err error) bool {
+	var bp *blockedPageError
+	return errors.As(err, &bp)
 }

@@ -140,7 +140,9 @@ func TestRateLimiterWaitIsNotStall(t *testing.T) {
 }
 
 func TestStallSetsErrorCodeWhileRetrying(t *testing.T) {
-	payload := bytes.Repeat([]byte("abcdefgh"), 64<<10)
+	// A leading NUL keeps the server from labelling the body text/plain, which a
+	// binary-named job would (rightly) treat as a suspicious portal answer.
+	payload := append([]byte{0}, bytes.Repeat([]byte("abcdefgh"), 64<<10)...)
 	srv, _ := stallServer(t, payload, 1)
 	job, opt, dir := stallJobOpt(t, srv, len(payload), 1)
 	opt.RetryBackoffSec = 2
