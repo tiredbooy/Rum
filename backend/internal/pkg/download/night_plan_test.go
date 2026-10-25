@@ -248,10 +248,37 @@ func TestNightControllerDisabledPlanDoesNothing(t *testing.T) {
 	p := nightPlan("02:00", "07:00")
 	p.Enabled = false
 	m := newNightManager(t, p)
-	addNightJob(m, "n", StatusPending)
+	addNightJob(m, "n", StatusPaused)
 	NewNightController(m).tick(context.Background(), nightIn)
 	if m.sched.Queued() != 0 {
 		t.Fatalf("disabled plan started a job")
+	}
+}
+
+// Turning the plan off (or launching with it off) must not strand night jobs
+// that were held pending: they run like any queued download.
+func TestNightControllerDisabledPlanReleasesHeldPendingJobs(t *testing.T) {
+	p := nightPlan("02:00", "07:00")
+	p.Enabled = false
+	m := newNightManager(t, p)
+	held := addNightJob(m, "held", StatusPending)
+	future := addNightJob(m, "future", StatusPending)
+	future.SetStartAt(nightOut.Add(24 * time.Hour))
+	NewNightController(m).tick(context.Background(), nightOut)
+	if m.sched.Queued() != 1 || held.GetStatus() != StatusPending {
+		t.Fatalf("queued = %d, want only the held job released", m.sched.Queued())
+	}
+}
+
+// Quitting with the plan off must flag a queued night job for resume-on-launch.
+func TestGracefulShutdownFlagsQueuedNightJobWhenPlanDisabled(t *testing.T) {
+	p := nightPlan("02:00", "07:00")
+	p.Enabled = false
+	m := newNightManager(t, p)
+	j := addNightJob(m, "n", StatusPending)
+	m.GracefulShutdown(context.Background())
+	if j.GetStatus() != StatusPaused || !j.GetInterrupted() || j.GetNightPaused() {
+		t.Fatalf("status=%s interrupted=%v nightPaused=%v", j.GetStatus(), j.GetInterrupted(), j.GetNightPaused())
 	}
 }
 

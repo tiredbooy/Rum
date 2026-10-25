@@ -1181,7 +1181,7 @@ func (m *JobManager) GracefulShutdown(ctx context.Context) {
 			if job.GetStartAt().After(time.Now()) {
 				continue // waiting on its schedule, not interrupted
 			}
-			if job.GetNightQueue() {
+			if job.GetNightQueue() && m.config.NightPlan.Enabled {
 				job.SetStatus(StatusPaused) // waiting on the night window
 				job.SetNightPaused(true)
 				continue

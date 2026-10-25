@@ -224,6 +224,14 @@ func (c *NightController) tick(ctx context.Context, now time.Time) {
 	if !plan.Enabled {
 		m.nightCapHit.Store(false)
 		c.wasActive, c.winOpen = false, time.Time{}
+		// With the plan off, night jobs held pending are plain queued downloads:
+		// release them so turning the plan off (or launching with it off) never
+		// strands them. Jobs waiting on their own scheduled start are left alone.
+		for _, j := range c.nightJobs() {
+			if j.GetStatus() == StatusPending && !j.GetStartAt().After(now) {
+				_ = m.StartJob(ctx, j.ID)
+			}
+		}
 		return
 	}
 	active, open, _ := nightWindowAt(plan, now)
