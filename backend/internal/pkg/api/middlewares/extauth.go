@@ -13,6 +13,10 @@ import (
 // ExtTokenHeader carries the pairing token on every /ext/* request.
 const ExtTokenHeader = "X-Rum-Token"
 
+// ExtAppHeader marks every /ext/* response (even a 401) as coming from Rum, so
+// the extension can find Rum without sending its token to other local services.
+const ExtAppHeader = "X-Rum-App"
+
 // extPathPrefix is the only part of the API browser extensions may reach.
 const extPathPrefix = "/ext/"
 
@@ -42,7 +46,7 @@ func ExtensionAwareCors(base gin.HandlerFunc) gin.HandlerFunc {
 		AllowOriginFunc: isExtensionOrigin,
 		AllowMethods:    []string{"GET", "POST", "OPTIONS"},
 		AllowHeaders:    []string{"Content-Type", "Accept", ExtTokenHeader},
-		ExposeHeaders:   []string{"X-Request-ID"},
+		ExposeHeaders:   []string{"X-Request-ID", ExtAppHeader},
 		MaxAge:          12 * time.Hour,
 	})
 	return func(c *gin.Context) {
@@ -59,6 +63,7 @@ func ExtensionAwareCors(base gin.HandlerFunc) gin.HandlerFunc {
 // in constant time (config.VerifyExtensionToken does).
 func ExtGuard(verify func(token string) bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header(ExtAppHeader, "rum")
 		if origin := c.GetHeader("Origin"); origin != "" && !isExtensionOrigin(origin) {
 			c.AbortWithStatusJSON(http.StatusForbidden, dto.ErrorResponse{
 				Error: "origin not allowed", Code: dto.CodeForbidden,

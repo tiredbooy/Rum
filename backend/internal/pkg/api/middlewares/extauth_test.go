@@ -123,3 +123,18 @@ func TestExtRateLimit(t *testing.T) {
 		t.Fatalf("codes = %v, want 200,200,..,429", codes)
 	}
 }
+
+// The extension identifies Rum by this header BEFORE it ever sends the token, so
+// the token is never handed to whatever else happens to listen on a nearby port.
+func TestExtGuardIdentifiesRumWithoutToken(t *testing.T) {
+	r := extRouter()
+	for _, token := range []string{"", "wrong", testExtToken} {
+		w := do(r, "GET", "/ext/ping", "", token)
+		if w.Header().Get(ExtAppHeader) != "rum" {
+			t.Errorf("token %q: %s header missing", token, ExtAppHeader)
+		}
+	}
+	if do(r, "GET", "/api/v1/other", "", "").Header().Get(ExtAppHeader) != "" {
+		t.Error("identity header must only be set on /ext/*")
+	}
+}
