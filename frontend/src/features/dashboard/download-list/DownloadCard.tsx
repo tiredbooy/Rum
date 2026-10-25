@@ -24,6 +24,7 @@ import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
 import { NightBadge } from "./NightBadge";
+import { MirrorBadge } from "@/features/dashboard/mirrors/MirrorBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
 import { DownloadErrorNote } from "./DownloadErrorNote";
 import { DiskFullNotice } from "./DiskFullNotice";
@@ -218,6 +219,7 @@ function DownloadCardImpl({
           )}
           <CategoryBadge category={category} className="hidden sm:inline-flex" />
           <NightBadge download={download} />
+          <MirrorBadge download={download} />
         </div>
 
         {(status === "running" || status === "paused") && (

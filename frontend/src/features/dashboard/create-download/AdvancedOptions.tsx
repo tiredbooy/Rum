@@ -10,12 +10,13 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
-import { ChevronDown, FileCheck2, FolderTree, Settings2 } from "lucide-react";
+import { ChevronDown, FileCheck2, FolderTree, Link2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { useCategories } from "@/_lib/services/queries/categories.queries";
 import type { ChecksumAlgo } from "@/_lib/types/download-types";
 import type { CategoryRule } from "@/_lib/types/setting-types";
+import { MirrorFields } from "@/features/dashboard/mirrors/MirrorFields";
 
 /** RFC3339 (ISO) string -> value for <input type="datetime-local"> (local). */
 function isoToLocalInput(iso?: string): string {
@@ -124,6 +125,19 @@ export function AdvancedOptions() {
               </NativeSelectOption>
             ))}
           </NativeSelect>
+        </div>
+
+        {/* Mirror links */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2 text-sm font-medium">
+            <Link2 className="h-4 w-4" />
+            Mirrors <span className="text-muted-foreground">(optional)</span>
+          </Label>
+          <MirrorFields
+            value={draft.mirrors ?? []}
+            onChange={(mirrors) => updateDraft({ mirrors })}
+            idPrefix="adv-mirror"
+          />
         </div>
 
         {/* Scheduled start */}

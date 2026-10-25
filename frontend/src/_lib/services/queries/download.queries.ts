@@ -21,6 +21,7 @@ import {
   resumeDownload,
   retryDownload,
   retryFailedDownloads,
+  setDownloadMirrors,
   setDownloadPriority,
   startAllDownloads,
   startDownload,
@@ -328,6 +329,19 @@ export function useRefreshDownloadUrl() {
     }) => refreshDownloadUrl(id, url, restart),
     onSuccess: (res) => {
       toast.success(res.restarted ? "Restarted from zero" : "Resumed with new link");
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+/** Save a download's mirror list. Errors are left to the dialog. */
+export function useSetDownloadMirrors() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, mirrors }: { id: string; mirrors: string[] }) =>
+      setDownloadMirrors(id, mirrors),
+    onSuccess: () => {
+      toast.success("Mirrors saved");
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
   });

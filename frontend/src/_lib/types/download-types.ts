@@ -43,6 +43,10 @@ export interface Download {
   night_queue?: boolean;
   /** The night plan itself paused it; it restarts when the window opens. */
   night_paused?: boolean;
+  /** Extra links for the same file, tried if the main link fails. */
+  mirrors?: string[];
+  /** Host serving the file right now when it is a mirror; unset = main link. */
+  active_mirror?: string;
 }
 
 /**
@@ -82,6 +86,8 @@ export interface DownloadReq {
   category?: string;
   /** Run only inside the night window ("Download at night"). */
   night_queue?: boolean;
+  /** Extra links for the same file (single URL only, at most 5). */
+  mirrors?: string[];
 }
 
 /** Options accepted by the batch endpoint (POST /downloads/batch). */

@@ -4,6 +4,7 @@ import { DownloadTabs } from "./DownloadDialogTabs";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { useCreateDownloads } from "@/_lib/services/queries/download.queries";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
+import { withCleanMirrors } from "@/_lib/mirrors";
 
 export default function DownloadDialog() {
   const open = useAddDialogStore((s) => s.open);
@@ -20,7 +21,7 @@ export default function DownloadDialog() {
   };
 
   const handleSaveDownloads = () => {
-    if (draft?.urls?.length) saveDownloads.mutateAsync(draft);
+    if (draft?.urls?.length) saveDownloads.mutateAsync(withCleanMirrors(draft));
     setOpen(false);
     resetDraft();
   };

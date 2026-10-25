@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import {
   Copy,
   FolderOpen,
   Link2,
+  Layers,
   MoreVertical,
   Trash2,
   ShieldCheck,
@@ -31,6 +33,7 @@ import {
 import { useUndoableDelete } from "@/_lib/services/queries/undo-delete.queries";
 import { priorityConfig } from "./PriorityBadge";
 import { openActionsFor, showInFolder } from "@/_lib/open-download";
+import { EditMirrorsDialog } from "@/features/dashboard/mirrors/EditMirrorsDialog";
 
 interface CardActionsMenuProps {
   download: Download;
@@ -65,6 +68,7 @@ export function CardActionsMenu({
 }: CardActionsMenuProps) {
   const { id, url, dest_path, priority = "normal", status } = download;
 
+  const [mirrorsOpen, setMirrorsOpen] = useState(false);
   const verify = useVerifyDownload();
   const repair = useRepairDownload();
   const { removeIds } = useUndoableDelete();
@@ -105,6 +109,7 @@ export function CardActionsMenu({
   };
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
@@ -199,6 +204,12 @@ export function CardActionsMenu({
             Copy path
           </DropdownMenuItem>
         )}
+        {!isCompleted && (
+          <DropdownMenuItem className="gap-2" onClick={() => setMirrorsOpen(true)}>
+            <Layers className="h-3.5 w-3.5" />
+            Mirrors
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem className="gap-2" onClick={handleOpenFolder}>
           <FolderOpen className="h-3.5 w-3.5" />
           Open folder
@@ -214,5 +225,11 @@ export function CardActionsMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <EditMirrorsDialog
+      download={download}
+      open={mirrorsOpen}
+      onOpenChange={setMirrorsOpen}
+    />
+    </>
   );
 }
