@@ -17,6 +17,7 @@ func SetupRouter(r *gin.Engine) {
 
 		v1.POST("/downloads/start-all", handlers.StartDownloads)
 		v1.POST("/downloads/pause-all", handlers.PauseDownloads)
+		v1.POST("/downloads/retry-failed", handlers.RetryFailedDownloads)
 
 		v1.GET("/downloads/:id", handlers.GetDownloadStatus)
 		v1.DELETE("/downloads/:id", handlers.DeleteDownload)
