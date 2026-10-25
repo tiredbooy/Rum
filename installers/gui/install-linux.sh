@@ -692,8 +692,7 @@ ensure_wails() {
 
 wails_tags() {
   if command -v pkg-config >/dev/null 2>&1 \
-     && pkg-config --exists webkit2gtk-4.1 2>/dev/null \
-     && ! pkg-config --exists webkit2gtk-4.0 2>/dev/null; then
+     && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
     printf '%s' "webkit2_41"
   fi
 }
