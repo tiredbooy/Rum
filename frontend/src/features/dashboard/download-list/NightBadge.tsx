@@ -16,7 +16,7 @@ export function NightBadge({
   download,
   className,
 }: {
-  download: Pick<Download, "night_queue" | "status">;
+  download: Pick<Download, "night_queue" | "status" | "error_code">;
   className?: string;
 }) {
   const { data } = useNightPlan();

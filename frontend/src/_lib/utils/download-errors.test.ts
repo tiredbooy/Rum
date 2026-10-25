@@ -7,7 +7,7 @@ import {
 
 const CODES = [
   "network_down", "dns", "tls", "timeout", "proxy", "server_error",
-  "permission", "disk_full", "blocked_page", "stalled", "link_expired", "unknown",
+  "permission", "disk_full", "blocked_page", "stalled", "link_expired", "night_limit", "unknown",
 ];
 
 describe("download error map", () => {

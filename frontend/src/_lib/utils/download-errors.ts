@@ -23,6 +23,7 @@ export const DOWNLOAD_ERROR_MESSAGES: Record<string, DownloadErrorInfo> = {
   blocked_page: { message: "Link opened a web page, not a file.", action: "Get the direct link." },
   stalled: { message: "Connection stalled, no data received.", action: "Retry, or switch VPN." },
   link_expired: { message: "Link expired.", action: "Get a fresh link." },
+  night_limit: { message: "Night limit reached.", action: "Resumes next window." },
   unknown: { message: "Download failed.", action: "Retry; copy details for a bug report." },
 };
 

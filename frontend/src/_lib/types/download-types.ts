@@ -94,6 +94,7 @@ export interface BatchOptions {
   checksum?: string;
   checksum_algo?: ChecksumAlgo;
   start_at?: string;
+  night_queue?: boolean;
 }
 
 export interface BatchRequest {
