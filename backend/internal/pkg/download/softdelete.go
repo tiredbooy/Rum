@@ -196,8 +196,8 @@ func (m *JobManager) removeExpiredLocked(job *Job) {
 		return
 	}
 	path := job.GetOutputPath()
-	if path == "" {
-		return
+	if path == "" || m.pathSharedLocked(job, path) {
+		return // a re-added link now owns this file/partial
 	}
 	if job.GetStatus() == StatusCompleted {
 		removePartsMeta(path)
@@ -205,6 +205,17 @@ func (m *JobManager) removeExpiredLocked(job *Job) {
 		return
 	}
 	RemovePartialData(path)
+}
+
+// pathSharedLocked reports whether another job uses the same output path, e.g.
+// the same link re-added during the undo window. Caller holds m.mu.
+func (m *JobManager) pathSharedLocked(job *Job, path string) bool {
+	for id, other := range m.jobs {
+		if id != job.ID && other.GetOutputPath() == path {
+			return true
+		}
+	}
+	return false
 }
 
 // resolvePendingDeletesLocked runs at startup. A delete whose deadline passed

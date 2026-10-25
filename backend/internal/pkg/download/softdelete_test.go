@@ -273,3 +273,24 @@ func TestPendingDeleteAtPersisted(t *testing.T) {
 		t.Fatal("soft-deleted job must stay in jobs.json until finalized")
 	}
 }
+
+// Re-adding the same link while a "Delete file" is pending gives the new job
+// the same output path; the deadline must not wipe the new job's data.
+func TestDeadlineSparesDataSharedWithLiveJob(t *testing.T) {
+	m, dir := newManagerForTest(t, 1)
+	defer m.Shutdown()
+	m.SetUndoWindow(60 * time.Millisecond)
+	old := addFileJob(t, m, dir, "old", StatusPaused)
+	fresh := &Job{ID: "fresh", URL: old.URL, Status: StatusRunning, OutputPath: old.OutputPath}
+	m.mu.Lock()
+	m.jobs["fresh"] = fresh
+	m.mu.Unlock()
+
+	if _, err := m.SoftDeleteJob("old", true); err != nil {
+		t.Fatal(err)
+	}
+	waitGone(t, m, "old")
+	if !exists(old.OutputPath) {
+		t.Fatal("deadline deleted data now owned by a live job")
+	}
+}
