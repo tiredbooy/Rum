@@ -109,6 +109,7 @@ func TestActiveLimitKBps(t *testing.T) {
 func TestScheduleControllerLeakFreeStop(t *testing.T) {
 	// A controller started and stopped must not leak its ticker goroutine.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	gov := NewSpeedGovernor(0)
 	opt := &Options{Parallel: 1, Connections: 1, Out: t.TempDir(), Downloader: NewDownloader("t", "")}
 	m := NewJobManager(opt)

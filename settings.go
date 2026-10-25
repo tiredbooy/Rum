@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/tiredbooy/Rum/backend/cmd/server"
 )
 
 // desktopSettings is a read/write view of the subset of the backend's
@@ -52,15 +54,12 @@ type windowState struct {
 	Maximized bool `json:"maximized"`
 }
 
-// settingsPath returns os.UserConfigDir()/rum/settings.json, matching
-// backend/internal/pkg/file-system.CreateMetadataFile. It does not create the
+// settingsPath returns <data dir>/settings.json, where the data dir is
+// $RUM_CONFIG_DIR or os.UserConfigDir()/rum (server.DataDir, the same resolver
+// as backend file-system.CreateMetadataFile). It does not create the
 // directory; Save() does that.
 func settingsPath() string {
-	configDir, err := os.UserConfigDir()
-	if err != nil || configDir == "" {
-		configDir = ".rum"
-	}
-	return filepath.Join(configDir, "rum", "settings.json")
+	return filepath.Join(server.DataDir(), "settings.json")
 }
 
 // loadDesktopSettings reads the desktop-relevant fields from settings.json. A

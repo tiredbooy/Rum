@@ -125,6 +125,12 @@ build without the correct build tags"); `wails build` adds them for you. Drop
 `webkit2_41` if you only have WebKit2GTK 4.0. Any Go at or above the `go.mod`
 version works, including 1.26/1.27; the installers set `GOTOOLCHAIN=local`.
 
+## Data directory
+
+Rum stores jobs, settings, the extension token and logs in
+`<user config dir>/rum` (`~/.config/rum` on Linux). Set `RUM_CONFIG_DIR` to use
+another folder, e.g. for a portable install or a throwaway profile.
+
 ## Architecture
 
 Rum keeps one engine behind a small local HTTP API and reuses it everywhere. The

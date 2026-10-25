@@ -11,6 +11,7 @@ import (
 func TestListenBindsLoopbackAndServes(t *testing.T) {
 	// Isolate config/jobs under a temp dir so the test never touches real state.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	base, err := Listen()
 	if err != nil {

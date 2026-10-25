@@ -23,6 +23,7 @@ func debugLogPath(t *testing.T) string {
 func isolateConfig(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	t.Cleanup(func() { _ = SetDebugLogging(false) })
 	if err := SetDebugLogging(false); err != nil {
 		t.Fatalf("reset debug logging: %v", err)

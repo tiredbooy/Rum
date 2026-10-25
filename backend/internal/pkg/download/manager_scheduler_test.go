@@ -53,6 +53,7 @@ func newManagerForTest(t *testing.T, parallel int) (*JobManager, string) {
 	t.Helper()
 	// Isolate jobs.json / settings.json under a temp config dir.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	outDir := t.TempDir()
 	// Persist Silent=true (so completionOperations, which re-reads settings from
 	// disk, does not fire beeep/Notify and block in a headless env) and point the
@@ -250,6 +251,7 @@ func TestDispatcherNoGoroutineLeak(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	outDir := t.TempDir()
 	persistTestSettings(t, outDir)
 	opt := &Options{Parallel: 2, Connections: 1, MaxRetries: 0, Silent: true, Out: outDir, Downloader: dl}

@@ -120,6 +120,7 @@ func TestNightWindowAtAcrossDST(t *testing.T) {
 func newNightManager(t *testing.T, plan config.NightPlan) *JobManager {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	m := newQuietManager(t)
 	setNightPlan(m, plan)
 	return m

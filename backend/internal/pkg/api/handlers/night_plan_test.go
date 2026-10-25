@@ -23,6 +23,7 @@ func nightReq(t *testing.T, method, body string, h gin.HandlerFunc) *httptest.Re
 
 func TestNightPlanDefaultsWhenNeverConfigured(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	w := nightReq(t, http.MethodGet, "", GetNightPlan)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s)", w.Code, w.Body.String())
@@ -38,6 +39,7 @@ func TestNightPlanDefaultsWhenNeverConfigured(t *testing.T) {
 
 func TestNightPlanPutGetRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	put := `{"enabled":true,"start":"23:30","end":"06:15","start_at_open":true,"pause_at_close":false,"cap_gb":12.5}`
 	if w := nightReq(t, http.MethodPut, put, PutNightPlan); w.Code != http.StatusOK {
 		t.Fatalf("PUT status = %d (%s)", w.Code, w.Body.String())
@@ -54,6 +56,7 @@ func TestNightPlanPutGetRoundTrip(t *testing.T) {
 
 func TestNightPlanPutRejectsInvalid(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	for name, body := range map[string]string{
 		"bad time":     `{"enabled":true,"start":"25:00","end":"07:00"}`,
 		"empty window": `{"enabled":true,"start":"02:00","end":"02:00"}`,

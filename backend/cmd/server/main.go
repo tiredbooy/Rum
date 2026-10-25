@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -21,9 +20,19 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/routes"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/logging"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/power"
 )
+
+// staleTempAge is how old an atomic-write temp file must be before startup
+// removes it; younger ones may belong to a write still in flight.
+const staleTempAge = 5 * time.Minute
+
+// DataDir is where Rum keeps jobs.json, settings.json, the extension token and
+// logs: $RUM_CONFIG_DIR if set, else <UserConfigDir>/rum. Exported so the root
+// Wails package, which cannot import internal packages, resolves the same path.
+func DataDir() string { return filesystem.DataDir() }
 
 // InitLogging sends logs to a rotating file under <UserConfigDir>/rum/logs (in
 // addition to stderr) and redirects the stdlib log package there too. In a
@@ -32,10 +41,7 @@ import (
 // stderr. Exposed here (not in the internal logging package) so the root Wails
 // main can call it without importing an internal/ package.
 func InitLogging() {
-	cfgDir, err := os.UserConfigDir()
-	if err != nil {
-		return
-	}
+	cfgDir := DataDir()
 
 	// Honour the persisted log_level. It was validated and round-tripped by the
 	// settings store but the level here was hard-coded to "info", so switching to
@@ -44,7 +50,7 @@ func InitLogging() {
 	var setting config.Setting
 	_ = setting.LoadSettingMetadata()
 
-	w, path, err := logging.InitFileLogging(filepath.Join(cfgDir, "rum"), setting.LogLevel, false)
+	w, path, err := logging.InitFileLogging(cfgDir, setting.LogLevel, false)
 	if err != nil {
 		return
 	}
@@ -123,6 +129,9 @@ var (
 // goroutine) to start handling requests. This split lets the desktop layer learn
 // the real port (via APIBase) before any frontend code runs.
 func Listen() (baseURL string, err error) {
+	// Drop temp files left by a write that was killed mid-way (see AtomicWriteFile).
+	filesystem.CleanStaleTempFiles(DataDir(), staleTempAge)
+
 	download.InitLogFile()
 
 	var setting config.Setting

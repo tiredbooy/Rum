@@ -12,6 +12,7 @@ import (
 func newTestManager(t *testing.T, opt *Options) *JobManager {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	m := NewJobManager(opt)
 	t.Cleanup(m.Shutdown)
 	return m

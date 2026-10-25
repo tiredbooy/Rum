@@ -12,6 +12,7 @@ import (
 // it, including socks5.
 func TestProxyAppliedToTransport(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
 	s.Proxy = "socks5://127.0.0.1:1080"
@@ -41,6 +42,7 @@ func TestProxyAppliedToTransport(t *testing.T) {
 // treated as an http proxy rather than ignored.
 func TestProxyBareHostDefaultsToHTTP(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
 	s.Proxy = "127.0.0.1:8080"
@@ -62,6 +64,7 @@ func TestProxyBareHostDefaultsToHTTP(t *testing.T) {
 // TestProxyEmptyMeansNoProxy ensures the default (no proxy) path is a true no-op.
 func TestProxyEmptyMeansNoProxy(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
 	s.Proxy = ""

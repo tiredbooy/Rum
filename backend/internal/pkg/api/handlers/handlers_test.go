@@ -134,10 +134,7 @@ func (e errString) Error() string { return string(e) }
 // engine error path). GlobalManager is initialized against an isolated config
 // dir so the test doesn't touch real state.
 func TestVerifyRepairNotFound(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	opt := &download.Options{Parallel: 1, Connections: 1, Silent: true}
-	InitAPI(opt)
-	defer GlobalManager.Shutdown()
+	freshManager(t, &download.Options{Parallel: 1, Connections: 1, Silent: true})
 
 	for _, tc := range []struct {
 		name    string

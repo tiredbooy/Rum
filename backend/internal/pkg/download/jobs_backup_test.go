@@ -22,6 +22,7 @@ func globCorrupt(t *testing.T, suffix string) []string {
 
 func TestPersistJobsKeepsPreviousFileAsBak(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	a := &Job{ID: "a", URL: "http://x/a", Status: StatusPaused}
 	b := &Job{ID: "b", URL: "http://x/b", Status: StatusPaused}
 
@@ -45,6 +46,7 @@ func TestPersistJobsKeepsPreviousFileAsBak(t *testing.T) {
 
 func TestPersistJobsNeverBacksUpCorruptFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	a := &Job{ID: "a", URL: "http://x/a", Status: StatusPaused}
 	_ = PersistJobs([]*Job{a})
 	_ = PersistJobs([]*Job{a}) // bak = good
@@ -62,7 +64,8 @@ func TestPersistJobsNeverBacksUpCorruptFile(t *testing.T) {
 
 func TestLoadCorruptJobsRestoresBackupAndKeepsCorrupt(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	TakeJobsRestored() // reset
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
+	TakeJobsRestored()             // reset
 	a := &Job{ID: "a", URL: "http://x/a", Status: StatusPaused}
 	_ = PersistJobs([]*Job{a})
 	_ = PersistJobs([]*Job{a})
@@ -96,6 +99,7 @@ func TestLoadCorruptJobsRestoresBackupAndKeepsCorrupt(t *testing.T) {
 
 func TestLoadBothCorruptStartsEmptyKeepsFiles(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	TakeJobsRestored()
 	_ = os.MkdirAll(filepath.Dir(jobsPath()), 0o755)
 	_ = os.WriteFile(jobsPath(), []byte("bad-main"), 0o644)
@@ -123,6 +127,7 @@ func TestLoadBothCorruptStartsEmptyKeepsFiles(t *testing.T) {
 
 func TestCorruptCopiesAreNeverOverwritten(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	_ = os.MkdirAll(filepath.Dir(jobsPath()), 0o755)
 	for i := 0; i < 3; i++ {
 		_ = os.WriteFile(jobsPath(), []byte("bad"+string(rune('0'+i))), 0o644)
@@ -135,6 +140,7 @@ func TestCorruptCopiesAreNeverOverwritten(t *testing.T) {
 
 func TestLoadMissingJobsFileIsFirstRun(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	TakeJobsRestored()
 	LoadJobsFromDisk(map[string]*Job{}, map[string]string{})
 	if TakeJobsRestored() || len(globCorrupt(t, "")) != 0 {

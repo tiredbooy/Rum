@@ -105,6 +105,7 @@ func TestValidateClampsSpeedRuleDays(t *testing.T) {
 
 func TestScheduledStartEnabledRoundTrips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	s := &Setting{}
 	s.setDefaults()
 	s.ScheduledStartEnabled = true
@@ -145,6 +146,7 @@ func TestValidateDropsInvalidCategoryRules(t *testing.T) {
 
 func TestCategoriesRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	s := &Setting{}
 	s.setDefaults()
 	s.EnableCategories = true
@@ -175,6 +177,7 @@ func TestDesktopFieldsDefaultFalse(t *testing.T) {
 
 func TestDesktopFieldsRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	s := &Setting{}
 	s.setDefaults()
@@ -204,6 +207,7 @@ func TestDesktopFieldsRoundTrip(t *testing.T) {
 
 func TestUpdateTogglesDesktopFields(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s Setting
 	s.setDefaults()
@@ -345,6 +349,7 @@ func TestValidateReliabilityClamps(t *testing.T) {
 // and persists the new settings (and clamps an out-of-range backoff).
 func TestUpdateRoundTripsReliabilitySettings(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s Setting
 	s.setDefaults()

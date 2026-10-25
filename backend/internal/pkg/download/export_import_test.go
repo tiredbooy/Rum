@@ -90,6 +90,7 @@ func TestImportRejectsBadItems(t *testing.T) {
 
 func TestImportClampsNegativeOptions(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	m := NewJobManager(&Options{Parallel: 1, Out: t.TempDir()})
 	t.Cleanup(m.Shutdown)
 	m.ImportDownloads(ExportDoc{Version: ExportVersion, Downloads: []ExportedDownload{

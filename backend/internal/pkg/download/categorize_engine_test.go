@@ -14,6 +14,7 @@ import (
 // enabled and a matching rule exists in settings.
 func TestSingleFileCategorizeMovesToDest(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	outDir := t.TempDir()
 
 	// Persist a category rule for .bin -> "Binaries", and silence notifications.
@@ -75,6 +76,7 @@ func TestSingleFileCategorizeMovesToDest(t *testing.T) {
 // TestSegmentedCategorizeMovesToDest verifies the same for the segmented path.
 func TestSegmentedCategorizeMovesToDest(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	outDir := t.TempDir()
 
 	var s config.Setting
