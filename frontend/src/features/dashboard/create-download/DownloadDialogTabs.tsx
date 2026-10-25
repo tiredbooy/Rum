@@ -1,21 +1,24 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Download, FileText, Layers, Link } from "lucide-react";
+import { Download, FileText, Layers, Link, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SingleDownloadForm } from "./SingleDownloadForm";
 import { BulkDownloadForm } from "./BulkDownloadForm";
 import { LoadFromUrlForm } from "./LoadFromUrlForm";
 import { BatchDownloadForm } from "./BatchDownloadForm";
-import { useAddDialogStore } from "@/stores/add-dialog-store";
+import { VideoDownloadForm } from "./VideoDownloadForm";
+import { useAddDialogStore, type AddTab } from "@/stores/add-dialog-store";
 
 export function DownloadTabs() {
   const initialTab = useAddDialogStore((s) => s.initialTab);
+  const setCurrentTab = useAddDialogStore((s) => s.setCurrentTab);
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   useEffect(() => setActiveTab(initialTab), [initialTab]);
+  useEffect(() => setCurrentTab(activeTab as AddTab), [activeTab, setCurrentTab]);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-      <TabsList className="grid w-full grid-cols-4 bg-muted rounded-md">
+      <TabsList className="grid w-full grid-cols-5 bg-muted rounded-md">
         <TabsTrigger
           value="single"
           className={cn(
@@ -60,6 +63,17 @@ export function DownloadTabs() {
           <Layers className="h-4 w-4" />
           <span className="hidden sm:inline">Batch</span>
         </TabsTrigger>
+        <TabsTrigger
+          value="video"
+          className={cn(
+            "flex items-center gap-2",
+            "data-[state=active]:bg-background data-[state=active]:text-foreground",
+            "text-muted-foreground",
+          )}
+        >
+          <Video className="h-4 w-4" />
+          <span className="hidden sm:inline">Video</span>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="single" className="mt-4">
@@ -76,6 +90,9 @@ export function DownloadTabs() {
 
       <TabsContent value="batch" className="mt-4">
         <BatchDownloadForm />
+      </TabsContent>
+      <TabsContent value="video" className="mt-4">
+        <VideoDownloadForm />
       </TabsContent>
     </Tabs>
   );

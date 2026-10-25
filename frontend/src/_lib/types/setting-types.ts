@@ -67,6 +67,9 @@ export interface Setting {
   // prevent_sleep: keep the system awake (not the display) while downloading.
   // Default true.
   prevent_sleep?: boolean;
+  // ytdlp_path: explicit yt-dlp binary for video-page downloads ("" = PATH,
+  // then Rum's own tools folder).
+  ytdlp_path?: string;
 }
 
 /** GET /api/v1/finish-action: a sleep/shutdown countdown the user can cancel. */

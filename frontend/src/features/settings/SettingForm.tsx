@@ -17,6 +17,7 @@ import { NightPlanEditor } from "./NightPlanEditor";
 import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
 import { BackupSettings } from "./BackupSettings";
+import { YtdlpSettings } from "./YtdlpSettings";
 
 import { BrowserExtensionSettings } from "./BrowserExtensionSettings";
 
@@ -41,6 +42,9 @@ export function SettingsForm() {
 
         {/* Storage: temp dir + keep-partial-on-failure */}
         <StorageSettings />
+
+        {/* Video downloads: yt-dlp status, install/update, custom path */}
+        <YtdlpSettings />
       </div>
 
       {/* Bandwidth schedule + scheduled-start (PUT /settings/schedule) */}
