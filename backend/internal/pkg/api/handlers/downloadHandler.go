@@ -63,11 +63,15 @@ func CreateDownload(c *gin.Context) {
 
 	jobInfos := make([]dto.JobInfo, 0, len(jobs))
 	for _, job := range jobs {
-		jobInfos = append(jobInfos, dto.JobInfo{
+		info := dto.JobInfo{
 			ID:     job.ID,
 			URL:    job.URL,
 			Status: string(job.Status),
-		})
+		}
+		if df, ok := download.AsDiskFull(job.GetError()); ok {
+			info.ErrorCode, info.NeededBytes, info.FreeBytes = download.ErrorCodeDiskFull, df.NeededBytes, df.FreeBytes
+		}
+		jobInfos = append(jobInfos, info)
 	}
 	// Backward-compatible success shape: { "jobs": [...] }.
 	c.JSON(http.StatusCreated, gin.H{"jobs": jobInfos})
@@ -414,7 +418,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 	if job.TotalSize > 0 {
 		progress = int(float64(job.Downloaded) / float64(job.TotalSize) * 100)
 	}
-	return dto.DownloadResponse{
+	resp := dto.DownloadResponse{
 		ID:         job.ID,
 		URL:        job.URL,
 		Filename:   job.FileName,
@@ -424,6 +428,20 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		TotalSize:  job.TotalSize,
 		Speed:      job.GetSpeed(),
 		Category:   job.GetCategory(),
+	}
+	if e := job.GetError(); e != nil {
+		resp.Error = e.Error()
+		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
+		addDiskFull(&resp, e)
+	}
+	return resp
+}
+
+// addDiskFull copies the disk-full details of err, when it is one, into resp.
+func addDiskFull(resp *dto.DownloadResponse, err error) {
+	if df, ok := download.AsDiskFull(err); ok {
+		resp.ErrorCode = download.ErrorCodeDiskFull
+		resp.NeededBytes, resp.FreeBytes, resp.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
 	}
 }
 
@@ -446,6 +464,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	if job.Error != nil {
 		resp.Error = job.Error.Error()
 		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
+		addDiskFull(&resp, job.Error)
 	}
 	return resp
 }

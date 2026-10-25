@@ -81,3 +81,7 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 	}
 	return ErrCodeUnknown, false
 }
+
+// ErrorCodeDiskFull is the name the disk-full code carries in the disk-full
+// helpers; it is the same value as ErrCodeDiskFull.
+const ErrorCodeDiskFull = ErrCodeDiskFull

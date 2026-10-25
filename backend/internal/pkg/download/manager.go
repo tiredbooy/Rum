@@ -456,6 +456,18 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 		}
 		job.FileName = resolved
 
+		// Tell the user right away when the destination cannot hold the file: the
+		// job is created already waiting for space (and resumes by itself when some
+		// is freed) rather than failing a moment after it starts.
+		if totalSize > 0 {
+			dest := PrepareOutputPath(*m.opt, job.FileName, job.URL, job.ContentType)
+			if perr := PreflightDiskSpace(filepath.Dir(dest), totalSize); perr != nil {
+				job.OutputPath = dest
+				job.Status = StatusError
+				job.Error = perr
+			}
+		}
+
 		newJobs = append(newJobs, job)
 	}
 
@@ -681,6 +693,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		job.SetCompletedAt(time.Now())
 	} else {
 		log.Println("ERROR STARTING: ", err.Error())
+		err = classifyDiskFull(err, job)
 		job.SetStatus(StatusError)
 		job.SetError(err)
 		// KeepPartialOnFailure governs ONLY the failure path: when it is off, a
@@ -688,7 +701,9 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		// possibly-corrupt partial is not left around. When on (the default), the
 		// partial is kept so the user can resume/repair. A pause/cancel above is not
 		// a failure and always keeps the partial.
-		if !effectiveOpt.KeepPartialOnFailure {
+		// A full disk is waiting for space, not a broken download: the partial and
+		// its sidecar are exactly what the auto-resume will continue from.
+		if _, full := AsDiskFull(err); !full && !effectiveOpt.KeepPartialOnFailure {
 			RemovePartialData(job.GetOutputPath())
 		}
 	}
@@ -711,6 +726,13 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		Status:     finalStatus,
 		Progress:   progressPercent(downloaded, totalSize),
 		ETA:        0,
+	}
+	if err != nil && finalStatus == StatusError {
+		finalUpdate.Error = err.Error()
+		if df, ok := AsDiskFull(err); ok {
+			finalUpdate.ErrorCode = ErrorCodeDiskFull
+			finalUpdate.NeededBytes, finalUpdate.FreeBytes, finalUpdate.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
+		}
 	}
 	m.publishProgress(finalUpdate)
 

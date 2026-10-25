@@ -2,6 +2,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
+import { DiskFullAlert } from "./DiskFullAlert";
 import { useProgressStore } from "@/stores/download-progress-store";
 
 export default function Layout() {
@@ -26,6 +27,9 @@ export default function Layout() {
 
           {/* Banner: backend unreachable, or downloads blocked by the network. */}
           <ConnectionBanner online={online && networkBlocked === 0} message={message} />
+
+          {/* Downloads stopped by a full disk (resume by themselves). */}
+          <DiskFullAlert />
 
           <main className="flex-1 overflow-y-auto p-6">
             <Outlet />

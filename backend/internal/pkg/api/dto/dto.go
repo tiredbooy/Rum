@@ -112,6 +112,9 @@ type DownloadResponse struct {
 	Error       string  `json:"error,omitempty"`
 	ErrorCode   string  `json:"error_code,omitempty"`
 	Retryable   bool    `json:"retryable,omitempty"`
+	NeededBytes int64   `json:"needed_bytes,omitempty"`
+	FreeBytes   int64   `json:"free_bytes,omitempty"`
+	DiskPath    string  `json:"disk_path,omitempty"`
 	Category    string  `json:"category,omitempty"`
 	CreatedAt   string  `json:"created_at"`
 	CompletedAt string  `json:"completed_at,omitempty"`
@@ -125,6 +128,10 @@ type JobInfo struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
 	Status string `json:"status"`
+	// ErrorCode is set when the job was created already blocked ("disk_full").
+	ErrorCode   string `json:"error_code,omitempty"`
+	NeededBytes int64  `json:"needed_bytes,omitempty"`
+	FreeBytes   int64  `json:"free_bytes,omitempty"`
 }
 
 // Priority levels accepted by PATCH /downloads/:id/priority. These string

@@ -25,6 +25,12 @@ export interface Download {
   error_code?: string;
   /** True when retrying later may succeed. */
   retryable?: boolean;
+  /** disk_full: bytes still to download when the disk filled up. */
+  needed_bytes?: number;
+  /** disk_full: free bytes on the volume at that moment. */
+  free_bytes?: number;
+  /** disk_full: folder on the affected volume. */
+  disk_path?: string;
   priority?: DownloadPriority;
   dest_path?: string;
   created_at?: string;
@@ -92,6 +98,9 @@ export interface DownloadResponse {
   url: string;
   status: string;
   filename?: string;
+  error_code?: string;
+  needed_bytes?: number;
+  free_bytes?: number;
 }
 
 export interface BatchError {

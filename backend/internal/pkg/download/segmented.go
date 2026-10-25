@@ -272,7 +272,15 @@ func DownloadSegmented(ctx context.Context, opt Options, job *Job, progressFn Pr
 	// Fail fast if the destination filesystem clearly cannot hold the file,
 	// instead of allocating, downloading partway, and dying with ENOSPC. Degrades
 	// to a no-op on platforms where free space can't be determined.
-	if err := PreflightDiskSpace(filepath.Dir(fullPath), totalSize); err != nil {
+	// Only the bytes still to fetch need room: a resumed download already holds
+	// the rest, so ask for the remaining part, not the whole file.
+	remaining := totalSize
+	if m, ok := loadPartsMeta(fullPath, totalSize, url); ok {
+		for _, s := range m.Segments {
+			remaining -= s.Done
+		}
+	}
+	if err := PreflightDiskSpace(filepath.Dir(fullPath), remaining); err != nil {
 		return err
 	}
 
@@ -702,6 +710,11 @@ func downloadSegment(
 			// per io.WriterAt; we still assert n to belt-and-suspenders against any
 			// wrapper that violates the contract, so we never advance our counters
 			// past bytes that did not land on disk.
+			if f := testWriteFault; f != nil {
+				if ferr := f(n); ferr != nil {
+					return ferr
+				}
+			}
 			wn, werr := outFile.WriteAt(buf[:n], offset)
 			if werr != nil {
 				return werr

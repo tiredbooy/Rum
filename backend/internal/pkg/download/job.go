@@ -177,6 +177,11 @@ type jobJSON struct {
 	IntegrityHash     string        `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
 	Interrupted       bool          `json:"interrupted,omitempty"`
+	// Disk-full details, so a job waiting for space still shows the numbers (and
+	// is recognised by the disk watcher) after a restart.
+	NeededBytes int64  `json:"needed_bytes,omitempty"`
+	FreeBytes   int64  `json:"free_bytes,omitempty"`
+	DiskPath    string `json:"disk_path,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -187,7 +192,7 @@ type jobJSON struct {
 func (j *Job) MarshalJSON() ([]byte, error) {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
-	return json.Marshal(jobJSON{
+	out := jobJSON{
 		ID:                j.ID,
 		URL:               j.URL,
 		FileName:          j.FileName,
@@ -213,7 +218,12 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
 		Interrupted:       j.Interrupted,
-	})
+	}
+	if df, ok := AsDiskFull(j.Error); ok {
+		out.ErrorCode = ErrorCodeDiskFull
+		out.NeededBytes, out.FreeBytes, out.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
+	}
+	return json.Marshal(out)
 }
 
 // errString renders an error as its message, or "" when nil. Used so the Error
@@ -260,6 +270,9 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		IntegrityHash     string          `json:"integrity_hash"`
 		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
 		Interrupted       bool            `json:"interrupted"`
+		NeededBytes       int64           `json:"needed_bytes"`
+		FreeBytes         int64           `json:"free_bytes"`
+		DiskPath          string          `json:"disk_path"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -277,6 +290,9 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Speed = in.Speed
 	j.RemainingTime = in.RemainingTime
 	j.Error = parseJobError(in.Error)
+	if in.ErrorCode == ErrorCodeDiskFull {
+		j.Error = &DiskFullError{NeededBytes: in.NeededBytes, FreeBytes: in.FreeBytes, Path: in.DiskPath}
+	}
 	j.ErrorCode, j.Retryable = in.ErrorCode, in.Retryable
 	if j.Error != nil && j.ErrorCode == "" {
 		// Older files carry only the message: classify it so history gets codes too.
