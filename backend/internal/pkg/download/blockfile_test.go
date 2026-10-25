@@ -167,3 +167,20 @@ func TestBinaryServedAsTextPlainStillDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSegmentedCancelledBeforeProbeCreatesNoFile(t *testing.T) {
+	total := int64(minSegmentedSize) * 2
+	f := newBlockFixture(t, "cancel.zip", total, nil, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(makePayload(1024))
+	})
+	f.opt.Connections = 4
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := DownloadSegmented(ctx, f.opt, f.job, nil); err == nil {
+		t.Fatal("want error")
+	}
+	if _, err := os.Stat(f.path); !os.IsNotExist(err) {
+		t.Fatalf("cancelled job must not allocate output, stat err=%v", err)
+	}
+}

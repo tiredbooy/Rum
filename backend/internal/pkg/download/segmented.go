@@ -330,6 +330,10 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 		if err := probeBlockedPage(ctx, opt, job, url); err != nil {
 			return false, err
 		}
+		// Paused/cancelled during the probe: do not allocate anything.
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 	}
 
 	// Remember whether this pass creates the file: only a file we created may be
