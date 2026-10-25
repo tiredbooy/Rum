@@ -25,7 +25,10 @@ const (
 	ErrCodeProxy       = "proxy"
 	ErrCodeServerError = "server_error"
 	ErrCodePermission  = "permission"
-	ErrCodeUnknown     = "unknown"
+	// ErrCodeChecksum: the finished file does not match its checksum. The file
+	// is kept; the card offers Redownload.
+	ErrCodeChecksum = "checksum_mismatch"
+	ErrCodeUnknown  = "unknown"
 )
 
 // ClassifyJobError maps a download failure to a user-facing error code and
@@ -48,6 +51,8 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 	switch {
 	case isBlockedPage(err):
 		return ErrCodeBlockedPage, false
+	case errors.Is(err, ErrChecksumMismatch):
+		return ErrCodeChecksum, false
 	case errors.Is(err, errStalled):
 		return ErrorCodeStalled, true
 	case errors.Is(err, ErrInsufficientDiskSpace), errors.Is(err, syscall.ENOSPC):

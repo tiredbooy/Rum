@@ -24,6 +24,7 @@ func TestClassifyJobError(t *testing.T) {
 		retryable bool
 	}{
 		{"nil", nil, "", false},
+		{"checksum mismatch", fmt.Errorf("verify: %w", ErrChecksumMismatch), ErrCodeChecksum, false},
 		{"dns", &url.Error{Op: "Get", Err: &net.DNSError{Err: "no such host", Name: "x.test", IsNotFound: true}}, ErrCodeDNS, true},
 		{"dns timeout is still dns", &net.DNSError{Err: "i/o timeout", Name: "x.test", IsTimeout: true}, ErrCodeDNS, true},
 		{"tls unknown authority", fmt.Errorf("get: %w", x509.UnknownAuthorityError{}), ErrCodeTLS, false},

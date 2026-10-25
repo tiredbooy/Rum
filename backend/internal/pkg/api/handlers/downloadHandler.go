@@ -465,6 +465,38 @@ func VerifyDownload(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
+// VerifyDownloadChecksum compares a finished file with its checksum (the one
+// given with the download, else one published beside it) and returns
+// { status: verified|mismatch|unavailable, algo, source }. It only reads the file.
+func VerifyDownloadChecksum(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+	res, err := GlobalManager.VerifyChecksumJob(c.Request.Context(), jobID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+// RedownloadDownload replaces a damaged file: it deletes the file and queues the
+// same download again with its URL and options.
+func RedownloadDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+	if err := GlobalManager.RedownloadJob(context.Background(), jobID); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"id": jobID})
+}
+
 // RepairDownload re-fetches the bad/missing segments of a download and re-verifies
 // it. The optional body/query `segments` selects which segments to repair; when
 // absent the handler verifies first to localize the damage, then repairs those.
@@ -561,6 +593,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 	}
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
 	setNightLimit(&resp, job)
+	resp.ChecksumStatus, resp.ChecksumResultAlgo, resp.ChecksumSource = job.GetChecksumResult()
 	if e := job.GetError(); e != nil {
 		resp.Error = e.Error()
 		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
@@ -604,6 +637,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	}
 	resp.FinalHost = job.FinalHost
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
+	resp.ChecksumStatus, resp.ChecksumResultAlgo, resp.ChecksumSource = job.GetChecksumResult()
 	if resp.ErrorCode == "" {
 		setNightLimit(&resp, job)
 	}
