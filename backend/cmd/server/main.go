@@ -76,6 +76,12 @@ func SetQuitFunc(f func()) {
 	AppQuitFunc = f
 }
 
+// SetShowWindowFunc lets the desktop shell tell the API how to raise its window
+// (used by the browser extension's "Open Rum").
+func SetShowWindowFunc(f func()) {
+	handlers.SetShowWindowHook(f)
+}
+
 // Package-level server state, populated by Listen and consumed by Serve /
 // APIBase. Guarded by srvMu so concurrent Listen/APIBase access from the desktop
 // layer is race-free.

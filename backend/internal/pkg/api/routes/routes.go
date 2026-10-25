@@ -58,5 +58,6 @@ func SetupRouter(r *gin.Engine) {
 	{
 		ext.GET("/ping", handlers.ExtPing)
 		ext.POST("/add", handlers.ExtAdd)
+		ext.POST("/open", handlers.ExtOpen)
 	}
 }

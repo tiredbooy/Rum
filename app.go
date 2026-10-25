@@ -40,6 +40,12 @@ func (a *App) startup(ctx context.Context) {
 	bgCtx, cancel := context.WithCancel(ctx)
 	a.bgCancel = cancel
 
+	// Let the browser extension's "Open Rum" raise the window.
+	server.SetShowWindowFunc(func() {
+		runtime.WindowShow(ctx)
+		runtime.WindowUnminimise(ctx)
+	})
+
 	// System tray with quick actions (Show / Start all / Pause all / Quit).
 	startTray(ctx, a.GetApiBase())
 

@@ -150,3 +150,18 @@ func newTestCtx(w *httptest.ResponseRecorder) (*gin.Context, *gin.Engine) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	return c, e
 }
+
+func TestExtOpenCallsHookOrReportsHeadless(t *testing.T) {
+	SetShowWindowHook(nil)
+	w := doJSON(t, ExtOpen, http.MethodPost, "/ext/open", "", `{}`)
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("no window: %d, want 501", w.Code)
+	}
+	called := 0
+	SetShowWindowHook(func() { called++ })
+	defer SetShowWindowHook(nil)
+	w = doJSON(t, ExtOpen, http.MethodPost, "/ext/open", "", `{}`)
+	if w.Code != http.StatusOK || called != 1 {
+		t.Fatalf("open: %d called=%d", w.Code, called)
+	}
+}

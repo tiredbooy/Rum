@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -92,4 +93,30 @@ func RegenerateExtensionToken(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"token": tok})
+}
+
+var (
+	showWindowMu   sync.RWMutex
+	showWindowHook func()
+)
+
+// SetShowWindowHook registers how to bring the desktop window forward. The
+// desktop shell sets it; a headless build leaves it nil.
+func SetShowWindowHook(f func()) {
+	showWindowMu.Lock()
+	showWindowHook = f
+	showWindowMu.Unlock()
+}
+
+// ExtOpen brings the Rum window to the front (the popup's "Open Rum").
+func ExtOpen(c *gin.Context) {
+	showWindowMu.RLock()
+	f := showWindowHook
+	showWindowMu.RUnlock()
+	if f == nil {
+		writeError(c, http.StatusNotImplemented, dto.CodeUnsupported, "no window to open")
+		return
+	}
+	f()
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
