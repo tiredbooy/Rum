@@ -62,6 +62,16 @@ type Job struct {
 	// by hand. Cleared as soon as the job is started again. Absent in older
 	// jobs.json files, which load as false.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// ErrorCode is a stable machine code for the current error (see
+	// error_codes.go); empty when there is no error or it is unclassified.
+	ErrorCode string `json:"error_code,omitempty"`
+	// FinalHost is the host that answered the first successful probe, after
+	// redirects. Shown when a block page is detected.
+	FinalHost string `json:"final_host,omitempty"`
+	// AllowBlockedPage is a one-time, in-memory override: the next run writes an
+	// HTML response even though the job does not expect one. Never persisted.
+	AllowBlockedPage bool `json:"-"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -89,8 +99,28 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 	defer j.Mu.Unlock()
 	j.RemainingTime = d
 }
-func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
-func (j *Job) SetError(e error) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Error = e }
+func (j *Job) GetError() error { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
+
+// SetError records the error and its machine code (cleared when e is nil).
+func (j *Job) SetError(e error) {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.Error = e
+	j.ErrorCode = ""
+	var bp *blockedPageError
+	if errors.As(e, &bp) {
+		j.ErrorCode = ErrCodeBlockedPage
+	}
+}
+
+func (j *Job) GetErrorCode() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.ErrorCode }
+
+func (j *Job) GetAllowBlockedPage() bool {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.AllowBlockedPage
+}
+func (j *Job) SetAllowBlockedPage(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.AllowBlockedPage = v }
 
 func (j *Job) GetCreatedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
 func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
@@ -160,6 +190,8 @@ type jobJSON struct {
 	IntegrityHash     string        `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
 	Interrupted       bool          `json:"interrupted,omitempty"`
+	ErrorCode         string        `json:"error_code,omitempty"`
+	FinalHost         string        `json:"final_host,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -194,6 +226,8 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
 		Interrupted:       j.Interrupted,
+		ErrorCode:         j.ErrorCode,
+		FinalHost:         j.FinalHost,
 	})
 }
 
@@ -239,6 +273,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		IntegrityHash     string          `json:"integrity_hash"`
 		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
 		Interrupted       bool            `json:"interrupted"`
+		ErrorCode         string          `json:"error_code"`
+		FinalHost         string          `json:"final_host"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -266,6 +302,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
 	j.Interrupted = in.Interrupted
+	j.ErrorCode = in.ErrorCode
+	j.FinalHost = in.FinalHost
 	return nil
 }
 

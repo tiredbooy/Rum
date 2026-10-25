@@ -242,6 +242,23 @@ func RetryDownload(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"message": "Download retry started."})
 }
 
+// DownloadAnyway restarts a download that stopped on a block page and allows the
+// HTML response for that one run.
+func DownloadAnyway(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	if err := GlobalManager.DownloadAnyway(c.Request.Context(), jobID); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "Download started."})
+}
+
 // SetDownloadPriority changes the scheduling priority of a single download.
 // Body: { "priority": "low" | "normal" | "high" }.
 //
@@ -446,5 +463,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	if job.Error != nil {
 		resp.Error = job.Error.Error()
 	}
+	resp.ErrorCode = job.GetErrorCode()
+	resp.FinalHost = job.FinalHost
 	return resp
 }

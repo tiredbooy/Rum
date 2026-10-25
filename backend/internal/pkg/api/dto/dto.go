@@ -110,6 +110,8 @@ type DownloadResponse struct {
 	Speed       float64 `json:"speed"`
 	Remaining   int64   `json:"remaining"`
 	Error       string  `json:"error,omitempty"`
+	ErrorCode   string  `json:"error_code,omitempty"`
+	FinalHost   string  `json:"final_host,omitempty"`
 	Category    string  `json:"category,omitempty"`
 	CreatedAt   string  `json:"created_at"`
 	CompletedAt string  `json:"completed_at,omitempty"`

@@ -25,6 +25,8 @@ type HeaderInfo struct {
 	ContentType        string
 	ContentDisposition string
 	SupportsRange      bool
+	// FinalHost is the host that answered, after redirects.
+	FinalHost string
 }
 
 type Downloader struct {
@@ -302,7 +304,13 @@ func ParseHeaderInfo(resp *http.Response) *HeaderInfo {
 		}
 	}
 
+	finalHost := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalHost = resp.Request.URL.Host
+	}
+
 	return &HeaderInfo{
+		FinalHost:          finalHost,
 		ContentSize:        contentSize,
 		ContentType:        resp.Header.Get("Content-Type"),
 		ContentDisposition: resp.Header.Get("Content-Disposition"),

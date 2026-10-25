@@ -438,6 +438,7 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 			FileName:     fileName,
 			TotalSize:    totalSize,
 			ContentType:  res.info.ContentType,
+			FinalHost:    res.info.FinalHost,
 			SupportRange: res.info.SupportsRange,
 			Status:       StatusPending,
 			CreatedAt:    time.Now(),
@@ -672,6 +673,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		effectiveOpt.MaxRetries, effectiveOpt.VerifyIntegrity, effectiveOpt.TempDir, effectiveOpt.Categorize))
 
 	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
+	job.SetAllowBlockedPage(false) // the override applies to one run only
 
 	m.mu.Lock()
 	if ctx.Err() == context.Canceled {
@@ -1124,6 +1126,24 @@ func (m *JobManager) RetryJob(ctx context.Context, id string) error {
 	m.mu.Unlock()
 
 	return m.StartJob(ctx, id)
+}
+
+// DownloadAnyway restarts a job that stopped on a block page and lets exactly
+// that run write an HTML response. The override is cleared when the run ends.
+func (m *JobManager) DownloadAnyway(ctx context.Context, id string) error {
+	m.mu.Lock()
+	job, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.GetStatus() == StatusRunning {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s is already running: %w", id, ErrConflict)
+	}
+	job.SetAllowBlockedPage(true)
+	m.mu.Unlock()
+	return m.RetryJob(ctx, id)
 }
 
 func (m *JobManager) PauseAllJobs() error {

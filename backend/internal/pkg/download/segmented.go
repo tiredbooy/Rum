@@ -447,7 +447,7 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 
 	cfg := newRetryConfig(opt)
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(withBlockJob(ctx, job))
 	g.SetLimit(connections)
 
 	for i := range segs {
@@ -657,6 +657,13 @@ func downloadSegment(
 		return err
 	}
 	defer resp.Body.Close()
+
+	// A captive portal / block page must never be written into a segment.
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent {
+		if err := checkBlockedPage(blockJobFrom(ctx), resp); err != nil {
+			return err
+		}
+	}
 
 	if resp.StatusCode != http.StatusPartialContent {
 		// A 200 means the server sent the WHOLE file instead of our requested range.
