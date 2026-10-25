@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -16,10 +17,12 @@ import (
 // a long outage into a connection-attempt storm.
 const reconnectTickInterval = 20 * time.Second
 
-// maxReconnectAttempts bounds how many times a single job is auto-resumed by
-// this controller. A download that keeps failing the moment the host is
-// reachable is not a connectivity problem, and retrying it forever would hide a
-// real error from the user.
+// maxReconnectAttempts bounds how many CONSECUTIVE auto-resumes of a single job
+// may end without any new bytes. A download that keeps failing the moment the
+// host is reachable is not a connectivity problem, and retrying it forever would
+// hide a real error from the user. Any progress since the last failure resets
+// the count, so a slow link that keeps dropping but keeps advancing is never
+// abandoned, while a zero-progress loop still stops (the global idle cap).
 const maxReconnectAttempts = 10
 
 // reconnectProbeTimeout bounds the per-host reachability probe.
@@ -42,13 +45,17 @@ type ResumeController struct {
 	manager  *JobManager
 	interval time.Duration
 
-	// probe reports whether addr (host:port) is reachable. Injectable so tests
-	// don't touch the network.
-	probe func(ctx context.Context, addr string) bool
+	// probe reports whether the download's host is reachable the same way the
+	// engine would reach it (through the configured proxy). target is the job
+	// URL. Injectable so tests don't touch the network.
+	probe func(ctx context.Context, target string) bool
 
-	// attempts counts auto-resumes per job id, so one permanently-broken download
-	// cannot be retried forever. Only touched from the ticker goroutine.
+	// attempts counts consecutive zero-progress auto-resumes per job id, so one
+	// permanently-broken download cannot be retried forever. lastDone remembers
+	// the job's byte count at its last auto-resume to detect progress. Only
+	// touched from the ticker goroutine.
 	attempts map[string]int
+	lastDone map[string]int64
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -64,6 +71,7 @@ func NewResumeController(manager *JobManager) *ResumeController {
 		interval: reconnectTickInterval,
 		probe:    dialProbe,
 		attempts: make(map[string]int),
+		lastDone: make(map[string]int64),
 	}
 }
 
@@ -118,24 +126,33 @@ func (c *ResumeController) tick(ctx context.Context) {
 			return
 		}
 		id := job.ID
-		if job.GetStatus() != StatusError {
-			// Recovered (or was restarted by hand): forget its attempt count so a
-			// later outage gets a fresh budget.
+		if job.GetStatus() == StatusCompleted {
+			// Done: forget it so a re-download of the same id starts fresh.
 			delete(c.attempts, id)
+			delete(c.lastDone, id)
+			continue
+		}
+		if job.GetStatus() != StatusError {
 			continue
 		}
 		if !isRetryableError(job.GetError()) {
 			continue // a 404 / checksum mismatch is not a connectivity problem
 		}
+		// Progress since the last auto-resume means the link works, just badly:
+		// give the job a fresh budget.
+		done := job.GetDownloaded()
+		if prev, seen := c.lastDone[id]; seen && done > prev {
+			c.attempts[id] = 0
+		}
 		if c.attempts[id] >= maxReconnectAttempts {
 			continue
 		}
-		addr, ok := hostPortForURL(job.GetURL())
-		if !ok || !c.probe(ctx, addr) {
+		if _, ok := hostPortForURL(job.GetURL()); !ok || !c.probe(ctx, job.GetURL()) {
 			continue // still offline (or an unusable URL) — try again next tick
 		}
 
 		c.attempts[id]++
+		c.lastDone[id] = done
 		// StartJob only accepts pending/paused, so move the failed job back to
 		// pending first. The partial data and resume sidecar on disk make this a
 		// real resume, not a restart from zero.
@@ -168,18 +185,38 @@ func hostPortForURL(raw string) (string, bool) {
 	}
 }
 
-// dialProbe reports whether addr accepts a TCP connection. Probing the download's
-// OWN host (rather than some third-party "are we online" endpoint) means the
-// check answers the question that actually matters and sends no traffic anywhere
-// the user was not already downloading from.
-func dialProbe(ctx context.Context, addr string) bool {
-	dialer := &net.Dialer{Timeout: reconnectProbeTimeout}
+// dialProbe reports whether the download's host answers, going through the same
+// proxy the engine uses. The proxy setting is re-read on every request (not
+// cached), so changing it applies to the next probe without a restart. A direct
+// TCP dial would report "offline" behind a mandatory proxy/VPN and report
+// "online" for a host the proxy cannot reach. Any HTTP response, even an error
+// status, proves the path works. Probing the download's OWN host (not some
+// third-party endpoint) sends no traffic anywhere the user was not already
+// downloading from.
+func dialProbe(ctx context.Context, target string) bool {
+	tr := &http.Transport{
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			if fn := proxyTransportFunc(); fn != nil {
+				return fn(req)
+			}
+			return nil, nil
+		},
+		DialContext:         (&net.Dialer{Timeout: reconnectProbeTimeout}).DialContext,
+		TLSHandshakeTimeout: reconnectProbeTimeout,
+		DisableKeepAlives:   true,
+	}
+	defer tr.CloseIdleConnections()
+
 	probeCtx, cancel := context.WithTimeout(ctx, reconnectProbeTimeout)
 	defer cancel()
-	conn, err := dialer.DialContext(probeCtx, "tcp", addr)
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, target, nil)
 	if err != nil {
 		return false
 	}
-	_ = conn.Close()
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
 	return true
 }
