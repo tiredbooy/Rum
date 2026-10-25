@@ -94,6 +94,9 @@ type sendFunc func(ctx context.Context, title, body string) (string, error)
 func deliverFinishNotice(ctx context.Context, p finishPending, send sendFunc, h finishActionHandler) {
 	title, body := finishMessage(p)
 	action, err := send(ctx, title, body)
+	if ctx.Err() != nil {
+		return // app is shutting down; do not raise a window or re-notify
+	}
 	if err != nil {
 		log.Printf("desktop: finish notification failed, showing window: %v", err)
 		h.show()
@@ -131,7 +134,7 @@ const finishCountdownWait = 65 * time.Second
 
 type finishWatcher struct {
 	interval time.Duration
-	fetch    func(context.Context) *finishPending
+	fetch    func(context.Context) (*finishPending, bool)
 	notify   func(context.Context, finishPending)
 }
 
@@ -145,7 +148,10 @@ func (w finishWatcher) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			p := w.fetch(ctx)
+			p, ok := w.fetch(ctx)
+			if !ok {
+				continue // transient API error: keep the last countdown so it is not re-announced
+			}
 			var fire bool
 			fire, last = countdownStarted(last, p)
 			if fire {
@@ -155,31 +161,32 @@ func (w finishWatcher) run(ctx context.Context) {
 	}
 }
 
-func (a *App) fetchFinishPending(ctx context.Context) *finishPending {
+// fetchFinishPending returns (pending, ok); ok is false when the API was unreachable.
+func (a *App) fetchFinishPending(ctx context.Context) (*finishPending, bool) {
 	base := a.GetApiBase()
 	if base == "" {
-		return nil
+		return nil, false
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/finish-action", nil)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil
+		return nil, false
 	}
 	var r struct {
 		Pending *finishPending `json:"pending"`
 	}
 	if json.Unmarshal(body, &r) != nil {
-		return nil
+		return nil, false
 	}
-	return r.Pending
+	return r.Pending, true
 }
 
 // watchFinishCountdown surfaces the sleep/shutdown countdown natively, since the

@@ -84,8 +84,8 @@ func TestWatchFinishCountdownNotifiesOnceAndCancels(t *testing.T) {
 	done := make(chan struct{}, 1)
 	w := finishWatcher{
 		interval: time.Millisecond,
-		fetch: func(context.Context) *finishPending {
-			return &finishPending{Action: "shutdown", DeadlineMs: 5, SecondsLeft: 60}
+		fetch: func(context.Context) (*finishPending, bool) {
+			return &finishPending{Action: "shutdown", DeadlineMs: 5, SecondsLeft: 60}, true
 		},
 		notify: func(context.Context, finishPending) {
 			mu.Lock()
@@ -119,6 +119,45 @@ func TestDeliverFallsBackToShowWindow(t *testing.T) {
 		func(context.Context, string, string) (string, error) { return "", context.DeadlineExceeded },
 		finishActionHandler{cancel: func() {}, show: func() { shown++ }})
 	if shown != 1 {
+		t.Fatalf("shown=%d", shown)
+	}
+}
+
+func TestWatcherIgnoresTransientFetchErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mu sync.Mutex
+	calls, notified := 0, 0
+	w := finishWatcher{
+		interval: time.Millisecond,
+		fetch: func(context.Context) (*finishPending, bool) {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			if calls%2 == 0 {
+				return nil, false
+			}
+			return &finishPending{Action: "shutdown", DeadlineMs: 7, SecondsLeft: 60}, true
+		},
+		notify: func(context.Context, finishPending) { mu.Lock(); notified++; mu.Unlock() },
+	}
+	go w.run(ctx)
+	time.Sleep(60 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if calls < 4 || notified != 1 {
+		t.Fatalf("calls=%d notified=%d, want one notification", calls, notified)
+	}
+}
+
+func TestDeliverSkipsWindowWhenShuttingDown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	shown := 0
+	deliverFinishNotice(ctx, finishPending{Action: "sleep", SecondsLeft: 60},
+		func(context.Context, string, string) (string, error) { return "", context.Canceled },
+		finishActionHandler{cancel: func() {}, show: func() { shown++ }})
+	if shown != 0 {
 		t.Fatalf("shown=%d", shown)
 	}
 }
