@@ -40,6 +40,12 @@ const darwinScript = `on run argv
 display notification (item 2 of argv) with title (item 1 of argv)
 end run`
 
+// darwinDialogScript shows a modal dialog that gives up after 60s. The cancel
+// button is not named "Cancel": AppleScript turns that into error -128.
+const darwinDialogScript = `on run argv
+display dialog (item 2 of argv) with title (item 1 of argv) buttons {"Continue", "Cancel Action"} default button "Continue" giving up after 60
+end run`
+
 // notifyCommand returns the argv for a native notification on goos. ok is false
 // where the beeep fallback should be used instead (Windows and others). Text is
 // passed as separate args, never through a shell.
@@ -52,16 +58,61 @@ func notifyCommand(goos, title, body string, actions bool) (name string, args []
 		}
 		return "notify-send", append(args, "--", title, body), true
 	case "darwin":
-		return "osascript", []string{"-e", darwinScript, title, body}, true
+		script := darwinScript
+		if actions {
+			script = darwinDialogScript
+		}
+		return "osascript", []string{"-e", script, title, body}, true
 	}
 	return "", nil, false
 }
 
 // parseNotifyAction maps notify-send --wait output to a known action id.
 func parseNotifyAction(out string) string {
-	switch s := strings.TrimSpace(out); s {
+	s := strings.TrimSpace(out)
+	switch s {
 	case "default", "cancel":
 		return s
+	}
+	// osascript: "button returned:Cancel Action, gave up:false"
+	if strings.Contains(s, "gave up:true") {
+		return ""
+	}
+	switch {
+	case strings.Contains(s, "button returned:Cancel Action"):
+		return "cancel"
+	case strings.Contains(s, "button returned:Continue"):
+		return "default"
+	}
+	return ""
+}
+
+// Win32 MessageBox flags and results used by the Windows finish dialog.
+const (
+	mbYesNo         = 0x4
+	mbIconInfo      = 0x40
+	mbSetForeground = 0x10000
+	mbTopmost       = 0x40000
+	idYes           = 6
+	idNo            = 7
+)
+
+// windowsDialogFlags is the MessageBoxTimeout style: top-most Yes/No.
+const windowsDialogFlags = mbYesNo | mbIconInfo | mbSetForeground | mbTopmost
+
+// windowsDialogText appends the question to the countdown body.
+func windowsDialogText(body string) string {
+	return body + "\n\nCancel it?"
+}
+
+// windowsDialogAction maps a MessageBoxTimeout result to an action id. Yes
+// cancels, No shows the window, a timeout (32000) or error does nothing.
+func windowsDialogAction(ret int) string {
+	switch ret {
+	case idYes:
+		return "cancel"
+	case idNo:
+		return "default"
 	}
 	return ""
 }
@@ -112,6 +163,11 @@ func systemSend(ctx context.Context, title, body string) (string, error) {
 	if err := nodesktop.Check(); err != nil {
 		return "", err
 	}
+	if runtime.GOOS == "windows" {
+		if action, err := windowsDialog(ctx, title, windowsDialogText(body)); err == nil {
+			return action, nil
+		}
+	}
 	if name, args, ok := notifyCommand(runtime.GOOS, title, body, true); ok {
 		if _, err := exec.LookPath(name); err == nil {
 			cctx, cancel := context.WithTimeout(ctx, finishCountdownWait)
@@ -134,6 +190,9 @@ func systemSend(ctx context.Context, title, body string) (string, error) {
 }
 
 const finishCountdownWait = 65 * time.Second
+
+// finishDialogTimeoutMs bounds the Windows dialog to the 60s countdown.
+const finishDialogTimeoutMs = 60000
 
 type finishWatcher struct {
 	interval time.Duration
