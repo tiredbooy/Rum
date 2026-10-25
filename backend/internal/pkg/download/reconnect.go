@@ -57,6 +57,9 @@ type ResumeController struct {
 	attempts map[string]int
 	lastDone map[string]int64
 
+	// now is the clock used for the night-window check; injectable for tests.
+	now func() time.Time
+
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	once   sync.Once
@@ -72,6 +75,7 @@ func NewResumeController(manager *JobManager) *ResumeController {
 		probe:    dialProbe,
 		attempts: make(map[string]int),
 		lastDone: make(map[string]int64),
+		now:      time.Now,
 	}
 }
 
@@ -172,6 +176,9 @@ func (c *ResumeController) tick(ctx context.Context) {
 // error text.
 func (c *ResumeController) eligible(job *Job) bool {
 	code, retryable := job.GetErrorCode()
+	if c.manager != nil && c.manager.NightHolds(job, c.now()) {
+		return false // a night job waits for its window; the night plan restarts it
+	}
 	if jobBlocked(job) || code == ErrCodeDiskFull || code == ErrCodeLinkExpired {
 		return false
 	}

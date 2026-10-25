@@ -76,6 +76,14 @@ type Job struct {
 	// jobs.json files, which load as false.
 	Interrupted bool `json:"interrupted,omitempty"`
 
+	// NightQueue assigns the job to the night plan: it runs only inside the
+	// configured night window (see night_plan.go). NightPaused marks a night job
+	// the plan itself paused (window closed, cap spent, launched outside the
+	// window), so the next window restarts it; a job the user paused by hand
+	// never carries it.
+	NightQueue  bool `json:"night_queue,omitempty"`
+	NightPaused bool `json:"night_paused,omitempty"`
+
 	// FinalHost is the host that answered the first successful probe, after
 	// redirects. Shown when a block page is detected.
 	FinalHost string `json:"final_host,omitempty"`
@@ -195,6 +203,10 @@ func (j *Job) GetStallCode() string {
 	return ""
 }
 
+func (j *Job) GetNightQueue() bool   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.NightQueue }
+func (j *Job) SetNightQueue(v bool)  { j.Mu.Lock(); defer j.Mu.Unlock(); j.NightQueue = v }
+func (j *Job) GetNightPaused() bool  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.NightPaused }
+func (j *Job) SetNightPaused(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.NightPaused = v }
 func (j *Job) GetInterrupted() bool  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Interrupted }
 func (j *Job) SetInterrupted(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Interrupted = v }
 
@@ -244,6 +256,8 @@ type jobJSON struct {
 	IntegrityHash     string        `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
 	Interrupted       bool          `json:"interrupted,omitempty"`
+	NightQueue        bool          `json:"night_queue,omitempty"`
+	NightPaused       bool          `json:"night_paused,omitempty"`
 	// Disk-full details, so a job waiting for space still shows the numbers (and
 	// is recognised by the disk watcher) after a restart.
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
@@ -291,6 +305,8 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
 		Interrupted:       j.Interrupted,
+		NightQueue:        j.NightQueue,
+		NightPaused:       j.NightPaused,
 	}
 	if df, ok := AsDiskFull(j.Error); ok {
 		out.ErrorCode = ErrorCodeDiskFull
@@ -359,6 +375,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		IntegrityHash     string          `json:"integrity_hash"`
 		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
 		Interrupted       bool            `json:"interrupted"`
+		NightQueue        bool            `json:"night_queue"`
+		NightPaused       bool            `json:"night_paused"`
 		NeededBytes       int64           `json:"needed_bytes"`
 		FreeBytes         int64           `json:"free_bytes"`
 		DiskPath          string          `json:"disk_path"`
@@ -403,6 +421,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
 	j.Interrupted = in.Interrupted
+	j.NightQueue, j.NightPaused = in.NightQueue, in.NightPaused
 	j.FinalHost = in.FinalHost
 	return nil
 }

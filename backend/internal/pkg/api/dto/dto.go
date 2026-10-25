@@ -27,6 +27,8 @@ type CreateDownloadRequest struct {
 	ChecksumAlgo string `json:"checksum_algo,omitempty"` // "sha256" | "md5"
 	StartAt      string `json:"start_at,omitempty"`      // RFC3339
 	Category     string `json:"category,omitempty"`
+	// NightQueue assigns the download to the night plan ("Download at night").
+	NightQueue bool `json:"night_queue,omitempty"`
 }
 
 // Validate performs field-level validation at the edge, before anything reaches
@@ -137,6 +139,10 @@ type DownloadResponse struct {
 	Category    string  `json:"category,omitempty"`
 	CreatedAt   string  `json:"created_at"`
 	CompletedAt string  `json:"completed_at,omitempty"`
+	// NightQueue marks a download assigned to the night plan; NightPaused that
+	// the plan itself paused it (it restarts when the window opens).
+	NightQueue  bool `json:"night_queue,omitempty"`
+	NightPaused bool `json:"night_paused,omitempty"`
 }
 
 type BatchCreateResponse struct {
@@ -298,6 +304,7 @@ type BatchCreateOptions struct {
 	ChecksumAlgo string `json:"checksum_algo"`
 	StartAt      string `json:"start_at"` // RFC3339
 	AutoStart    bool   `json:"auto_start"`
+	NightQueue   bool   `json:"night_queue,omitempty"`
 }
 
 // BatchCreateResult is one per-URL outcome in the batch response.

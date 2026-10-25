@@ -55,7 +55,10 @@ type Setting struct {
 	// automatically by the schedule controller. The bandwidth windows in
 	// BandwidthSchedule always apply regardless of this flag.
 	ScheduledStartEnabled bool `json:"scheduled_start_enabled"`
-	PostDownload          struct {
+	// NightPlan is the daily night-internet window for downloads assigned to the
+	// night queue (see night_plan.go).
+	NightPlan    NightPlan `json:"night_plan"`
+	PostDownload struct {
 		Action      string `json:"action"` // "none", "shutdown", "sleep", "close"
 		AutoOpenDir bool   `json:"auto_open_dir"`
 	} `json:"post_download,omitempty"`
@@ -404,6 +407,7 @@ func (s *Setting) Validate() {
 	if s.PreferredTheme == "" {
 		s.PreferredTheme = "system"
 	}
+	s.NightPlan.Sanitize()
 	// Clamp bandwidth schedule hours/limits and prune invalid day-of-week entries.
 	for i := range s.BandwidthSchedule {
 		r := &s.BandwidthSchedule[i]
@@ -653,6 +657,7 @@ func (s *Setting) setDefaults() {
 	s.PostDownload.Action = "none"
 	s.PostDownload.AutoOpenDir = false
 	s.BandwidthSchedule = nil
+	s.NightPlan = DefaultNightPlan()
 	// On by default: a download the user scheduled for a specific time should
 	// start at that time without a second opt-in. Turning it off means "leave it
 	// pending and I'll start it myself".

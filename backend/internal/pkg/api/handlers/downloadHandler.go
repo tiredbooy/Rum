@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -49,6 +50,7 @@ func CreateDownload(c *gin.Context) {
 		SpeedLimit:   req.SpeedLimit,
 		MaxRetries:   req.MaxRetries,
 		DestPath:     req.DestPath,
+		NightQueue:   req.NightQueue,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -57,6 +59,10 @@ func CreateDownload(c *gin.Context) {
 
 	if req.AutoStart {
 		for _, job := range jobs {
+			// A night-queue job outside its window waits for the night plan.
+			if GlobalManager.NightHolds(job, time.Now()) {
+				continue
+			}
 			// Honor a per-download scheduled start: a job with a future StartAt is
 			// left pending for the schedule controller to start when due, even when
 			// AutoStart is on (the default).
@@ -490,6 +496,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		Speed:      job.GetSpeed(),
 		Category:   job.GetCategory(),
 	}
+	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
 	if e := job.GetError(); e != nil {
 		resp.Error = e.Error()
 		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
@@ -532,5 +539,6 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 		resp.Error = "stalled, reconnecting"
 	}
 	resp.FinalHost = job.FinalHost
+	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
 	return resp
 }

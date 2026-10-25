@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -90,6 +91,10 @@ type JobManager struct {
 	appliedProxy        string
 	appliedBlockPrivate bool
 	transportApplied    bool
+
+	// nightCapHit is set by the NightController while the night window's data
+	// cap is spent; NightHolds then keeps night jobs from (re)starting.
+	nightCapHit atomic.Bool
 }
 
 type SortField string
@@ -181,6 +186,13 @@ func (m *JobManager) dispatch() {
 		}
 		status := job.GetStatus()
 		if status != StatusPending && status != StatusPaused {
+			m.mu.Unlock()
+			m.sched.Done(id)
+			continue
+		}
+		// The night plan parked this job (window closed) while it waited for a
+		// slot: do not start it now.
+		if status == StatusPaused && job.GetNightPaused() {
 			m.mu.Unlock()
 			m.sched.Done(id)
 			continue
@@ -315,6 +327,7 @@ type JobCreateOptions struct {
 	ChecksumAlgo string
 	Category     string
 	StartAt      time.Time
+	NightQueue   bool // assign to the night plan (runs only inside the window)
 
 	// Per-download overrides; zero values mean "use the global setting".
 	Referer    string
@@ -367,6 +380,9 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 		}
 		if !opts.StartAt.IsZero() {
 			job.SetStartAt(opts.StartAt)
+		}
+		if opts.NightQueue {
+			job.SetNightQueue(true)
 		}
 	}
 
@@ -643,6 +659,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	// opens. The dispatcher flips it to running just before launching.
 	job.SetStatus(StatusPending)
 	job.SetInterrupted(false) // started again: no longer awaiting recovery
+	job.SetNightPaused(false)
 	priority := job.GetPriority()
 	m.mu.Unlock()
 	m.requestSave()
@@ -820,6 +837,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 // setting. The partial data on disk + the resume sidecar make this a real resume,
 // not a restart-from-zero. Safe to call once on launch.
 func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) int {
+	nightOn := m.nightPlanSnapshot().Enabled
 	m.mu.RLock()
 	var toResume []string
 	for id, job := range m.jobs {
@@ -831,6 +849,14 @@ func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) int {
 
 	resumed := 0
 	for _, id := range toResume {
+		// Night-queue jobs belong to the night window: flag them for it instead
+		// of starting now. Inside the window the NightController starts them on
+		// its first tick; outside they stay paused.
+		if job, ok := m.GetJob(id); nightOn && ok && job.GetNightQueue() {
+			job.SetNightPaused(true)
+			job.SetInterrupted(false)
+			continue
+		}
 		// StartJob accepts paused jobs, clears the Interrupted flag and enqueues.
 		if err := m.StartJob(ctx, id); err != nil {
 			log.Printf("resume on launch: %s: %v", id, err)
@@ -1154,6 +1180,11 @@ func (m *JobManager) GracefulShutdown(ctx context.Context) {
 		case StatusPending:
 			if job.GetStartAt().After(time.Now()) {
 				continue // waiting on its schedule, not interrupted
+			}
+			if job.GetNightQueue() {
+				job.SetStatus(StatusPaused) // waiting on the night window
+				job.SetNightPaused(true)
+				continue
 			}
 			job.SetStatus(StatusPaused)
 			job.SetInterrupted(true)

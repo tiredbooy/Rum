@@ -93,6 +93,8 @@ var (
 	resumer *download.ResumeController
 	// diskWatch resumes downloads that stopped on a full disk once space is free.
 	diskWatch *download.DiskWatcher
+	// nightCtl applies the night plan (window start/stop and the data cap).
+	nightCtl *download.NightController
 	// manager is the live job manager (handlers.GlobalManager) captured at Listen
 	// time so Serve can shut its dispatcher down cleanly.
 	manager *download.JobManager
@@ -203,6 +205,7 @@ func Listen() (baseURL string, err error) {
 		controller = download.NewScheduleController(manager, governor, setting)
 		resumer = download.NewResumeController(manager)
 		diskWatch = download.NewDiskWatcher(manager)
+		nightCtl = download.NewNightController(manager)
 	}
 	base := apiBase
 	srvMu.Unlock()
@@ -278,6 +281,7 @@ func Serve() {
 	ctrl := controller
 	res := resumer
 	dw := diskWatch
+	nc := nightCtl
 	mgr := manager
 	srvMu.Unlock()
 
@@ -306,6 +310,9 @@ func Serve() {
 	}
 	if dw != nil {
 		dw.Start(rootCtx)
+	}
+	if nc != nil {
+		nc.Start(rootCtx)
 	}
 
 	// Start the idle-gated memory controller so the runtime returns freed heap
@@ -360,6 +367,7 @@ func GracefulStop() {
 		srvMu.Lock()
 		ctrl, res, mgr, cancel := controller, resumer, manager, rootCancel
 		dw := diskWatch
+		nc := nightCtl
 		srvMu.Unlock()
 
 		// Stop the background controllers first so none restarts a job while
@@ -369,6 +377,9 @@ func GracefulStop() {
 		}
 		if dw != nil {
 			dw.Stop()
+		}
+		if nc != nil {
+			nc.Stop()
 		}
 		if res != nil {
 			res.Stop()

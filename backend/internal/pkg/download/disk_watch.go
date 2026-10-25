@@ -98,6 +98,9 @@ func (w *DiskWatcher) tick(ctx context.Context) {
 		if avail <= df.FreeBytes || avail < requiredWithMargin(df.NeededBytes) {
 			continue
 		}
+		if w.manager.NightHolds(job, time.Now()) {
+			continue // night job: retried inside its window, not before
+		}
 		if err := w.manager.RetryJob(ctx, job.ID); err != nil {
 			log.Printf("auto-resume on free space: %s: %v", job.ID, err)
 		}
