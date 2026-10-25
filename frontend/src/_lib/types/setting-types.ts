@@ -64,6 +64,16 @@ export interface Setting {
   // keep_partial_on_failure: keep partial data on a FAILED download so it can be
   // resumed/repaired (default true). Explicit deletes always remove partials.
   keep_partial_on_failure?: boolean;
+  // prevent_sleep: keep the system awake (not the display) while downloading.
+  // Default true.
+  prevent_sleep?: boolean;
+}
+
+/** GET /api/v1/finish-action: a sleep/shutdown countdown the user can cancel. */
+export interface FinishPending {
+  action: "sleep" | "shutdown";
+  deadline_ms: number;
+  seconds_left: number;
 }
 
 export interface SettingReq extends Partial<Setting> {

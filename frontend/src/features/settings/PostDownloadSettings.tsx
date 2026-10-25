@@ -74,14 +74,14 @@ export function PostDownloadSettings() {
 
             <SettingSelect
               id="post-download-action"
-              label="System action"
+              label="When all downloads finish"
               icon={<Zap className="w-4 h-4" />}
               value={action}
               options={[
                 { value: "none", label: "Nothing" },
-                { value: "shutdown", label: "Shutdown" },
+                { value: "close", label: "Quit Rum" },
                 { value: "sleep", label: "Sleep" },
-                { value: "close", label: "Close App" },
+                { value: "shutdown", label: "Shut down" },
               ]}
               onValueChange={(v) =>
                 patch("post_download.action", {
@@ -92,7 +92,7 @@ export function PostDownloadSettings() {
               }
               saved={savedField === "post_download.action"}
               error={errorFor("post_download.action")}
-              hint="Resets to Nothing when Rum restarts."
+              hint="Sleep and shut down wait 60s so you can cancel. Resets when Rum restarts."
             />
 
             <Separator className="my-1" />

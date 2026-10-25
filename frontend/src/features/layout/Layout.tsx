@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { DiskFullAlert } from "./DiskFullAlert";
+import { FinishCountdownDialog } from "./FinishCountdownDialog";
 import { useProgressStore } from "@/stores/download-progress-store";
 
 export default function Layout() {
@@ -36,6 +37,7 @@ export default function Layout() {
           </main>
         </div>
       </div>
+      <FinishCountdownDialog />
     </SidebarProvider>
   );
 }

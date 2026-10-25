@@ -4,7 +4,7 @@ import {
 } from "@/_lib/services/queries/settings.queries";
 import type { Setting, SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Hash, Power, ShieldCheck, ShieldAlert, Timer, Wifi } from "lucide-react";
+import { Hash, Moon, Power, ShieldCheck, ShieldAlert, Timer, Wifi } from "lucide-react";
 import { SettingInput, SettingToggle } from "./controls";
 import { useSyncedDrafts } from "./draft-sync";
 import { NUM_BOUNDS, clampNum, rangeError, type NumField } from "./numeric-bounds";
@@ -13,7 +13,8 @@ type IntegrityToggle =
   | "verify_integrity"
   | "auto_resume_on_reconnect"
   | "auto_resume_on_launch"
-  | "block_private_hosts";
+  | "block_private_hosts"
+  | "prevent_sleep";
 
 const TOGGLES: {
   field: IntegrityToggle;
@@ -42,6 +43,13 @@ const TOGGLES: {
     label: "Auto-resume on launch",
     help: "Resume unfinished downloads the next time Rum starts.",
     icon: <Power className="w-4 h-4" />,
+    defaultOn: true,
+  },
+  {
+    field: "prevent_sleep",
+    label: "Prevent sleep while downloading",
+    help: "Keeps the computer awake until downloads finish. Screen can still turn off.",
+    icon: <Moon className="w-4 h-4" />,
     defaultOn: true,
   },
   {
