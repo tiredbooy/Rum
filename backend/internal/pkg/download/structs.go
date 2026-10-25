@@ -30,6 +30,12 @@ type Options struct {
 	MaxRetries int
 	Silent     bool
 
+	// JobSpeedLimit is a per-download cap in KB/s (0 = none) that applies IN
+	// ADDITION to the shared Governor. SpeedLimit alone cannot express it because
+	// the manager's global limit is also stored there and, with a Governor
+	// attached, is enforced by the Governor rather than per download.
+	JobSpeedLimit int
+
 	// Connections is the number of concurrent connections (segments) to use
 	// for a single download when the server supports HTTP Range requests and
 	// the total size is known and large enough. 0 or 1 => single-stream

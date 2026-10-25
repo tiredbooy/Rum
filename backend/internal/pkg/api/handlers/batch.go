@@ -64,6 +64,11 @@ func CreateBatch(c *gin.Context) {
 			ChecksumAlgo: req.Options.ChecksumAlgo,
 			Category:     req.Options.Category,
 			StartAt:      startAt,
+			Referer:      req.Options.Referer,
+			UserAgent:    req.Options.UserAgent,
+			SpeedLimit:   req.Options.SpeedLimit,
+			MaxRetries:   req.Options.MaxRetries,
+			DestPath:     req.Options.DestPath,
 		}
 	}
 

@@ -25,6 +25,13 @@ type HeaderInfo struct {
 	ContentType        string
 	ContentDisposition string
 	SupportsRange      bool
+
+	// Validators and status of the probe response, used to decide whether a
+	// partial download can resume against a refreshed link. StatusCode is 0 when
+	// the probe never got a response.
+	ETag         string
+	LastModified string
+	StatusCode   int
 }
 
 type Downloader struct {
@@ -307,6 +314,9 @@ func ParseHeaderInfo(resp *http.Response) *HeaderInfo {
 		ContentType:        resp.Header.Get("Content-Type"),
 		ContentDisposition: resp.Header.Get("Content-Disposition"),
 		SupportsRange:      supportsRange,
+		ETag:               resp.Header.Get("ETag"),
+		LastModified:       resp.Header.Get("Last-Modified"),
+		StatusCode:         resp.StatusCode,
 	}
 }
 

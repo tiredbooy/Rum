@@ -106,6 +106,12 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 		// enforces one budget across all concurrent downloads and honors live
 		// bandwidth-window changes.
 		body = opt.Governor.Wrap(ctx, resp.Body)
+		if opt.JobSpeedLimit > 0 {
+			// A per-download cap stacks on top of the shared governor.
+			if limiter := newSpeedLimiter(opt.JobSpeedLimit); limiter != nil {
+				body = &rateLimitedReader{reader: body, limiter: limiter, ctx: ctx}
+			}
+		}
 	} else {
 		// Engine/CLI path: per-download limiter. Per-job override (opt.SpeedLimit,
 		// KB/s) takes precedence; otherwise fall back to the global setting.

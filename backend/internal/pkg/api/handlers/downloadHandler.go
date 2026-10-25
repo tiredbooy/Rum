@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,6 +44,11 @@ func CreateDownload(c *gin.Context) {
 		ChecksumAlgo: req.ChecksumAlgo,
 		Category:     req.Category,
 		StartAt:      req.ParsedStartAt(),
+		Referer:      req.Referer,
+		UserAgent:    req.UserAgent,
+		SpeedLimit:   req.SpeedLimit,
+		MaxRetries:   req.MaxRetries,
+		DestPath:     req.DestPath,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -274,6 +280,44 @@ func SetDownloadPriority(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": jobID, "priority": req.Priority})
 }
 
+// RefreshDownloadURL gives a failed or paused download a fresh link (for expired
+// URLs) and starts it again. Body: { "url": "...", "restart": false }.
+//
+// The new link is checked against the partial data on disk. On a match the
+// download resumes from the partial (200, resumed:true). If it is a different
+// file the partial is left untouched and the response is 409 remote_changed;
+// resend with restart:true to discard it and download from zero.
+func RefreshDownloadURL(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCreateBodyBytes)
+
+	var req dto.UpdateURLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
+		return
+	}
+	if fields := req.Validate(); fields != nil {
+		writeFieldErrors(c, "validation failed", fields)
+		return
+	}
+
+	res, err := GlobalManager.RefreshJobURL(context.Background(), jobID, strings.TrimSpace(req.URL), req.Restart)
+	if errors.Is(err, download.ErrRemoteChanged) {
+		writeError(c, http.StatusConflict, "remote_changed", "new link is a different file")
+		return
+	}
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": jobID, "resumed": res.Resumed, "restarted": res.Restarted})
+}
+
 func DeleteDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
@@ -445,6 +489,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	}
 	if job.Error != nil {
 		resp.Error = job.Error.Error()
+		resp.ErrorCode = job.GetErrorCode()
 	}
 	return resp
 }
