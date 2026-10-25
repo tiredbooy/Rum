@@ -202,6 +202,7 @@ func Listen() (baseURL string, err error) {
 	if manager != nil {
 		controller = download.NewScheduleController(manager, governor, setting)
 		resumer = download.NewResumeController(manager)
+		handlers.GlobalResumer = resumer
 		diskWatch = download.NewDiskWatcher(manager)
 	}
 	base := apiBase
