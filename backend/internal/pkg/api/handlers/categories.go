@@ -46,6 +46,9 @@ func PutCategories(c *gin.Context) {
 		return
 	}
 
+	settingsWriteMu.Lock()
+	defer settingsWriteMu.Unlock()
+
 	setting, ok := loadSettings(c)
 	if !ok {
 		return

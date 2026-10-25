@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -15,6 +16,12 @@ import (
 )
 
 const maxSettingBodyBytes = 1 << 20 // 1 MiB
+
+// settingsWriteMu serialises every settings write. Each one is load -> modify ->
+// save of the whole file, so two in flight at once (two switches flipped in
+// quick succession, or a PATCH racing the schedule/categories PUT) started from
+// the same snapshot and the later save silently erased the earlier change.
+var settingsWriteMu sync.Mutex
 
 // loadSettings reads the persisted settings for a request handler. A load that
 // failed but RECOVERED (config.ErrRecovered — a missing or corrupt file that has
@@ -59,6 +66,9 @@ func UpdateSetting(c *gin.Context) {
 		return
 	}
 
+	settingsWriteMu.Lock()
+	defer settingsWriteMu.Unlock()
+
 	setting, ok := loadSettings(c)
 	if !ok {
 		return
@@ -92,6 +102,9 @@ func UpdateSpeedLimit(c *gin.Context) {
 		writeFieldErrors(c, "validation failed", fields)
 		return
 	}
+
+	settingsWriteMu.Lock()
+	defer settingsWriteMu.Unlock()
 
 	setting, ok := loadSettings(c)
 	if !ok {
