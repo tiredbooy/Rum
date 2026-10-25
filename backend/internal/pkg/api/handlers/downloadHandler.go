@@ -560,6 +560,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		OutputPath: job.GetOutputPath(),
 	}
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
+	setNightLimit(&resp, job)
 	if e := job.GetError(); e != nil {
 		resp.Error = e.Error()
 		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
@@ -603,5 +604,15 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	}
 	resp.FinalHost = job.FinalHost
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
+	if resp.ErrorCode == "" {
+		setNightLimit(&resp, job)
+	}
 	return resp
+}
+
+// setNightLimit marks a night job held by the spent daily cap ("night_limit").
+func setNightLimit(resp *dto.DownloadResponse, job *download.Job) {
+	if GlobalManager != nil {
+		resp.ErrorCode = GlobalManager.NightStatusCode(job)
+	}
 }

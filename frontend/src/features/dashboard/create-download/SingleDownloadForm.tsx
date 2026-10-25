@@ -8,6 +8,7 @@ import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { AdvancedOptions } from "./AdvancedOptions";
 import { NightToggle } from "./NightToggle";
+import { buildBatchOptions } from "@/_lib/batch-options";
 import { hasWildcard } from "@/features/wildcard/wildcard";
 import { WildcardExpander } from "@/features/wildcard/WildcardExpander";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
@@ -94,7 +95,7 @@ export function SingleDownloadForm() {
       {hasWildcard(url) && (
         <WildcardExpander
           url={url.trim()}
-          options={destPath.trim() ? { dest_path: destPath.trim() } : undefined}
+          options={buildBatchOptions({ destPath, nightQueue: draft.night_queue })}
           onDone={() => useAddDialogStore.getState().setOpen(false)}
         />
       )}

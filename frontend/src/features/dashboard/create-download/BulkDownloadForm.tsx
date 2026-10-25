@@ -8,6 +8,7 @@ import { Clipboard, CheckSquare, Square } from "lucide-react";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
+import { NightToggle } from "./NightToggle";
 
 interface ParsedLine {
   index: number;
@@ -96,6 +97,8 @@ export function BulkDownloadForm() {
           className="bg-background text-foreground"
         />
       </div>
+
+      <NightToggle id="bulk-night" />
 
       {totalUrls > 0 && (
         <div className="space-y-3">

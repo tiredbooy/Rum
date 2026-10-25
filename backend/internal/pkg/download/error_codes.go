@@ -103,6 +103,10 @@ const ErrorCodeStalled = "stalled"
 // block page, login wall) where a file was expected. Never auto-retried.
 const ErrCodeBlockedPage = "blocked_page"
 
+// ErrCodeNightLimit: a night job paused because the window's data cap is spent.
+// Not a failure; it is reported on paused jobs only, never stored in Job.Error.
+const ErrCodeNightLimit = "night_limit"
+
 func isBlockedPage(err error) bool {
 	var bp *blockedPageError
 	return errors.As(err, &bp)

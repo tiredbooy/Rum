@@ -53,7 +53,7 @@ describe("nightChip", () => {
       tone: "waiting",
     });
   });
-  it("shows Night while open and Cap reached when spent", () => {
+  it("shows Night while open and Night limit reached when spent", () => {
     expect(
       nightChip({ night_queue: true, status: "running" }, { ...state, active: true })
         ?.label,
@@ -63,7 +63,10 @@ describe("nightChip", () => {
         { night_queue: true, status: "paused" },
         { ...state, active: true, cap_reached: true },
       )?.label,
-    ).toBe("Cap reached");
+    ).toBe("Night limit reached");
+    expect(
+      nightChip({ night_queue: true, status: "paused", error_code: "night_limit" }, state)?.label,
+    ).toBe("Night limit reached");
   });
   it("hides for non-night, finished jobs and a disabled plan", () => {
     expect(nightChip({ night_queue: false, status: "paused" }, state)).toBeNull();

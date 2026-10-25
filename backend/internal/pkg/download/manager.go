@@ -1232,6 +1232,9 @@ func (m *JobManager) GracefulShutdown(ctx context.Context) {
 		switch job.GetStatus() {
 		case StatusRunning:
 			job.SetInterrupted(true)
+			if job.GetNightQueue() && m.config.NightPlan.Enabled {
+				job.SetNightPaused(true) // park for the next window, auto-resume or not
+			}
 			flagged = append(flagged, job)
 			if cancel := job.GetCancelFunc(); cancel != nil {
 				cancel()

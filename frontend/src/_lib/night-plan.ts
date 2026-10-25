@@ -67,18 +67,18 @@ export interface NightChip {
 
 /**
  * Status chip for a night job, or null when none applies. "Starts 02:00" while
- * the window is closed, "Night" while it is open, "Cap reached" when the
+ * the window is closed, "Night" while it is open, "Night limit reached" when the
  * window's data cap is spent.
  */
 export function nightChip(
-  job: Pick<Download, "night_queue" | "status">,
+  job: Pick<Download, "night_queue" | "status"> & { error_code?: string },
   plan: { enabled: boolean; start: string; active: boolean; cap_reached: boolean } | undefined,
 ): NightChip | null {
   if (!job.night_queue || job.status === "completed" || !plan?.enabled) {
     return null;
   }
-  if (plan.active && plan.cap_reached) {
-    return { label: "Cap reached", tone: "capped" };
+  if (job.error_code === "night_limit" || (plan.active && plan.cap_reached)) {
+    return { label: "Night limit reached", tone: "capped" };
   }
   if (plan.active) return { label: "Night", tone: "active" };
   return { label: `Starts ${plan.start}`, tone: "waiting" };

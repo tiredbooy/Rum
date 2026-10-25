@@ -6,11 +6,20 @@ import (
 	"time"
 
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
 
 // nightTickInterval is how often the NightController re-evaluates the window and
 // the data cap. Short enough that a cap overshoots by seconds, not minutes.
 const nightTickInterval = 10 * time.Second
+
+// nightNearCapInterval is the tick used once 80% of the cap is spent. Remaining
+// overshoot bound: about (download speed x 1s) plus the time a paused job takes
+// to stop, instead of up to a full 10s tick at the normal rate.
+const nightNearCapInterval = time.Second
+
+// nightNearCapFraction is the share of the cap after which the fast tick applies.
+const nightNearCapFraction = 0.8
 
 // nightCapBytes converts the cap setting (GB, binary) to bytes.
 func nightCapBytes(gb float64) int64 { return int64(gb * (1 << 30)) }
@@ -119,6 +128,21 @@ func (m *JobManager) parkNightJob(job *Job) {
 	m.requestSave()
 }
 
+// NightLimitReached reports whether job is a night job parked because the
+// window's data cap is spent.
+func (m *JobManager) NightLimitReached(job *Job) bool {
+	return job.GetNightQueue() && job.GetNightPaused() && m.nightCapHit.Load() &&
+		m.nightPlanSnapshot().Enabled
+}
+
+// NightStatusCode is ErrCodeNightLimit for a job held by the spent cap, else "".
+func (m *JobManager) NightStatusCode(job *Job) string {
+	if m.NightLimitReached(job) {
+		return ErrCodeNightLimit
+	}
+	return ""
+}
+
 // SetNightQueue moves jobs into (enabled) or out of the night queue and returns
 // how many existing, unfinished jobs it updated. Moving a job that may not run
 // right now parks it for the window; releasing one returns it to the normal
@@ -167,8 +191,11 @@ type NightController struct {
 
 	// Ticker-goroutine state.
 	wasActive bool
-	winOpen   time.Time        // open time of the window being accounted
-	used      int64            // night bytes downloaded in this window
+	winOpen   time.Time // open time of the window being accounted
+	used      int64     // night bytes downloaded in this window (persisted)
+	saved     int64     // last value written to usagePath
+	nearCap   bool      // 80% of the cap is spent: tick fast
+	usagePath string
 	last      map[string]int64 // Downloaded per night job at the previous tick
 
 	cancel context.CancelFunc
@@ -179,7 +206,10 @@ type NightController struct {
 // NewNightController builds a controller bound to manager. The plan is read from
 // the manager's live settings every tick, so edits apply without a restart.
 func NewNightController(manager *JobManager) *NightController {
-	return &NightController{manager: manager, interval: nightTickInterval, last: map[string]int64{}}
+	return &NightController{
+		manager: manager, interval: nightTickInterval, last: map[string]int64{},
+		usagePath: filesystem.CreateMetadataFile(nightUsageFile),
+	}
 }
 
 // Start applies the plan once immediately (so launching inside the window starts
@@ -191,17 +221,25 @@ func (c *NightController) Start(ctx context.Context) {
 	go func() {
 		defer c.wg.Done()
 		c.tick(runCtx, time.Now())
-		ticker := time.NewTicker(c.interval)
-		defer ticker.Stop()
 		for {
+			timer := time.NewTimer(c.nextInterval())
 			select {
 			case <-runCtx.Done():
+				timer.Stop()
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				c.tick(runCtx, time.Now())
 			}
 		}
 	}()
+}
+
+// nextInterval is the normal tick, or a fast one near the data cap.
+func (c *NightController) nextInterval() time.Duration {
+	if c.nearCap && nightNearCapInterval < c.interval {
+		return nightNearCapInterval
+	}
+	return c.interval
 }
 
 // Stop cancels the ticker goroutine and waits for it. Idempotent.
@@ -223,7 +261,7 @@ func (c *NightController) tick(ctx context.Context, now time.Time) {
 	plan := m.nightPlanSnapshot()
 	if !plan.Enabled {
 		m.nightCapHit.Store(false)
-		c.wasActive, c.winOpen = false, time.Time{}
+		c.wasActive, c.winOpen, c.nearCap = false, time.Time{}, false
 		// With the plan off, night jobs held pending are plain queued downloads:
 		// release them so turning the plan off (or launching with it off) never
 		// strands them. Jobs waiting on their own scheduled start are left alone.
@@ -252,21 +290,34 @@ func (c *NightController) tick(ctx context.Context, now time.Time) {
 			}
 		}
 		m.nightCapHit.Store(false)
-		c.wasActive, c.winOpen = false, time.Time{}
+		c.wasActive, c.winOpen, c.nearCap = false, time.Time{}, false
 		return
 	}
 
 	if !c.winOpen.Equal(open) { // a new window (or the first one observed)
-		c.winOpen, c.used, c.last = open, 0, map[string]int64{}
+		c.winOpen, c.last = open, map[string]int64{}
+		c.used = 0
+		key := nightWindowKey(open)
+		if win, used := loadNightUsage(c.usagePath); win == key {
+			c.used = used // restart inside the same window keeps its usage
+		}
+		c.saved = -1 // force a write so a new window overwrites the old record
 		m.nightCapHit.Store(false)
 	}
 	c.account(all) // finished jobs still count for bytes moved since the last tick
+	if c.used != c.saved {
+		saveNightUsage(c.usagePath, nightWindowKey(open), c.used)
+		c.saved = c.used
+	}
 
-	if plan.CapGB > 0 && c.used >= nightCapBytes(plan.CapGB) {
-		if !m.nightCapHit.Swap(true) {
-			for _, j := range jobs {
-				m.parkNightJob(j)
-			}
+	capBytes := nightCapBytes(plan.CapGB)
+	c.nearCap = plan.CapGB > 0 && float64(c.used) >= float64(capBytes)*nightNearCapFraction
+	if plan.CapGB > 0 && c.used >= capBytes {
+		m.nightCapHit.Store(true)
+		// Every tick, not only the first: a night job the user starts by hand
+		// after the cap is spent is paused again too.
+		for _, j := range jobs {
+			m.parkNightJob(j)
 		}
 		c.wasActive = true
 		return
@@ -300,7 +351,8 @@ func (c *NightController) nightJobs() []*Job {
 
 // account adds the bytes night jobs downloaded since the previous tick to the
 // window's total. A job first seen in a window contributes from that point on.
-// Usage is in memory: restarting the app mid-window starts the count again.
+// Usage is persisted per window (see night_usage.go); bytes moved while the app
+// was closed cannot exist, so a restart loses at most one tick of accounting.
 func (c *NightController) account(jobs []*Job) {
 	seen := make(map[string]int64, len(jobs))
 	for _, j := range jobs {

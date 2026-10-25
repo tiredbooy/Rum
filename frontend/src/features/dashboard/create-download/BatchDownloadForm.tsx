@@ -30,6 +30,8 @@ import {
   type WildcardRange,
 } from "@/features/wildcard/wildcard";
 import { toast } from "@/lib/toast";
+import { buildBatchOptions } from "@/_lib/batch-options";
+import { NightToggle } from "./NightToggle";
 
 /**
  * Self-contained batch add: paste/type one URL per line, submit straight to
@@ -45,6 +47,7 @@ export function BatchDownloadForm() {
 
   const [rawText, setRawText] = useState("");
   const [destPath, setDestPath] = useState("");
+  const [nightQueue, setNightQueue] = useState(false);
   const [result, setResult] = useState<BatchResult | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [dropped, setDropped] = useState<{
@@ -145,7 +148,7 @@ export function BatchDownloadForm() {
     createBatch.mutate(
       {
         urls,
-        options: destPath.trim() ? { dest_path: destPath.trim() } : undefined,
+        options: buildBatchOptions({ destPath, nightQueue }),
       },
       {
         onSuccess: (res) => {
@@ -304,6 +307,8 @@ export function BatchDownloadForm() {
           </div>
         </div>
       </div>
+
+      <NightToggle id="batch-night" checked={nightQueue} onChange={setNightQueue} />
 
       {createBatch.isError && (
         <p className="text-sm text-destructive" role="alert">
