@@ -72,6 +72,10 @@ var resumedOnLaunch atomic.Int32
 // "resumed N downloads" notice shows once per launch.
 func TakeResumedOnLaunch() int { return int(resumedOnLaunch.Swap(0)) }
 
+// TakeJobsRestored reports once whether the download list was restored from
+// its backup at launch because jobs.json was unreadable.
+func TakeJobsRestored() bool { return download.TakeJobsRestored() }
+
 func SetQuitFunc(f func()) {
 	AppQuitFunc = f
 }
