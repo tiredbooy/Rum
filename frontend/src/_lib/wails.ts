@@ -19,6 +19,7 @@ declare global {
           GetApiBase?: () => string | Promise<string>;
           ChooseDir?: () => Promise<string> | string;
           Capabilities?: () => Promise<DesktopCapabilities>;
+          ResumedOnLaunch?: () => Promise<number>;
         };
       };
     };
@@ -148,6 +149,20 @@ export async function getCapabilities(): Promise<DesktopCapabilities> {
     };
   } catch {
     return { ...NO_CAPABILITIES, folderPicker: hasChooseDir() };
+  }
+}
+
+/**
+ * How many interrupted downloads the engine auto-resumed at launch. The count is
+ * handed out once; 0 outside the desktop shell or when nothing was resumed.
+ */
+export async function getResumedOnLaunch(): Promise<number> {
+  if (typeof window.go?.main?.App?.ResumedOnLaunch !== "function") return 0;
+  try {
+    const n = await App.ResumedOnLaunch();
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
   }
 }
 

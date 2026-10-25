@@ -14,6 +14,7 @@ type AppStub = Partial<{
   GetApiBase: () => unknown;
   ChooseDir: () => unknown;
   Capabilities: () => unknown;
+  ResumedOnLaunch: () => unknown;
 }>;
 
 function installWindow(app?: AppStub, runtime?: unknown) {
@@ -165,5 +166,22 @@ describe("onWailsEvent", () => {
     expect(EventsOn).toHaveBeenCalledWith("clipboard:url", handler);
     unsubscribe();
     expect(off).toHaveBeenCalled();
+  });
+});
+
+describe("getResumedOnLaunch", () => {
+  it("is 0 outside the desktop shell", async () => {
+    const { getResumedOnLaunch } = await loadWails();
+    await expect(getResumedOnLaunch()).resolves.toBe(0);
+  });
+
+  it("returns the engine's count and 0 when the binding rejects", async () => {
+    installWindow({ ResumedOnLaunch: () => Promise.resolve(3) });
+    let mod = await loadWails();
+    await expect(mod.getResumedOnLaunch()).resolves.toBe(3);
+
+    installWindow({ ResumedOnLaunch: () => Promise.reject(new Error("x")) });
+    mod = await loadWails();
+    await expect(mod.getResumedOnLaunch()).resolves.toBe(0);
   });
 });
