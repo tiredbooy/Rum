@@ -27,6 +27,12 @@ describe("download error map", () => {
     expect(`${i.message} ${i.action}`).toBe("Connection lost. Check internet or VPN.");
   });
 
+  it("describes stalled with a clear no-data message and a retry action", () => {
+    const i = describeDownloadError("stalled");
+    expect(i.message).toMatch(/stalled.*no data/i);
+    expect(i.action).toMatch(/^Retry/);
+  });
+
   it("falls back to unknown for missing or new codes", () => {
     expect(describeDownloadError(undefined)).toBe(DOWNLOAD_ERROR_MESSAGES.unknown);
     expect(describeDownloadError("from_the_future")).toBe(DOWNLOAD_ERROR_MESSAGES.unknown);
