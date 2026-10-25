@@ -59,6 +59,9 @@ func (a *App) startup(ctx context.Context) {
 	// Native notifications on newly-completed downloads (leak-free poller).
 	go a.watchCompletions(bgCtx)
 
+	// Native notification when the sleep/shutdown countdown starts.
+	go a.watchFinishCountdown(bgCtx)
+
 	// Opt-in clipboard watcher: emits "clipboard:url" events for the frontend.
 	go a.watchClipboard(bgCtx)
 
