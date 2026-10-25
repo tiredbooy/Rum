@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gen2brain/beeep"
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -109,6 +110,9 @@ func deliverFinishNotice(ctx context.Context, p finishPending, send sendFunc, h 
 
 // systemSend uses notify-send/osascript when present, else beeep.
 func systemSend(ctx context.Context, title, body string) (string, error) {
+	if err := nodesktop.Check(); err != nil {
+		return "", err
+	}
 	if name, args, ok := notifyCommand(runtime.GOOS, title, body, true); ok {
 		if _, err := exec.LookPath(name); err == nil {
 			cctx, cancel := context.WithTimeout(ctx, finishCountdownWait)

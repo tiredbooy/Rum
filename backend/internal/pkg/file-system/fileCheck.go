@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"runtime"
+
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 )
 
 func GetExistsFileSize(path string) (int64, error) {
@@ -35,6 +37,9 @@ func IsFileExists(path string) bool {
 }
 
 func OpenFolder(fullFilePath string) error {
+	if err := nodesktop.Check(); err != nil {
+		return err
+	}
 	var dir string
 	finfo, err := os.Stat(fullFilePath)
 	

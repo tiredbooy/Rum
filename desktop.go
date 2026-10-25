@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gen2brain/beeep"
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -85,7 +86,7 @@ func (a *App) watchCompletions(ctx context.Context) {
 				if name == "" {
 					name = "Download"
 				}
-				if err := beeep.Notify("Rum", name+" finished", ""); err != nil {
+				if err := notifyDesktop("Rum", name+" finished"); err != nil {
 					log.Printf("desktop: notification failed: %v", err)
 				}
 			}
@@ -316,4 +317,13 @@ func postNoBody(base, path string) {
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	resp.Body.Close()
+}
+
+// notifyDesktop raises a native notification unless desktop side effects are
+// disabled (tests, RUM_NO_DESKTOP=1).
+func notifyDesktop(title, body string) error {
+	if err := nodesktop.Check(); err != nil {
+		return err
+	}
+	return beeep.Notify(title, body, "")
 }

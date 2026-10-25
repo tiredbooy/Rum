@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 )
 
 func UrlValidation(rawURL string) string {
@@ -73,6 +75,9 @@ func IsTerminal(status string) bool {
 }
 
 func ShutdownPC() error {
+	if err := nodesktop.Check(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
@@ -88,6 +93,9 @@ func ShutdownPC() error {
 }
 
 func SleepPC() error {
+	if err := nodesktop.Check(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

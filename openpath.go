@@ -14,6 +14,8 @@ import (
 	goruntime "runtime"
 	"strings"
 	"time"
+
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 )
 
 // Open-folder / reveal / open-file support. The frontend passes a download ID,
@@ -149,6 +151,9 @@ func runFirst(run func([]string) error, candidates [][]string) error {
 func execArgv(argv []string) error {
 	if len(argv) == 0 {
 		return errors.New("empty command")
+	}
+	if err := nodesktop.Check(); err != nil {
+		return err
 	}
 	if argv[0] == "dbus-send" {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
