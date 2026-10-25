@@ -57,6 +57,10 @@ type ResumeController struct {
 	attempts map[string]int
 	lastDone map[string]int64
 
+	// conn is the latest reachability measurement (see reconnect_status.go).
+	statusMu sync.Mutex
+	conn     connState
+
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	once   sync.Once
@@ -91,6 +95,9 @@ func (c *ResumeController) Start(ctx context.Context) {
 			case <-runCtx.Done():
 				return
 			case <-ticker.C:
+				// Measure reachability first (feeds GET /status) even when
+				// auto-resume is switched off; tick itself stays gated.
+				c.refreshConnectivity(runCtx)
 				c.tick(runCtx)
 			}
 		}

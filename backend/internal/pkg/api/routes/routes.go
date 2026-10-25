@@ -9,6 +9,8 @@ func SetupRouter(r *gin.Engine) {
 	api := r.Group("/api")
 	v1 := api.Group("/v1")
 	{
+		v1.GET("/status", handlers.GetStatus)
+
 		v1.POST("/downloads", handlers.CreateDownload)
 		v1.GET("/downloads", handlers.GetAllJobs)
 		v1.DELETE("/downloads", handlers.DeleteDownloads)
