@@ -64,6 +64,9 @@ type Setting struct {
 	} `json:"post_download,omitempty"`
 	FileConflict string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        string `json:"proxy,omitempty"`
+	// YtdlpPath is an explicit yt-dlp binary for video-page downloads. Empty
+	// means: look on PATH, then in Rum's own tools folder.
+	YtdlpPath string `json:"ytdlp_path,omitempty"`
 	// ProbeEndpoints overrides the URLs used to tell "no internet" from "this
 	// site is blocked". Empty uses the built-in list. Edited in settings.json.
 	ProbeEndpoints []string `json:"probe_endpoints,omitempty"`
@@ -178,6 +181,7 @@ type SettingReq struct {
 	} `json:"post_download,omitempty"`
 	FileConflict *string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        *string `json:"proxy,omitempty"`
+	YtdlpPath    *string `json:"ytdlp_path,omitempty"`
 
 	// Desktop / Wails preference toggles (partial-update via PATCH /settings).
 	LaunchOnStartup      *bool        `json:"launch_on_startup"`
@@ -483,6 +487,10 @@ func (s *Setting) Validate() {
 		s.PreferredTheme = "system"
 	}
 	s.TempDir = strings.TrimSpace(s.TempDir)
+	s.YtdlpPath = strings.TrimSpace(s.YtdlpPath)
+	if strings.ContainsAny(s.YtdlpPath, "\x00\r\n") {
+		s.YtdlpPath = ""
+	}
 
 	// An unusable proxy is dropped rather than kept: the engine would ignore it
 	// anyway, and leaving it in the file made the UI show a proxy that was not in
@@ -543,6 +551,9 @@ func (s *Setting) Update(req SettingReq) error {
 	}
 	if req.Proxy != nil {
 		s.Proxy = *req.Proxy
+	}
+	if req.YtdlpPath != nil {
+		s.YtdlpPath = *req.YtdlpPath
 	}
 	if req.LogLevel != nil {
 		s.LogLevel = *req.LogLevel

@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"syscall"
+
+	"github.com/tiredbooy/Rum/backend/internal/pkg/ytdlp"
 )
 
 // User-facing job error codes (Job.ErrorCode / the DTO "error_code" field).
@@ -44,6 +46,10 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 	var recHdr tls.RecordHeaderError
 	var se *httpStatusError
 	var netErr net.Error
+
+	if ye, ok := ytdlp.AsError(err); ok {
+		return ye.Code, ye.Retryable
+	}
 
 	switch {
 	case isBlockedPage(err):
@@ -102,6 +108,14 @@ const ErrorCodeStalled = "stalled"
 // ErrCodeBlockedPage: the server answered with a web page (captive portal, ISP
 // block page, login wall) where a file was expected. Never auto-retried.
 const ErrCodeBlockedPage = "blocked_page"
+
+// Video-page downloads (yt-dlp). See package ytdlp for the mapping from
+// yt-dlp's output; network-level failures reuse the codes above.
+const (
+	ErrCodeVideoUnavailable = ytdlp.CodeVideoUnavailable
+	ErrCodeYtdlpMissing     = ytdlp.CodeMissing
+	ErrCodeYtdlpFailed      = ytdlp.CodeFailed
+)
 
 // ErrCodeNightLimit: a night job paused because the window's data cap is spent.
 // Not a failure; it is reported on paused jobs only, never stored in Job.Error.

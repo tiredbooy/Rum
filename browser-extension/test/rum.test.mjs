@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDownload, findRum, openRum } from "../src/lib/rum.js";
+import { addDownload, addVideo, findRum, openRum } from "../src/lib/rum.js";
 
 const settings = { port: 8080, token: "rum_t" };
 const RUM = { get: (h) => (h === "X-Rum-App" ? "rum" : null) };
@@ -73,4 +73,17 @@ test("openRum posts to /ext/open", async () => {
   const ok = await openRum(settings, async (u) => ((url = u), res(200, { ok: true })));
   assert.equal(ok, true);
   assert.equal(url, "http://127.0.0.1:8080/ext/open");
+});
+
+test("addVideo posts the page url to /ext/video and reports Rum's error code", async () => {
+  let seen;
+  const ok = await addVideo("https://www.youtube.com/watch?v=x", settings, async (u, init) => {
+    seen = [u, init.method, JSON.parse(init.body)];
+    return res(201, { id: "1" });
+  });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(seen, ["http://127.0.0.1:8080/ext/video", "POST", { url: "https://www.youtube.com/watch?v=x" }]);
+  const missing = await addVideo("https://a/v", settings, async () => res(424, { code: "ytdlp_missing" }));
+  assert.deepEqual([missing.ok, missing.code], [false, "ytdlp_missing"]);
+  assert.equal((await addVideo("https://a/v", settings, refused)).ok, false);
 });

@@ -104,6 +104,12 @@ type Job struct {
 	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
 	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
 	PendingDeleteResume bool      `json:"pending_delete_resume,omitempty"`
+
+	// Kind is "" for an ordinary file download and JobKindVideo for a page
+	// downloaded through yt-dlp. VideoFormat is the picker key (best, h720,
+	// audio, ...); the yt-dlp selector is rebuilt from it on every run.
+	Kind        string `json:"kind,omitempty"`
+	VideoFormat string `json:"video_format,omitempty"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -287,6 +293,9 @@ type jobJSON struct {
 	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
 	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
 	PendingDeleteResume bool      `json:"pending_delete_resume,omitempty"`
+
+	Kind        string `json:"kind,omitempty"`
+	VideoFormat string `json:"video_format,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -339,6 +348,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 	out.FinalHost = j.FinalHost
 	out.PendingDeleteAt, out.PendingDeleteFile, out.PendingDeleteResume =
 		j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume
+	out.Kind, out.VideoFormat = j.Kind, j.VideoFormat
 	return json.Marshal(out)
 }
 
@@ -412,6 +422,9 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		PendingDeleteAt     time.Time `json:"pending_delete_at"`
 		PendingDeleteFile   bool      `json:"pending_delete_file"`
 		PendingDeleteResume bool      `json:"pending_delete_resume"`
+
+		Kind        string `json:"kind"`
+		VideoFormat string `json:"video_format"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -457,6 +470,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.FinalHost = in.FinalHost
 	j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume =
 		in.PendingDeleteAt, in.PendingDeleteFile, in.PendingDeleteResume
+	j.Kind, j.VideoFormat = in.Kind, in.VideoFormat
 	return nil
 }
 

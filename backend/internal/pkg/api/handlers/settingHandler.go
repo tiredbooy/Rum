@@ -195,6 +195,13 @@ func validateSettingReq(req config.SettingReq) map[string]string {
 			fields["proxy"] = "Use host:port, or an http/https/socks5 URL."
 		}
 	}
+	if req.YtdlpPath != nil {
+		if p := strings.TrimSpace(*req.YtdlpPath); p != "" {
+			if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+				fields["ytdlp_path"] = "File not found."
+			}
+		}
+	}
 	if req.OutDir != nil {
 		if msg := validateWritableDir(*req.OutDir, false); msg != "" {
 			fields["out_dir"] = msg
