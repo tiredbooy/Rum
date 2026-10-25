@@ -17,6 +17,9 @@ func SetupRouter(r *gin.Engine) {
 		v1.POST("/downloads/restore", handlers.RestoreDownloads)
 		v1.GET("/downloads/stream", handlers.StreamAllProgress)
 		v1.GET("/downloads/stats", handlers.GetDownloadsStats)
+		v1.GET("/downloads/export", handlers.ExportDownloads)
+		v1.POST("/downloads/import", handlers.ImportDownloads)
+		v1.GET("/diagnostics", handlers.GetDiagnostics)
 
 		v1.POST("/downloads/start-all", handlers.StartDownloads)
 		v1.POST("/downloads/pause-all", handlers.PauseDownloads)

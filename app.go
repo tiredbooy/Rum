@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	goruntime "runtime"
 
 	"github.com/tiredbooy/Rum/backend/cmd/server"
@@ -91,6 +92,37 @@ func (a *App) GetApiBase() string {
 // launch, once; later calls return 0. The frontend shows a notice when it is > 0.
 func (a *App) ResumedOnLaunch() int {
 	return server.TakeResumedOnLaunch()
+}
+
+// JobsRestoredFromBackup reports, once, whether the download list had to be
+// restored from its backup at launch. The frontend shows a notice when true.
+func (a *App) JobsRestoredFromBackup() bool {
+	return server.TakeJobsRestored()
+}
+
+// SaveTextFile asks where to save and writes content there. It returns false
+// when the user cancels. The webview cannot reliably download blobs, so file
+// exports go through the native dialog.
+func (a *App) SaveTextFile(defaultName, content string) (bool, error) {
+	if a.ctx == nil {
+		return false, fmt.Errorf("the window is not ready yet")
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save file",
+		DefaultFilename: defaultName,
+	})
+	if err != nil {
+		log.Printf("desktop: save dialog failed: %v", err)
+		return false, fmt.Errorf("could not open the save dialog")
+	}
+	if path == "" {
+		return false, nil
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		log.Printf("desktop: save file failed: %v", err)
+		return false, fmt.Errorf("could not write the file")
+	}
+	return true, nil
 }
 
 // ChooseDir opens the native folder picker and returns the selected directory.

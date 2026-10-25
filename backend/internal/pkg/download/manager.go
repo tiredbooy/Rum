@@ -1505,7 +1505,7 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 		remaining = append(remaining, job)
 	}
 
-	if err := filesystem.WriteMetadataFile("jobs.json", remaining); err != nil {
+	if err := PersistJobs(remaining); err != nil {
 		m.mu.Unlock()
 		return err
 	}

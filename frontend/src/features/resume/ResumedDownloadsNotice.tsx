@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { getResumedOnLaunch } from "@/_lib/wails";
+import { getJobsRestored, getResumedOnLaunch } from "@/_lib/wails";
 import { toast } from "@/lib/toast";
 
 /**
@@ -11,6 +11,7 @@ import { toast } from "@/lib/toast";
 // The engine hands the count out once, so the request must be made once per
 // page load: StrictMode mounts twice in dev and the second ask would get 0.
 let resumedCount: Promise<number> | null = null;
+let jobsRestored: Promise<boolean> | null = null;
 
 export function ResumedDownloadsNotice() {
   useEffect(() => {
@@ -19,6 +20,12 @@ export function ResumedDownloadsNotice() {
     void resumedCount.then((n) => {
       if (cancelled || n <= 0) return;
       toast(n === 1 ? "Resumed 1 download" : `Resumed ${n} downloads`);
+    });
+    // Same once-per-launch hand-out: the list was rebuilt from its backup.
+    jobsRestored ??= getJobsRestored();
+    void jobsRestored.then((restored) => {
+      if (cancelled || !restored) return;
+      toast.warning("Download list restored from backup");
     });
     return () => {
       cancelled = true;

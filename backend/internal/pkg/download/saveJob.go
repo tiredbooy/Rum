@@ -25,6 +25,7 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 // is never ranged outside the lock (which would be a fatal "concurrent map
 // iteration and map write"). Each *Job marshals under its own lock.
 func PersistJobs(jobs []*Job) error {
+	backupCurrentJobs(filesystem.CreateMetadataFile("jobs.json"))
 	if err := filesystem.WriteMetadataFile("jobs.json", jobs); err != nil {
 		writeErrorLog("Failed to save jobs: " + err.Error())
 		return err
@@ -71,20 +72,18 @@ func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 	fmt.Printf("Loaded %d jobs (%d interrupted, paused).\n", len(items), interrupted)
 }
 
+// readJobsFile loads jobs.json with backup recovery (see jobs_backup.go).
 func readJobsFile() []*Job {
-	data, err := filesystem.ReadMetadataFile("jobs.json")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		log.Printf("Failed to read jobs file: %v", err)
-		return nil
-	}
+	return loadJobsWithRecovery(filesystem.CreateMetadataFile("jobs.json"))
+}
 
+// decodeJobs parses a jobs.json payload. ok=false means nothing usable could be
+// read (not a JSON array); skipped counts records dropped by the lenient path.
+func decodeJobs(data []byte) (jobs []*Job, skipped int, ok bool) {
 	// Fast path: decode the whole array at once.
 	var loaded []*Job
 	if err := json.Unmarshal(data, &loaded); err == nil {
-		return loaded
+		return loaded, 0, true
 	} else {
 		// One malformed record must never wipe the user's entire history. Fall back
 		// to decoding record-by-record and keep every job that still parses.
@@ -94,16 +93,17 @@ func readJobsFile() []*Job {
 	var raws []json.RawMessage
 	if err := json.Unmarshal(data, &raws); err != nil {
 		log.Printf("Failed to parse jobs.json: %v", err)
-		return nil
+		return nil, 0, false
 	}
 	recovered := make([]*Job, 0, len(raws))
 	for i, raw := range raws {
 		var j Job
 		if err := json.Unmarshal(raw, &j); err != nil {
 			log.Printf("skipping unreadable job #%d in jobs.json: %v", i, err)
+			skipped++
 			continue
 		}
 		recovered = append(recovered, &j)
 	}
-	return recovered
+	return recovered, skipped, true
 }

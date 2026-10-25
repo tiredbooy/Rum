@@ -18,6 +18,10 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function JobsRestoredFromBackup() {
+  return window['go']['main']['App']['JobsRestoredFromBackup']();
+}
+
 export function OpenDownload(arg1) {
   return window['go']['main']['App']['OpenDownload'](arg1);
 }
@@ -32,4 +36,8 @@ export function ResumedOnLaunch() {
 
 export function RevealDownload(arg1) {
   return window['go']['main']['App']['RevealDownload'](arg1);
+}
+
+export function SaveTextFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveTextFile'](arg1, arg2);
 }
