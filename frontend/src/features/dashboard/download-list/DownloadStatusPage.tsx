@@ -3,22 +3,11 @@ import { filterAndSort, listViewState } from "../list-view/list-view";
 import { NoResults } from "../list-view/NoResults";
 import { useListView } from "../list-view/useListView";
 import { DownloadList } from "./DownloadList";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type {
   Download,
   DownloadPriority,
 } from "@/_lib/types/download-types";
 import {
-  useDeleteDownload,
   useDownloads,
   usePauseDownload,
   useResumeDownload,
@@ -26,6 +15,7 @@ import {
   useSetDownloadPriority,
   useStartDownload,
 } from "@/_lib/services/queries/download.queries";
+import { useUndoableDelete } from "@/_lib/services/queries/undo-delete.queries";
 
 interface DownloadStatusPageProps {
   status: Download["status"] | "all";
@@ -38,7 +28,7 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
   const startDownload = useStartDownload();
   const pauseDownload = usePauseDownload();
   const resumeDownload = useResumeDownload();
-  const deleteDownload = useDeleteDownload();
+  const { removeIds } = useUndoableDelete();
   const retryDownload = useRetryDownload();
   const setPriority = useSetDownloadPriority();
 
@@ -63,13 +53,10 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
   const handleResume = (id: string) => {
     resumeDownload.mutateAsync(id);
   };
-  // Single-card delete removes the file from disk, so confirm first (the bulk
-  // actions already confirm). handleDelete just arms the dialog.
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const handleDelete = (id: string) => setPendingDeleteId(id);
-  const confirmDelete = () => {
-    if (pendingDeleteId) deleteDownload.mutateAsync(pendingDeleteId);
-    setPendingDeleteId(null);
+  // Act now, undo from the toast. The X button removes from the list and keeps
+  // the file; "Delete file" lives in the card's overflow menu.
+  const handleDelete = (id: string) => {
+    void removeIds([id]);
   };
   const handleRetry = (id: string) => {
     retryDownload.mutate(id);
@@ -114,28 +101,6 @@ export function DownloadStatusPage({ status, title }: DownloadStatusPageProps) {
       />
       )}
 
-      <AlertDialog
-        open={pendingDeleteId !== null}
-        onOpenChange={(o) => {
-          if (!o) setPendingDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this download?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the download and deletes its file from disk. This
-              can't be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

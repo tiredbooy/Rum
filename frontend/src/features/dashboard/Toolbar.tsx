@@ -1,17 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   CheckCheck,
   Pause,
   Play,
@@ -105,38 +94,16 @@ export function DashboardToolbar({
             <span className="hidden sm:inline">Clear completed</span>
           </Button>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                title="Delete all downloads"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Delete all</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete all downloads?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently removes every download — running, queued,
-                  completed and failed — along with their partial files. This
-                  action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  variant="destructive"
-                  onClick={onDeleteAll}
-                >
-                  Delete all
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDeleteAll}
+            className="gap-1.5 h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            title="Remove all from list"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Remove all</span>
+          </Button>
         </div>
       </div>
     </div>

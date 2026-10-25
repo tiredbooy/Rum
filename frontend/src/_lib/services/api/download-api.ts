@@ -56,15 +56,40 @@ export async function createBatch(
   });
 }
 
+/** Soft delete result: ids now hidden and the window to undo them. */
+export interface DeleteResult {
+  ids: string[];
+  pending_delete_at: string;
+  undo_seconds: number;
+}
+
+export interface DeleteOptions {
+  /** Also delete the file / partial. Default keeps data ("remove from list"). */
+  deleteFile?: boolean;
+}
+
+function deleteQuery(params: Record<string, string | undefined>, opts?: DeleteOptions) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+  if (opts?.deleteFile) q.set("delete_file", "true");
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
 export async function deleteDownloads(
   status?: Download["status"] | "all",
-): Promise<Download[]> {
-  const query = status && status !== "all" ? `?status=${status}` : "";
-  const data = await request<Download[] | { message: string }>(
-    `/api/v1/downloads${query}`,
-    { method: "DELETE" },
-  );
-  return Array.isArray(data) ? data : [];
+  opts?: DeleteOptions,
+): Promise<DeleteResult> {
+  const query = deleteQuery({ status: status && status !== "all" ? status : undefined }, opts);
+  return request<DeleteResult>(`/api/v1/downloads${query}`, { method: "DELETE" });
+}
+
+/** Undo a delete while its window is open. Rejects once it has expired. */
+export async function restoreDownloads(ids: string[]): Promise<{ restored: number }> {
+  return request<{ restored: number }>("/api/v1/downloads/restore", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
 }
 
 export async function startDownload(id: string): Promise<void> {
@@ -79,8 +104,13 @@ export async function resumeDownload(id: string): Promise<void> {
   await request(`/api/v1/downloads/${id}/resume`, { method: "PUT" });
 }
 
-export async function deleteDownload(id: string): Promise<void> {
-  await request(`/api/v1/downloads/${id}`, { method: "DELETE" });
+export async function deleteDownload(
+  id: string,
+  opts?: DeleteOptions,
+): Promise<DeleteResult> {
+  return request<DeleteResult>(`/api/v1/downloads/${id}${deleteQuery({}, opts)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function retryDownload(id: string): Promise<void> {

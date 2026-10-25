@@ -1,11 +1,11 @@
 import { useCallback } from "react";
 import type { Download, DownloadStatus } from "@/_lib/types/download-types";
 import {
-  useDeleteDownload,
   usePauseDownload,
   useResumeDownload,
   useRetryDownload,
 } from "@/_lib/services/queries/download.queries";
+import { useUndoableDelete } from "@/_lib/services/queries/undo-delete.queries";
 import { toast } from "@/lib/toast";
 
 /**
@@ -33,7 +33,7 @@ const VERB: Record<BulkActionKind, string> = {
   pause: "Paused",
   resume: "Resumed",
   retry: "Retried",
-  delete: "Deleted",
+  delete: "Removed",
 };
 
 interface RunResult {
@@ -55,10 +55,14 @@ export function useBulkActions() {
   const pause = usePauseDownload();
   const resume = useResumeDownload();
   const retry = useRetryDownload();
-  const del = useDeleteDownload();
+  const { removeIds } = useUndoableDelete();
 
   const run = useCallback(
-    async (kind: BulkActionKind, items: Download[]): Promise<RunResult> => {
+    async (
+      kind: BulkActionKind,
+      items: Download[],
+      opts?: { deleteFile?: boolean },
+    ): Promise<RunResult> => {
       const applicable = APPLICABLE[kind];
       const targets = items.filter((d) => applicable.has(d.status));
       const skipped = items.length - targets.length;
@@ -70,6 +74,15 @@ export function useBulkActions() {
         return { ok: 0, failed: 0, skipped };
       }
 
+      // Delete is one soft-delete batch with a single Undo toast, not N summaries.
+      if (kind === "delete") {
+        const hidden = await removeIds(
+          targets.map((d) => d.id),
+          opts?.deleteFile ?? false,
+        );
+        return { ok: hidden.length, failed: targets.length - hidden.length, skipped };
+      }
+
       const mutateFor = (id: string): Promise<unknown> => {
         switch (kind) {
           case "pause":
@@ -78,8 +91,6 @@ export function useBulkActions() {
             return resume.mutateAsync(id);
           case "retry":
             return retry.mutateAsync(id);
-          case "delete":
-            return del.mutateAsync(id);
         }
       };
 
@@ -103,7 +114,7 @@ export function useBulkActions() {
       }
       return { ok, failed, skipped };
     },
-    [pause, resume, retry, del],
+    [pause, resume, retry, removeIds],
   );
 
   return { run };
