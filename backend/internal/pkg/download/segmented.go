@@ -324,6 +324,19 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 		return false, DownloadSingleFile(ctx, opt, job, progressFn)
 	}
 
+	// A fresh download checks its first response before allocating anything, so a
+	// block page leaves no pre-sized file behind. Resumes already hold data.
+	if saved == nil {
+		if err := probeBlockedPage(ctx, opt, job, url); err != nil {
+			return false, err
+		}
+	}
+
+	// Remember whether this pass creates the file: only a file we created may be
+	// removed if a block page is detected after allocation.
+	_, statErr0 := os.Stat(fullPath)
+	createdByUs := saved == nil && os.IsNotExist(statErr0)
+
 	// Open the output file and pre-size it so WriteAt at any offset is valid.
 	outFile, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -500,6 +513,15 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 		}
 		_ = outFile.Sync()
 		return true, nil
+	}
+
+	if jobBlockedErr(err) && createdByUs {
+		// Detected after allocation: drop only the file this job created, plus
+		// its sidecar. A pre-existing user file is never touched.
+		_ = outFile.Close()
+		_ = os.Remove(fullPath)
+		removePartsMeta(fullPath)
+		return false, err
 	}
 
 	if err != nil {
