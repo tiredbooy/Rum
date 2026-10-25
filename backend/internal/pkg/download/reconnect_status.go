@@ -30,7 +30,7 @@ func (c *ResumeController) Status() (online bool, lastProbeAt time.Time) {
 
 // refreshConnectivity probes the hosts of failed and running jobs (through the
 // same proxy as the engine) and records whether ANY answered. With no probeable
-// job the previous state is kept.
+// job the state resets to online (no evidence).
 func (c *ResumeController) refreshConnectivity(ctx context.Context) {
 	if c.manager == nil {
 		return
@@ -53,6 +53,10 @@ func (c *ResumeController) refreshConnectivity(ctx context.Context) {
 		}
 	}
 	if len(targets) == 0 {
+		// No evidence left: drop any stale "offline" so the banner can't stick.
+		c.statusMu.Lock()
+		c.conn = connState{}
+		c.statusMu.Unlock()
 		return
 	}
 	reachable := false

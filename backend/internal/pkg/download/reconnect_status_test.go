@@ -45,3 +45,25 @@ func TestConnectivityStatus(t *testing.T) {
 		t.Fatal("nil controller must report online")
 	}
 }
+
+// Offline must not stick once nothing is left to probe (jobs removed or done):
+// a stale "offline" would pin the banner forever.
+func TestConnectivityStatusClearsWhenNoJobsToProbe(t *testing.T) {
+	m := newQuietManager(t)
+	c := NewResumeController(m)
+	c.probe = func(context.Context, string) bool { return false }
+
+	addFailedJob(m, "a", "https://a.example/f", nil)
+	c.refreshConnectivity(context.Background())
+	if online, _ := c.Status(); online {
+		t.Fatal("setup: expected offline")
+	}
+
+	if err := m.DeleteJob("a"); err != nil {
+		t.Fatal(err)
+	}
+	c.refreshConnectivity(context.Background())
+	if online, at := c.Status(); !online || !at.IsZero() {
+		t.Fatalf("no evidence left: online=%v at=%v; want online, zero time", online, at)
+	}
+}
