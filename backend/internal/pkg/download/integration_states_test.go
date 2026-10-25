@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +94,26 @@ func TestLaunchResumeIgnoresErrorStates(t *testing.T) {
 	}
 	if d.GetStatus() != StatusError || b.GetStatus() != StatusError {
 		t.Fatalf("states changed: %s %s", d.GetStatus(), b.GetStatus())
+	}
+}
+
+// A job that fails because stall retries ran out keeps code "stalled", is
+// retryable, and carries a clear final message (not "reconnecting") that
+// survives a restart.
+func TestStalledFinalFailurePersistsClearReason(t *testing.T) {
+	live := failedJob(errStalled)
+	if msg := live.GetError().Error(); msg != stalledFinalMessage || strings.Contains(msg, "reconnecting") {
+		t.Fatalf("final message = %q", msg)
+	}
+	if !errors.Is(live.GetError(), errStalled) || !isRetryableError(live.GetError()) {
+		t.Fatal("final stall error must stay errStalled/retryable")
+	}
+	back := reloaded(t, live)
+	code, retry := back.GetErrorCode()
+	if code != ErrorCodeStalled || !retry || back.GetError().Error() != stalledFinalMessage {
+		t.Fatalf("reload: code=%q retry=%v err=%v", code, retry, back.GetError())
+	}
+	if !NewResumeController(nil).eligible(back) {
+		t.Fatal("stalled failure must stay reconnect-eligible")
 	}
 }

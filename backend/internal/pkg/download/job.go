@@ -113,6 +113,9 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
 func (j *Job) SetError(e error) {
 	code, retry := ClassifyJobError(e)
+	if code == ErrorCodeStalled {
+		e = stalledFinalError{} // retries ran out: say so, not "reconnecting"
+	}
 	j.Mu.Lock()
 	defer j.Mu.Unlock()
 	j.Error, j.ErrorCode, j.Retryable = e, code, retry
