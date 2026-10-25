@@ -92,6 +92,54 @@ be run from a full checkout (they already build from the source tree; there is n
 
 `--dry-run` / `-DryRun` prints which Go it would use or download.
 
+### How a Go download is verified
+
+The `go.mod` `go` line is a language version, not always a published archive, so
+the installer picks a published `go1.X.Y` from `go.dev/dl/?mode=json`. Routes,
+strongest verification first:
+
+| # | Route | Verified by |
+|---|---|---|
+| 1 | archive + known sha256 | official checksum index |
+| 2 | module proxy (`golang.org/toolchain@v0.0.1-go<ver>.<os>-<arch>`) | checksum database |
+| 3 | archive with no sha256 | nothing; last resort, loud warning |
+
+The module route is fetched by the `go` command (not curl) with `GOSUMDB` forced
+on, so a mirror path's `GOSUMDB=off` cannot disable its only check. It needs an
+existing `go` to drive the download, so a machine with no Go falls to route 3.
+When the checksum index is unreachable the module route is tried before an
+unchecked archive. `RUM_REQUIRE_VERIFIED_GO=1` makes route 3 fatal.
+
+## Maintaining the scripts
+
+- Alpine without root is refused with a `apk add go ...` hint: the official
+  tarball is glibc and would not run on musl.
+- Never use `return "$st"` or `(( st == 0 ))` under `set -Eeuo pipefail`; use
+  `if "$@"; then return 0; else st=$?; fi`. `set +e` does not silence an `ERR` trap
+  under `set -E`, so wrap fallible commands in `if ! ...; then die`.
+- The EXIT trap must end with `trap - EXIT; exit "$st"` or SIGINT exits 0 instead
+  of 130.
+- `go build` runs with `-buildvcs=false`: a copied tree often fails VCS stamping
+  (`exit status 128`).
+- Prepend the managed Go dirs to `PATH` at startup and persist them to the shell rc
+  and `~/.profile`, or a second run re-downloads Go. In `install-windows.ps1`,
+  `Sync-SessionPath` keeps the session PATH first (`$env:Path, $machine, $user`)
+  so a machine-wide Go cannot shadow the one the script chose.
+- GOPROXY chains use `|` after a flaky mirror (`mirror|https://proxy.golang.org,direct`):
+  a comma only advances on 404/410, so a 429 would stick.
+- Linux GUI WebKit packages are tried in order. Debian: `libwebkit2gtk-4.1-dev`
+  then `-4.0-dev`. Fedora: `webkit2gtk4.1-devel`. Arch: `webkit2gtk-4.1`. Alpine:
+  `webkit2gtk-4.1-dev` (not `-6.0`, which is GTK4). openSUSE: `webkitgtk3-devel`.
+  `-tags webkit2_41` is passed only when 4.1 is present and 4.0 is not.
+- The Aliyun mirror is the Go archive host most likely to work when go.dev and
+  dl.google.com 404; `go.devneeds.ir` has returned HTTP 429 and is unverified as a
+  working mirror.
+
+Tested: Linux CLI installer in containers (Debian, Fedora, Arch, Alpine,
+openSUSE; root and non-root), GUI installer `--dry-run`, `uninstall-linux.sh`
+(default mode), and parse plus PSScriptAnalyzer for the `.ps1` files. Not tested:
+a full Linux GUI install, macOS and Windows runs, `uninstall-linux.sh --purge`.
+
 ## CLI
 
 ```bash
@@ -142,7 +190,7 @@ chmod +x installers/gui/install-macos.sh
 .\installers\gui\install-windows.ps1 -Uninstall
 ```
 
-**Auto-installed when possible:** exact `go.mod` Go (see above), Node 18+,
+**Auto-installed when possible:** Go at or above `go.mod` (see above), Node 18+,
 Wails CLI. **Needs root on Linux:** GTK3 + WebKit2GTK. **Needs you on
 macOS:** Xcode CLT dialog. **Needs you on Windows:** WebView2 if winget/
 choco/scoop cannot install it (usually preinstalled on Win10/11).

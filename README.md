@@ -115,9 +115,12 @@ go run ./cmd/rum --help          # the CLI
 cd frontend && npm ci && npm run dev
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same build/vet/test gate on every push
-and PR. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds
-and publishes installers for all three OSes.
+If you only need a quick unpackaged binary, `go build` works too, but the tag
+set matters: `go build -tags "desktop,production,webkit2_41" -o Rum .`. Without
+`desktop,production` it links but refuses to start ("Wails applications will not
+build without the correct build tags"); `wails build` adds them for you. Drop
+`webkit2_41` if you only have WebKit2GTK 4.0. Any Go at or above the `go.mod`
+version works, including 1.26/1.27; the installers set `GOTOOLCHAIN=local`.
 
 ## Architecture
 
@@ -136,10 +139,8 @@ therefore all drive the exact same engine.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please make sure the verification gate is
-green before submitting: `cd backend && go build ./... && go vet ./... && go test ./...`,
-`cd frontend && npx tsc --noEmit && npm run build`, and `go build -tags webkit2_41 ./...`
-at the repo root. The change log lives in [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the verification gate and the repo conventions.
 
 ## License
 
