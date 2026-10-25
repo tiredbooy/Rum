@@ -55,6 +55,7 @@ func startTray(ctx context.Context, apiBase string) {
 					case <-done:
 						return
 					case <-mShow.ClickedCh:
+						windowVis.Shown()
 						runtime.WindowShow(ctx)
 					case <-mStartAll.ClickedCh:
 						postNoBody(apiBase, "/api/v1/downloads/start-all")

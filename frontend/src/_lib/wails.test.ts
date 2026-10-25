@@ -16,6 +16,7 @@ type AppStub = Partial<{
   Capabilities: () => unknown;
   ResumedOnLaunch: () => unknown;
   JobsRestoredFromBackup: () => unknown;
+  SetWindowVisible: (visible: boolean) => unknown;
 }>;
 
 function installWindow(app?: AppStub, runtime?: unknown) {
@@ -219,5 +220,49 @@ describe("openInBrowser", () => {
     expect(BrowserOpenURL).toHaveBeenCalledWith("https://example.com/a.zip");
     expect(w.openInBrowser("file:///etc/passwd")).toBe(false);
     expect(BrowserOpenURL).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("watchWindowVisibility", () => {
+  function fakeDoc(state: "visible" | "hidden") {
+    const handlers = new Set<() => void>();
+    return {
+      visibilityState: state,
+      addEventListener: (_: string, h: () => void) => void handlers.add(h),
+      removeEventListener: (_: string, h: () => void) => void handlers.delete(h),
+      fire(next: "visible" | "hidden") {
+        this.visibilityState = next;
+        handlers.forEach((h) => h());
+      },
+      count: () => handlers.size,
+    };
+  }
+
+  it("reports each change to the shell and stops on cleanup", async () => {
+    const calls: boolean[] = [];
+    installWindow({ SetWindowVisible: (v: boolean) => (calls.push(v), Promise.resolve()) });
+    const { watchWindowVisibility } = await loadWails();
+    const doc = fakeDoc("visible");
+    const stop = watchWindowVisibility(doc);
+    doc.fire("hidden");
+    doc.fire("visible");
+    expect(calls).toEqual([false, true]);
+    stop();
+    expect(doc.count()).toBe(0);
+  });
+
+  it("does nothing outside the desktop shell", async () => {
+    const { watchWindowVisibility } = await loadWails();
+    const doc = fakeDoc("visible");
+    watchWindowVisibility(doc)();
+    expect(doc.count()).toBe(0);
+  });
+
+  it("swallows a rejected binding call", async () => {
+    installWindow({ SetWindowVisible: () => Promise.reject(new Error("boom")) });
+    const { watchWindowVisibility } = await loadWails();
+    const doc = fakeDoc("visible");
+    watchWindowVisibility(doc);
+    expect(() => doc.fire("hidden")).not.toThrow();
   });
 });

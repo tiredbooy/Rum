@@ -42,10 +42,7 @@ func (a *App) startup(ctx context.Context) {
 	a.bgCancel = cancel
 
 	// Let the browser extension's "Open Rum" raise the window.
-	server.SetShowWindowFunc(func() {
-		runtime.WindowShow(ctx)
-		runtime.WindowUnminimise(ctx)
-	})
+	server.SetShowWindowFunc(a.showWindow)
 
 	// System tray with quick actions (Show / Start all / Pause all / Quit).
 	startTray(ctx, a.GetApiBase())
@@ -61,6 +58,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Native notification when the sleep/shutdown countdown starts.
 	go a.watchFinishCountdown(bgCtx)
+
+	// Native notices for disk-full / failures / all-finished while hidden.
+	go a.watchHidden(bgCtx)
 
 	// Opt-in clipboard watcher: emits "clipboard:url" events for the frontend.
 	go a.watchClipboard(bgCtx)

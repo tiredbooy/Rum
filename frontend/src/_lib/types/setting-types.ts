@@ -27,6 +27,9 @@ export interface Setting {
   minimize_to_tray?: boolean;
   close_to_tray?: boolean;
   enable_clipboard_watch?: boolean;
+  // notify_when_hidden: native notices for disk-full / failures / all-finished
+  // while the window is hidden. Default true.
+  notify_when_hidden?: boolean;
 
   // --- Reliability / integrity (defaults shown; Go: config.Setting) ---
   // verify_integrity: verify every finished download (server-free re-verify via

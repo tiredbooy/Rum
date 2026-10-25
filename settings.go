@@ -42,6 +42,7 @@ type desktopSettings struct {
 	MinimizeToTray       bool
 	CloseToTray          bool
 	EnableClipboardWatch bool
+	NotifyWhenHidden     bool
 	WindowState          windowState
 }
 
@@ -66,7 +67,7 @@ func settingsPath() string {
 // missing or unparseable file yields zero-value defaults (all toggles off) and a
 // nil error, so the desktop layer degrades gracefully and never blocks startup.
 func loadDesktopSettings() *desktopSettings {
-	ds := &desktopSettings{raw: map[string]json.RawMessage{}}
+	ds := &desktopSettings{raw: map[string]json.RawMessage{}, NotifyWhenHidden: true}
 
 	data, err := os.ReadFile(settingsPath())
 	if err != nil {
@@ -83,6 +84,7 @@ func loadDesktopSettings() *desktopSettings {
 	unmarshalBool(ds.raw, "minimize_to_tray", &ds.MinimizeToTray)
 	unmarshalBool(ds.raw, "close_to_tray", &ds.CloseToTray)
 	unmarshalBool(ds.raw, "enable_clipboard_watch", &ds.EnableClipboardWatch)
+	unmarshalBool(ds.raw, "notify_when_hidden", &ds.NotifyWhenHidden)
 	if v, ok := ds.raw["window_state"]; ok {
 		_ = json.Unmarshal(v, &ds.WindowState)
 	}

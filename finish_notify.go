@@ -15,7 +15,6 @@ import (
 
 	"github.com/gen2brain/beeep"
 	"github.com/tiredbooy/Rum/backend/nodesktop"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const finishPollInterval = 2 * time.Second
@@ -198,10 +197,7 @@ func (a *App) fetchFinishPending(ctx context.Context) (*finishPending, bool) {
 func (a *App) watchFinishCountdown(ctx context.Context) {
 	h := finishActionHandler{
 		cancel: func() { postNoBody(a.GetApiBase(), "/api/v1/finish-action/cancel") },
-		show: func() {
-			wruntime.WindowShow(a.ctx)
-			wruntime.WindowUnminimise(a.ctx)
-		},
+		show:   a.showWindow,
 	}
 	finishWatcher{
 		interval: finishPollInterval,

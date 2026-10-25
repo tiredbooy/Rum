@@ -86,6 +86,7 @@ func main() {
 			// it back.
 			if ds.CloseToTray && trayAvailable {
 				runtime.WindowHide(ctx)
+				windowVis.SetHidden(true)
 				return true // prevent close
 			}
 
@@ -131,7 +132,7 @@ func main() {
 			UniqueId: "com.tiredbooy.rum",
 			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
 				if app.ctx != nil {
-					runtime.WindowShow(app.ctx)
+					app.showWindow()
 				}
 			},
 		},

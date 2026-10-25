@@ -20,3 +20,11 @@ func TestDesktopSideEffectsBlockedUnderTest(t *testing.T) {
 		t.Fatalf("notifyDesktop = %v, want ErrBlocked", err)
 	}
 }
+
+func TestHiddenNoteBlockedUnderTest(t *testing.T) {
+	shown := false
+	sendHiddenNote(context.Background(), hiddenNote{Key: "k", Title: "t", Body: "b"}, func() { shown = true })
+	if shown {
+		t.Fatal("hidden notification must not run under test")
+	}
+}

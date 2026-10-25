@@ -129,6 +129,11 @@ type Setting struct {
 	CloseToTray          bool        `json:"close_to_tray"`     // hide to tray instead of quitting
 	EnableClipboardWatch bool        `json:"enable_clipboard_watch"`
 	WindowState          WindowState `json:"window_state"`
+
+	// NotifyWhenHidden sends native notifications for disk-full, non-retryable
+	// failures and "all finished" while the window is hidden or minimised. On by
+	// default.
+	NotifyWhenHidden bool `json:"notify_when_hidden"`
 }
 
 // WindowState persists the desktop window geometry so it can be restored on the
@@ -185,6 +190,7 @@ type SettingReq struct {
 	CloseToTray          *bool        `json:"close_to_tray"`
 	EnableClipboardWatch *bool        `json:"enable_clipboard_watch"`
 	WindowState          *WindowState `json:"window_state"`
+	NotifyWhenHidden     *bool        `json:"notify_when_hidden"`
 
 	// Reliability / integrity, auto-retry/resume, theme, temp/partial. All
 	// pointers so a PATCH only touches what it sends (partial update semantics).
@@ -568,6 +574,9 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.EnableClipboardWatch != nil {
 		s.EnableClipboardWatch = *req.EnableClipboardWatch
 	}
+	if req.NotifyWhenHidden != nil {
+		s.NotifyWhenHidden = *req.NotifyWhenHidden
+	}
 	if req.WindowState != nil {
 		s.WindowState = *req.WindowState
 	}
@@ -700,6 +709,7 @@ func (s *Setting) setDefaults() {
 	s.TempDir = ""
 	s.KeepPartialOnFailure = true
 	s.PreventSleep = true
+	s.NotifyWhenHidden = true
 }
 
 // defaultTrueBools maps the JSON key of every setting that defaults to ON to its
@@ -713,6 +723,7 @@ func (s *Setting) defaultTrueBools() map[string]*bool {
 		"keep_partial_on_failure":  &s.KeepPartialOnFailure,
 		"scheduled_start_enabled":  &s.ScheduledStartEnabled,
 		"prevent_sleep":            &s.PreventSleep,
+		"notify_when_hidden":       &s.NotifyWhenHidden,
 	}
 }
 
