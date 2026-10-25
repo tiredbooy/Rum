@@ -11,6 +11,7 @@ import (
 
 	"fyne.io/systray"
 	"github.com/godbus/dbus/v5"
+	"github.com/tiredbooy/Rum/backend/nodesktop"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -37,6 +38,9 @@ var hostProbe = &cachedProbe{ttl: 3 * time.Second, now: time.Now, probe: probeSN
 
 // probeSNIHost asks the session bus whether a StatusNotifierHost is registered.
 func probeSNIHost() bool {
+	if nodesktop.Blocked() {
+		return false
+	}
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return sniHostUsable(false, false, err)
@@ -66,6 +70,7 @@ type linuxTray struct {
 }
 
 func (t linuxTray) Show() {
+	windowVis.Shown()
 	runtime.WindowShow(t.ctx)
 	runtime.WindowUnminimise(t.ctx)
 }
