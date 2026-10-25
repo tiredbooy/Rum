@@ -74,7 +74,7 @@ func streamLoop(c *gin.Context, flusher http.Flusher, updateCh <-chan dto.Progre
 				flush() // emit whatever is still pending before closing
 				return
 			}
-			pending[update.JobID] = update // keep only the latest per job
+			pending[update.JobID] = mergeUpdate(pending[update.JobID], update)
 		case <-flushTick.C:
 			if len(pending) > 0 && !flush() {
 				return
@@ -86,6 +86,18 @@ func streamLoop(c *gin.Context, flusher http.Flusher, updateCh <-chan dto.Progre
 			flusher.Flush()
 		}
 	}
+}
+
+// mergeUpdate keeps the latest frame but carries the failure fields of the
+// previous one forward when the job is still in the same status, so a late
+// frame without them cannot drop the reason before it is flushed.
+func mergeUpdate(prev, next dto.ProgressUpdate) dto.ProgressUpdate {
+	if next.ErrorCode != "" || next.Error != "" || prev.Status != next.Status || prev.ErrorCode == "" && prev.Error == "" {
+		return next
+	}
+	next.Error, next.ErrorCode, next.Retryable = prev.Error, prev.ErrorCode, prev.Retryable
+	next.NeededBytes, next.FreeBytes, next.DiskPath = prev.NeededBytes, prev.FreeBytes, prev.DiskPath
+	return next
 }
 
 func StreamProgress(c *gin.Context) {

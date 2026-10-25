@@ -60,3 +60,39 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// TestStreamLoopKeepsErrorFields: a trailing frame without error fields (same
+// status) must not erase the failure reason carried by an earlier frame, and
+// plain progress frames must not carry error fields at all.
+func TestStreamLoopKeepsErrorFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.Request = httptest.NewRequest(http.MethodGet, "/stream", nil).WithContext(ctx)
+	flusher := c.Writer.(http.Flusher)
+
+	ch := make(chan dto.ProgressUpdate, 8)
+	done := make(chan struct{})
+	go func() { streamLoop(c, flusher, ch); close(done) }()
+
+	ch <- dto.ProgressUpdate{JobID: "ok", Status: "running", Downloaded: 5}
+	ch <- dto.ProgressUpdate{JobID: "bad", Status: "error", Error: "gone", ErrorCode: "link_expired", Retryable: true}
+	ch <- dto.ProgressUpdate{JobID: "bad", Status: "error"}
+	close(ch)
+	<-done
+
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		switch {
+		case strings.Contains(line, `"job_id":"ok"`):
+			if strings.Contains(line, "error") {
+				t.Errorf("progress frame carries error fields: %s", line)
+			}
+		case strings.Contains(line, `"job_id":"bad"`):
+			if !strings.Contains(line, `"error_code":"link_expired"`) || !strings.Contains(line, `"retryable":true`) {
+				t.Errorf("error fields lost: %s", line)
+			}
+		}
+	}
+}
