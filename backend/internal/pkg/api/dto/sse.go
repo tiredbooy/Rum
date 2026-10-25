@@ -16,4 +16,7 @@ type ProgressUpdate struct {
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
+	// Set on the final frame of a download that was checked against a checksum.
+	ChecksumStatus     string `json:"checksum_status,omitempty"`
+	ChecksumResultAlgo string `json:"checksum_result_algo,omitempty"`
 }

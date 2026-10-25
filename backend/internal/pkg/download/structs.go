@@ -53,6 +53,10 @@ type Options struct {
 	Checksum     string
 	ChecksumAlgo string
 
+	// NoAutoChecksum turns off looking for a published checksum (<url>.sha256,
+	// SHA256SUMS, digest headers, ...) when no checksum was supplied.
+	NoAutoChecksum bool
+
 	// VerifyIntegrity, when true, makes a finished segmented download compute a
 	// full-file SHA-256 and store it in the sidecar/job so a later "verify" can
 	// be performed without the server (server-free re-verification). Structural

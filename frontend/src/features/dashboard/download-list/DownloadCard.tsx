@@ -32,6 +32,7 @@ import { isDiskFull } from "@/_lib/disk-full";
 import { BlockedPageNotice, isBlockedPage } from "./BlockedPageNotice";
 import { ExpiredLinkNotice } from "./ExpiredLinkNotice";
 import { isLinkExpired } from "./link-refresh";
+import { ChecksumNote, isChecksumMismatch } from "./ChecksumNote";
 
 interface DownloadCardProps {
   download: Download;
@@ -244,6 +245,10 @@ function DownloadCardImpl({
 
         {status === "completed" && <OpenActions download={download} />}
 
+        {(status === "completed" || status === "error") && (
+          <ChecksumNote download={download} />
+        )}
+
         {diskFull && <DiskFullNotice download={download} onRetry={onRetry} />}
 
         {isBlockedPage(download) && <BlockedPageNotice download={download} />}
@@ -253,6 +258,7 @@ function DownloadCardImpl({
         {status === "error" &&
           error &&
           !diskFull &&
+          !isChecksumMismatch(download) &&
           !isBlockedPage(download) &&
           !isLinkExpired(download) && (
             <DownloadErrorNote code={download.error_code} error={error} />

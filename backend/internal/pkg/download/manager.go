@@ -812,6 +812,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 
 	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
 	job.SetAllowBlockedPage(false) // the override applies to one run only
+	m.settleChecksum(ctx, job, effectiveOpt, err)
 
 	m.mu.Lock()
 	if ctx.Err() == context.Canceled {
@@ -831,7 +832,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		// a failure and always keeps the partial.
 		// A full disk is waiting for space, not a broken download: the partial and
 		// its sidecar are exactly what the auto-resume will continue from.
-		if _, full := AsDiskFull(err); !full && !effectiveOpt.KeepPartialOnFailure {
+		if _, full := AsDiskFull(err); !full && !effectiveOpt.KeepPartialOnFailure && !keepsFileOnFailure(err) {
 			RemovePartialData(job.GetOutputPath())
 		}
 	}
@@ -855,6 +856,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		Progress:   progressPercent(downloaded, totalSize),
 		ETA:        0,
 	}
+	finalUpdate.ChecksumStatus, finalUpdate.ChecksumResultAlgo, _ = job.GetChecksumResult()
 	if err != nil && finalStatus == StatusError {
 		finalUpdate.Error = err.Error()
 		finalUpdate.ErrorCode, finalUpdate.Retryable = job.GetErrorCode()

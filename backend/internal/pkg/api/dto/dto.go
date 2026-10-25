@@ -146,6 +146,13 @@ type DownloadResponse struct {
 	// the plan itself paused it (it restarts when the window opens).
 	NightQueue  bool `json:"night_queue,omitempty"`
 	NightPaused bool `json:"night_paused,omitempty"`
+	// ChecksumStatus is "verified" or "mismatch" once the file was compared with
+	// a checksum; absent when none was available. ChecksumResultAlgo and
+	// ChecksumSource say which hash ("sha256"|"md5") and where it came from
+	// ("user"|"header"|"sidecar").
+	ChecksumStatus     string `json:"checksum_status,omitempty"`
+	ChecksumResultAlgo string `json:"checksum_result_algo,omitempty"`
+	ChecksumSource     string `json:"checksum_source,omitempty"`
 }
 
 type BatchCreateResponse struct {

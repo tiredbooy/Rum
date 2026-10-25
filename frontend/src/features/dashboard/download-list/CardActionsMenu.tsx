@@ -17,10 +17,12 @@ import type {
 } from "@/_lib/types/download-types";
 import {
   useRepairDownload,
+  useVerifyChecksum,
   useVerifyDownload,
 } from "@/_lib/services/queries/download.queries";
 import {
   Copy,
+  FileCheck2,
   FolderOpen,
   Link2,
   MoreVertical,
@@ -67,9 +69,10 @@ export function CardActionsMenu({
 
   const verify = useVerifyDownload();
   const repair = useRepairDownload();
+  const checksum = useVerifyChecksum();
   const { removeIds } = useUndoableDelete();
   const isCompleted = status === "completed";
-  const busy = verify.isPending || repair.isPending;
+  const busy = verify.isPending || repair.isPending || checksum.isPending;
 
   const handleOpenFolder = () => {
     if (openActionsFor(download).folder) {
@@ -162,6 +165,21 @@ export function CardActionsMenu({
                 <ShieldCheck className="h-3.5 w-3.5" />
               )}
               Verify integrity
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2"
+              disabled={busy}
+              onSelect={(e) => {
+                e.preventDefault();
+                checksum.mutate(id);
+              }}
+            >
+              {checksum.isPending ? (
+                <Spinner className="h-3.5 w-3.5" />
+              ) : (
+                <FileCheck2 className="h-3.5 w-3.5" />
+              )}
+              Verify checksum
             </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2"

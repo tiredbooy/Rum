@@ -74,6 +74,13 @@ type Job struct {
 	IntegrityHash     string `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string `json:"integrity_hash_algo,omitempty"`
 
+	// ChecksumStatus is the outcome of comparing the file with a published or
+	// user-supplied checksum: "verified", "mismatch", or "" (none available).
+	// ChecksumResultAlgo/ChecksumSource say which hash and where it came from.
+	ChecksumStatus     string `json:"checksum_status,omitempty"`
+	ChecksumResultAlgo string `json:"checksum_result_algo,omitempty"`
+	ChecksumSource     string `json:"checksum_source,omitempty"`
+
 	// Interrupted marks a job that was running or queued when the previous
 	// session ended (exit, crash, power loss). It is loaded as paused, and
 	// ResumeInterruptedJobs restarts exactly these, never a job the user paused
@@ -183,6 +190,20 @@ func (j *Job) GetDestPath() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return
 func (j *Job) GetIntegrityHash() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.IntegrityHash }
 
 // SetIntegrityHash records the full-file digest and its algorithm together.
+// GetChecksumResult returns the checksum outcome ("" = none available).
+func (j *Job) GetChecksumResult() (status, algo, source string) {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.ChecksumStatus, j.ChecksumResultAlgo, j.ChecksumSource
+}
+
+// SetChecksumResult records the checksum outcome; "" clears it.
+func (j *Job) SetChecksumResult(status, algo, source string) {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.ChecksumStatus, j.ChecksumResultAlgo, j.ChecksumSource = status, algo, source
+}
+
 func (j *Job) SetIntegrityHash(hash, algo string) {
 	j.Mu.Lock()
 	defer j.Mu.Unlock()
@@ -244,45 +265,48 @@ func (j *Job) SetCancelFunc(c context.CancelFunc) {
 // without copying the embedded sync.RWMutex (which `go vet` rightly forbids).
 // The field tags match Job exactly, so the on-disk format is unchanged.
 type jobJSON struct {
-	ID                string        `json:"id"`
-	URL               string        `json:"url"`
-	FileName          string        `json:"file_name"`
-	OutputPath        string        `json:"output_path"`
-	Status            string        `json:"status"`
-	Priority          string        `json:"priority"`
-	Downloaded        int64         `json:"downloaded"`
-	TotalSize         int64         `json:"total_size"`
-	ContentType       string        `json:"content_type"`
-	SupportRange      bool          `json:"support_range"`
-	Speed             float64       `json:"speed"`
-	RemainingTime     time.Duration `json:"remaining_time"`
-	Error             string        `json:"error,omitempty"`
-	ErrorCode         string        `json:"error_code,omitempty"`
-	Retryable         bool          `json:"retryable,omitempty"`
-	BatchID           string        `json:"batch_id"`
-	CreatedAt         time.Time     `json:"created_at"`
-	CompletedAt       time.Time     `json:"completed_at"`
-	StartAt           time.Time     `json:"start_at,omitempty"`
-	Checksum          string        `json:"checksum,omitempty"`
-	ChecksumAlgo      string        `json:"checksum_algo,omitempty"`
-	Category          string        `json:"category,omitempty"`
-	Referer           string        `json:"referer,omitempty"`
-	UserAgent         string        `json:"user_agent,omitempty"`
-	Cookie            string        `json:"cookie,omitempty"`
-	SpeedLimit        int           `json:"speed_limit,omitempty"`
-	MaxRetries        int           `json:"max_retries,omitempty"`
-	DestPath          string        `json:"dest_path,omitempty"`
-	IntegrityHash     string        `json:"integrity_hash,omitempty"`
-	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
-	Interrupted       bool          `json:"interrupted,omitempty"`
-	NightQueue        bool          `json:"night_queue,omitempty"`
-	NightPaused       bool          `json:"night_paused,omitempty"`
+	ID                 string        `json:"id"`
+	URL                string        `json:"url"`
+	FileName           string        `json:"file_name"`
+	OutputPath         string        `json:"output_path"`
+	Status             string        `json:"status"`
+	Priority           string        `json:"priority"`
+	Downloaded         int64         `json:"downloaded"`
+	TotalSize          int64         `json:"total_size"`
+	ContentType        string        `json:"content_type"`
+	SupportRange       bool          `json:"support_range"`
+	Speed              float64       `json:"speed"`
+	RemainingTime      time.Duration `json:"remaining_time"`
+	Error              string        `json:"error,omitempty"`
+	ErrorCode          string        `json:"error_code,omitempty"`
+	Retryable          bool          `json:"retryable,omitempty"`
+	BatchID            string        `json:"batch_id"`
+	CreatedAt          time.Time     `json:"created_at"`
+	CompletedAt        time.Time     `json:"completed_at"`
+	StartAt            time.Time     `json:"start_at,omitempty"`
+	Checksum           string        `json:"checksum,omitempty"`
+	ChecksumAlgo       string        `json:"checksum_algo,omitempty"`
+	Category           string        `json:"category,omitempty"`
+	Referer            string        `json:"referer,omitempty"`
+	UserAgent          string        `json:"user_agent,omitempty"`
+	Cookie             string        `json:"cookie,omitempty"`
+	SpeedLimit         int           `json:"speed_limit,omitempty"`
+	MaxRetries         int           `json:"max_retries,omitempty"`
+	DestPath           string        `json:"dest_path,omitempty"`
+	IntegrityHash      string        `json:"integrity_hash,omitempty"`
+	IntegrityHashAlgo  string        `json:"integrity_hash_algo,omitempty"`
+	ChecksumStatus     string        `json:"checksum_status,omitempty"`
+	ChecksumResultAlgo string        `json:"checksum_result_algo,omitempty"`
+	ChecksumSource     string        `json:"checksum_source,omitempty"`
+	Interrupted        bool          `json:"interrupted,omitempty"`
+	NightQueue         bool          `json:"night_queue,omitempty"`
+	NightPaused        bool          `json:"night_paused,omitempty"`
 	// Disk-full details, so a job waiting for space still shows the numbers (and
 	// is recognised by the disk watcher) after a restart.
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
-	FinalHost         string        `json:"final_host,omitempty"`
+	FinalHost   string `json:"final_host,omitempty"`
 
 	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
 	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
@@ -298,39 +322,42 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
 	out := jobJSON{
-		ID:                j.ID,
-		URL:               j.URL,
-		FileName:          j.FileName,
-		OutputPath:        j.OutputPath,
-		Status:            j.Status,
-		Priority:          j.Priority,
-		Downloaded:        j.Downloaded,
-		TotalSize:         j.TotalSize,
-		ContentType:       j.ContentType,
-		SupportRange:      j.SupportRange,
-		Speed:             j.Speed,
-		RemainingTime:     j.RemainingTime,
-		Error:             errString(j.Error),
-		ErrorCode:         persistedCode(j.ErrorCode, j.Error != nil),
-		Retryable:         j.Retryable,
-		BatchID:           j.BatchID,
-		CreatedAt:         j.CreatedAt,
-		CompletedAt:       j.CompletedAt,
-		StartAt:           j.StartAt,
-		Checksum:          j.Checksum,
-		ChecksumAlgo:      j.ChecksumAlgo,
-		Category:          j.Category,
-		Referer:           j.Referer,
-		UserAgent:         j.UserAgent,
-		Cookie:            persistedCookie(j),
-		SpeedLimit:        j.SpeedLimit,
-		MaxRetries:        j.MaxRetries,
-		DestPath:          j.DestPath,
-		IntegrityHash:     j.IntegrityHash,
-		IntegrityHashAlgo: j.IntegrityHashAlgo,
-		Interrupted:       j.Interrupted,
-		NightQueue:        j.NightQueue,
-		NightPaused:       j.NightPaused,
+		ID:                 j.ID,
+		URL:                j.URL,
+		FileName:           j.FileName,
+		OutputPath:         j.OutputPath,
+		Status:             j.Status,
+		Priority:           j.Priority,
+		Downloaded:         j.Downloaded,
+		TotalSize:          j.TotalSize,
+		ContentType:        j.ContentType,
+		SupportRange:       j.SupportRange,
+		Speed:              j.Speed,
+		RemainingTime:      j.RemainingTime,
+		Error:              errString(j.Error),
+		ErrorCode:          persistedCode(j.ErrorCode, j.Error != nil),
+		Retryable:          j.Retryable,
+		BatchID:            j.BatchID,
+		CreatedAt:          j.CreatedAt,
+		CompletedAt:        j.CompletedAt,
+		StartAt:            j.StartAt,
+		Checksum:           j.Checksum,
+		ChecksumAlgo:       j.ChecksumAlgo,
+		Category:           j.Category,
+		Referer:            j.Referer,
+		UserAgent:          j.UserAgent,
+		Cookie:             persistedCookie(j),
+		SpeedLimit:         j.SpeedLimit,
+		MaxRetries:         j.MaxRetries,
+		DestPath:           j.DestPath,
+		IntegrityHash:      j.IntegrityHash,
+		IntegrityHashAlgo:  j.IntegrityHashAlgo,
+		ChecksumStatus:     j.ChecksumStatus,
+		ChecksumResultAlgo: j.ChecksumResultAlgo,
+		ChecksumSource:     j.ChecksumSource,
+		Interrupted:        j.Interrupted,
+		NightQueue:         j.NightQueue,
+		NightPaused:        j.NightPaused,
 	}
 	if df, ok := AsDiskFull(j.Error); ok {
 		out.ErrorCode = ErrorCodeDiskFull
@@ -371,43 +398,46 @@ func errString(e error) string {
 // no locking is needed here.
 func (j *Job) UnmarshalJSON(data []byte) error {
 	var in struct {
-		ID                string          `json:"id"`
-		URL               string          `json:"url"`
-		FileName          string          `json:"file_name"`
-		OutputPath        string          `json:"output_path"`
-		Status            string          `json:"status"`
-		Priority          string          `json:"priority"`
-		Downloaded        int64           `json:"downloaded"`
-		TotalSize         int64           `json:"total_size"`
-		ContentType       string          `json:"content_type"`
-		SupportRange      bool            `json:"support_range"`
-		Speed             float64         `json:"speed"`
-		RemainingTime     time.Duration   `json:"remaining_time"`
-		Error             json.RawMessage `json:"error"`
-		ErrorCode         string          `json:"error_code"`
-		Retryable         bool            `json:"retryable"`
-		BatchID           string          `json:"batch_id"`
-		CreatedAt         time.Time       `json:"created_at"`
-		CompletedAt       time.Time       `json:"completed_at"`
-		StartAt           time.Time       `json:"start_at"`
-		Checksum          string          `json:"checksum"`
-		ChecksumAlgo      string          `json:"checksum_algo"`
-		Category          string          `json:"category"`
-		Referer           string          `json:"referer"`
-		UserAgent         string          `json:"user_agent"`
-		Cookie            string          `json:"cookie"`
-		SpeedLimit        int             `json:"speed_limit"`
-		MaxRetries        int             `json:"max_retries"`
-		DestPath          string          `json:"dest_path"`
-		IntegrityHash     string          `json:"integrity_hash"`
-		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
-		Interrupted       bool            `json:"interrupted"`
-		NightQueue        bool            `json:"night_queue"`
-		NightPaused       bool            `json:"night_paused"`
-		NeededBytes       int64           `json:"needed_bytes"`
-		FreeBytes         int64           `json:"free_bytes"`
-		DiskPath          string          `json:"disk_path"`
-		FinalHost         string          `json:"final_host"`
+		ID                 string          `json:"id"`
+		URL                string          `json:"url"`
+		FileName           string          `json:"file_name"`
+		OutputPath         string          `json:"output_path"`
+		Status             string          `json:"status"`
+		Priority           string          `json:"priority"`
+		Downloaded         int64           `json:"downloaded"`
+		TotalSize          int64           `json:"total_size"`
+		ContentType        string          `json:"content_type"`
+		SupportRange       bool            `json:"support_range"`
+		Speed              float64         `json:"speed"`
+		RemainingTime      time.Duration   `json:"remaining_time"`
+		Error              json.RawMessage `json:"error"`
+		ErrorCode          string          `json:"error_code"`
+		Retryable          bool            `json:"retryable"`
+		BatchID            string          `json:"batch_id"`
+		CreatedAt          time.Time       `json:"created_at"`
+		CompletedAt        time.Time       `json:"completed_at"`
+		StartAt            time.Time       `json:"start_at"`
+		Checksum           string          `json:"checksum"`
+		ChecksumAlgo       string          `json:"checksum_algo"`
+		Category           string          `json:"category"`
+		Referer            string          `json:"referer"`
+		UserAgent          string          `json:"user_agent"`
+		Cookie             string          `json:"cookie"`
+		SpeedLimit         int             `json:"speed_limit"`
+		MaxRetries         int             `json:"max_retries"`
+		DestPath           string          `json:"dest_path"`
+		IntegrityHash      string          `json:"integrity_hash"`
+		IntegrityHashAlgo  string          `json:"integrity_hash_algo"`
+		ChecksumStatus     string          `json:"checksum_status"`
+		ChecksumResultAlgo string          `json:"checksum_result_algo"`
+		ChecksumSource     string          `json:"checksum_source"`
+		Interrupted        bool            `json:"interrupted"`
+		NightQueue         bool            `json:"night_queue"`
+		NightPaused        bool            `json:"night_paused"`
+		NeededBytes        int64           `json:"needed_bytes"`
+		FreeBytes          int64           `json:"free_bytes"`
+		DiskPath           string          `json:"disk_path"`
+		FinalHost          string          `json:"final_host"`
 
 		PendingDeleteAt     time.Time `json:"pending_delete_at"`
 		PendingDeleteFile   bool      `json:"pending_delete_file"`
@@ -452,6 +482,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.DestPath = in.DestPath
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
+	j.ChecksumStatus, j.ChecksumResultAlgo, j.ChecksumSource = in.ChecksumStatus, in.ChecksumResultAlgo, in.ChecksumSource
 	j.Interrupted = in.Interrupted
 	j.NightQueue, j.NightPaused = in.NightQueue, in.NightPaused
 	j.FinalHost = in.FinalHost
