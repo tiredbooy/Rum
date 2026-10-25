@@ -45,6 +45,8 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 	var netErr net.Error
 
 	switch {
+	case errors.Is(err, errStalled):
+		return ErrorCodeStalled, true
 	case errors.Is(err, ErrInsufficientDiskSpace), errors.Is(err, syscall.ENOSPC):
 		return ErrCodeDiskFull, false
 	case errors.Is(err, os.ErrPermission), errors.Is(err, syscall.EACCES),
@@ -85,3 +87,8 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 // ErrorCodeDiskFull is the name the disk-full code carries in the disk-full
 // helpers; it is the same value as ErrCodeDiskFull.
 const ErrorCodeDiskFull = ErrCodeDiskFull
+
+// ErrorCodeStalled marks a connection that stayed open but delivered no bytes
+// for the stall timeout; the engine reconnects and resumes from the offset. It
+// is also the final code if the stall outlasts every retry.
+const ErrorCodeStalled = "stalled"

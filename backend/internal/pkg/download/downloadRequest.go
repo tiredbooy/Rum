@@ -65,7 +65,7 @@ func NewDownloader(userAgent, referer string) *Downloader {
 	}
 	client := &http.Client{
 		Jar: jar,
-		// SecureTransport enforces a TLS 1.2 floor and stall timeouts;
+		// SecureTransport enforces a TLS 1.2 floor and a response-header timeout (body stalls are handled by idleReader);
 		// RedirectPolicy caps the redirect chain and strips credentials on
 		// cross-host redirects (both defined in security.go).
 		Transport:     SecureTransport(baseTransport),

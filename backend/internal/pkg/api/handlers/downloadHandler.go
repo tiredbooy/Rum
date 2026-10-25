@@ -466,5 +466,9 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
 		addDiskFull(&resp, job.Error)
 	}
+	if job.GetStallCode() != "" && resp.Error == "" {
+		resp.ErrorCode = download.ErrorCodeStalled
+		resp.Error = "stalled, reconnecting"
+	}
 	return resp
 }

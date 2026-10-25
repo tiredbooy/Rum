@@ -354,6 +354,7 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	var safeProgress ProgressFunc
 	if progressFn != nil {
 		safeProgress = func(d, total int64) {
+			job.ClearStalled() // bytes flowing again: no longer stalled
 			progressMu.Lock()
 			progressFn(d, total)
 			progressMu.Unlock()
@@ -454,6 +455,7 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	}()
 
 	cfg := newRetryConfig(opt)
+	cfg.job = job
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(connections)
@@ -692,13 +694,14 @@ func downloadSegment(
 		val.set(resp.Header.Get("ETag"), resp.Header.Get("Last-Modified"), totalFromContentRange(resp.Header.Get("Content-Range")))
 	}
 
-	var body io.Reader = resp.Body
+	rawBody := newIdleReader(resp.Body, opt.stallTimeout())
+	var body io.Reader = rawBody
 	if opt.Governor != nil {
 		// Shared global cap across all concurrent downloads/segments, honoring live
 		// bandwidth-window changes.
-		body = opt.Governor.Wrap(ctx, resp.Body)
+		body = opt.Governor.Wrap(ctx, rawBody)
 	} else if limiter != nil {
-		body = &rateLimitedReader{reader: resp.Body, limiter: limiter, ctx: ctx}
+		body = &rateLimitedReader{reader: rawBody, limiter: limiter, ctx: ctx}
 	}
 
 	buf := make([]byte, downloadBufferSize)

@@ -133,6 +133,37 @@ func (j *Job) SetIntegrityHash(hash, algo string) {
 	j.IntegrityHashAlgo = algo
 }
 
+// MarkStalled sets the transient ErrorCodeStalled shown while the engine retries
+// a stalled attempt. It shares ErrorCode with SetError but is never persisted.
+func (j *Job) MarkStalled() {
+	j.Mu.Lock()
+	defer j.Mu.Unlock()
+	j.ErrorCode = ErrorCodeStalled
+}
+
+// ClearStalled resets the transient stalled code, leaving real error codes alone.
+// The read-locked pre-check keeps the per-read hot path cheap.
+func (j *Job) ClearStalled() {
+	if j.GetStallCode() == "" {
+		return
+	}
+	j.Mu.Lock()
+	if j.ErrorCode == ErrorCodeStalled {
+		j.ErrorCode = ""
+	}
+	j.Mu.Unlock()
+}
+
+// GetStallCode returns ErrorCodeStalled while a stalled attempt is being retried.
+func (j *Job) GetStallCode() string {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	if j.ErrorCode == ErrorCodeStalled {
+		return ErrorCodeStalled
+	}
+	return ""
+}
+
 func (j *Job) GetInterrupted() bool  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Interrupted }
 func (j *Job) SetInterrupted(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Interrupted = v }
 
@@ -206,7 +237,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Speed:             j.Speed,
 		RemainingTime:     j.RemainingTime,
 		Error:             errString(j.Error),
-		ErrorCode:         j.ErrorCode,
+		ErrorCode:         persistedCode(j.ErrorCode),
 		Retryable:         j.Retryable,
 		BatchID:           j.BatchID,
 		CreatedAt:         j.CreatedAt,
@@ -224,6 +255,14 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		out.NeededBytes, out.FreeBytes, out.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
 	}
 	return json.Marshal(out)
+}
+
+// persistedCode drops the transient stalled code: it would be stale after a crash.
+func persistedCode(c string) string {
+	if c == ErrorCodeStalled {
+		return ""
+	}
+	return c
 }
 
 // errString renders an error as its message, or "" when nil. Used so the Error

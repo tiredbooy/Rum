@@ -57,6 +57,11 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A stalled connection (no bytes within the stall timeout) is transient.
+	if errors.Is(err, errStalled) {
+		return true
+	}
+
 	// HTTP status based decisions.
 	var se *httpStatusError
 	if errors.As(err, &se) {
@@ -148,6 +153,8 @@ type retryConfig struct {
 	maxRetries int
 	base       time.Duration
 	maxDelay   time.Duration
+	// job, when set, gets ErrorCodeStalled while a stalled attempt is retried.
+	job *Job
 }
 
 // newRetryConfig builds a retry config from opt. opt.MaxRetries bounds the retry
@@ -186,6 +193,9 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 
 		lastErr = fn(ctx)
 		if lastErr == nil {
+			if cfg.job != nil {
+				cfg.job.ClearStalled()
+			}
 			return nil
 		}
 		if attempt >= cfg.maxRetries {
@@ -195,6 +205,9 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 			return lastErr
 		}
 
+		if cfg.job != nil && errors.Is(lastErr, errStalled) {
+			cfg.job.MarkStalled()
+		}
 		delay := backoffDelay(attempt, cfg.base, cfg.maxDelay, nil)
 		if err := sleepWithContext(ctx, delay); err != nil {
 			// Cancelled while waiting to retry: surface the original error if
