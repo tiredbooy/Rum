@@ -147,6 +147,12 @@ func (m *JobManager) RestoreJob(jobID string) error {
 	job.clearPendingDelete()
 	m.urls[job.URL] = jobID
 	m.mu.Unlock()
+	// An Undo must not start a night job outside its window: park it for the
+	// night controller instead (it restarts night-paused jobs when it opens).
+	if resume && m.NightHolds(job, time.Now()) {
+		job.SetNightPaused(true)
+		resume = false
+	}
 	m.saveToDisk()
 	if resume {
 		_ = m.StartJob(context.Background(), jobID)
