@@ -445,6 +445,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	}
 	if job.Error != nil {
 		resp.Error = job.Error.Error()
+		resp.ErrorCode, resp.Retryable = job.GetErrorCode()
 	}
 	return resp
 }
