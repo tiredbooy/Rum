@@ -1,6 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { WifiOff, X } from "lucide-react";
+import { Wifi, WifiOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ConnectionBannerProps {
@@ -8,6 +8,12 @@ interface ConnectionBannerProps {
   online: boolean;
   /** Optional message override. */
   message?: string;
+  /** Dismissal resets when this changes, so a new kind of notice is never hidden by an old dismissal. */
+  resetKey?: string;
+  /** "success" for the brief "Back online" notice. */
+  tone?: "warning" | "success";
+  /** Optional trailing action (e.g. a link). */
+  action?: React.ReactNode;
   className?: string;
 }
 
@@ -21,6 +27,9 @@ interface ConnectionBannerProps {
 export function ConnectionBanner({
   online,
   message = "Connection lost. Trying to reconnect…",
+  resetKey,
+  tone = "warning",
+  action,
   className,
 }: ConnectionBannerProps) {
   const reduceMotion = useReducedMotion();
@@ -31,6 +40,10 @@ export function ConnectionBanner({
   React.useEffect(() => {
     if (online) setDismissed(false);
   }, [online]);
+
+  React.useEffect(() => {
+    setDismissed(false);
+  }, [resetKey]);
 
   const visible = !online && !dismissed;
 
@@ -45,12 +58,18 @@ export function ConnectionBanner({
           exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
           transition={{ duration: reduceMotion ? 0 : 0.2 }}
           className={cn(
-            "flex items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm text-foreground",
+            "flex items-center gap-3 border-b px-4 py-2 text-sm text-foreground",
+            tone === "success" ? "border-success/40 bg-success/15" : "border-warning/40 bg-warning/15",
             className
           )}
         >
-          <WifiOff className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          {tone === "success" ? (
+            <Wifi className="size-4 shrink-0 text-success" aria-hidden="true" />
+          ) : (
+            <WifiOff className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          )}
           <span className="flex-1">{message}</span>
+          {action}
           <button
             type="button"
             onClick={() => setDismissed(true)}

@@ -1,17 +1,14 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { DiskFullAlert } from "./DiskFullAlert";
-import { useProgressStore } from "@/stores/download-progress-store";
+import { bannerMessage } from "@/_lib/network-banner";
+import { useNetworkBanner } from "./useNetworkBanner";
 
 export default function Layout() {
-  const online = useProgressStore((s) => s.online);
-  const networkBlocked = useProgressStore((s) => s.networkBlocked);
-  // Two honest states: Rum's own backend is down, or the internet is the problem.
-  const message = online
-    ? `Network problem. ${networkBlocked} ${networkBlocked === 1 ? "download" : "downloads"} can't continue. Check internet or VPN.`
-    : "Rum's engine isn't responding. Retrying…";
+  const { kind, failed } = useNetworkBanner();
+  const back = kind === "back";
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -25,8 +22,20 @@ export default function Layout() {
             <h2 className="text-lg font-semibold">Rum</h2>
           </header>
 
-          {/* Banner: backend unreachable, or downloads blocked by the network. */}
-          <ConnectionBanner online={online && networkBlocked === 0} message={message} />
+          {/* Banner: engine down, internet offline, or briefly back online. */}
+          <ConnectionBanner
+            online={kind === "none"}
+            resetKey={kind}
+            tone={back ? "success" : "warning"}
+            message={bannerMessage(kind, failed)}
+            action={
+              back && failed > 0 ? (
+                <Link to="/failed" className="font-medium underline underline-offset-2">
+                  Retry failed
+                </Link>
+              ) : undefined
+            }
+          />
 
           {/* Downloads stopped by a full disk (resume by themselves). */}
           <DiskFullAlert />
