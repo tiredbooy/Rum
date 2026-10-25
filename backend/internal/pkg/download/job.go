@@ -19,26 +19,26 @@ const (
 
 type Job struct {
 	Mu            sync.RWMutex
-	ID            string             `json:"id"`
-	URL           string             `json:"url"`
-	FileName      string             `json:"file_name"`
-	OutputPath    string             `json:"output_path"`
-	Status        string             `json:"status"`
-	Priority      string             `json:"priority"`
-	Downloaded    int64              `json:"downloaded"`
-	TotalSize     int64              `json:"total_size"`
-	ContentType   string             `json:"content_type"`
-	SupportRange  bool               `json:"support_range"`
-	Speed         float64            `json:"speed"`
-	RemainingTime time.Duration      `json:"remaining_time"`
-	Error         error              `json:"error"`
+	ID            string        `json:"id"`
+	URL           string        `json:"url"`
+	FileName      string        `json:"file_name"`
+	OutputPath    string        `json:"output_path"`
+	Status        string        `json:"status"`
+	Priority      string        `json:"priority"`
+	Downloaded    int64         `json:"downloaded"`
+	TotalSize     int64         `json:"total_size"`
+	ContentType   string        `json:"content_type"`
+	SupportRange  bool          `json:"support_range"`
+	Speed         float64       `json:"speed"`
+	RemainingTime time.Duration `json:"remaining_time"`
+	Error         error         `json:"error"`
 	// ErrorCode/Retryable classify Error (see error_codes.go); set by SetError.
-	ErrorCode string `json:"error_code,omitempty"`
-	Retryable bool   `json:"retryable,omitempty"`
-	BatchID       string             `json:"batch_id"`
-	CancelFunc    context.CancelFunc `json:"-"`
-	CreatedAt     time.Time          `json:"created_at"`
-	CompletedAt   time.Time          `json:"completed_at"`
+	ErrorCode   string             `json:"error_code,omitempty"`
+	Retryable   bool               `json:"retryable,omitempty"`
+	BatchID     string             `json:"batch_id"`
+	CancelFunc  context.CancelFunc `json:"-"`
+	CreatedAt   time.Time          `json:"created_at"`
+	CompletedAt time.Time          `json:"completed_at"`
 	// StartAt, when non-zero, defers automatic start of this job until the time
 	// passes (honored by the schedule controller when scheduled-start is on). A
 	// zero value means start immediately via the normal flow.
@@ -55,8 +55,8 @@ type Job struct {
 	// Referer and UserAgent are request headers and may be sensitive: they are
 	// persisted for resume but never returned by the API or written to logs.
 	// DestPath is the resolved download directory (see ResolveDestPath).
-	Referer    string `json:"referer,omitempty"`
-	UserAgent  string `json:"user_agent,omitempty"`
+	Referer   string `json:"referer,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
 	// Cookie is a ready-made Cookie header value (from the browser extension).
 	// Like Referer it is persisted so a resume still authenticates, but it is
 	// never returned by the API nor logged, and it is dropped on cross-host
@@ -115,7 +115,7 @@ func (j *Job) SetRemainingTime(d time.Duration) {
 	defer j.Mu.Unlock()
 	j.RemainingTime = d
 }
-func (j *Job) GetError() error  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
+func (j *Job) GetError() error { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Error }
 func (j *Job) SetError(e error) {
 	code, retry := ClassifyJobError(e)
 	j.Mu.Lock()
@@ -153,12 +153,12 @@ func (j *Job) SetChecksumAlgo(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Ch
 func (j *Job) GetCategory() string      { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Category }
 func (j *Job) SetCategory(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Category = v }
 
-func (j *Job) GetReferer() string    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Referer }
-func (j *Job) GetUserAgent() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.UserAgent }
-func (j *Job) GetCookie() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Cookie }
-func (j *Job) GetSpeedLimit() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.SpeedLimit }
-func (j *Job) GetMaxRetries() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.MaxRetries }
-func (j *Job) GetDestPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.DestPath }
+func (j *Job) GetReferer() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Referer }
+func (j *Job) GetUserAgent() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.UserAgent }
+func (j *Job) GetCookie() string    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Cookie }
+func (j *Job) GetSpeedLimit() int   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.SpeedLimit }
+func (j *Job) GetMaxRetries() int   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.MaxRetries }
+func (j *Job) GetDestPath() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.DestPath }
 
 func (j *Job) GetIntegrityHash() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.IntegrityHash }
 
@@ -256,7 +256,7 @@ type jobJSON struct {
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
-	FinalHost         string        `json:"final_host,omitempty"`
+	FinalHost   string `json:"final_host,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -292,7 +292,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Category:          j.Category,
 		Referer:           j.Referer,
 		UserAgent:         j.UserAgent,
-		Cookie:            j.Cookie,
+		Cookie:            persistedCookie(j),
 		SpeedLimit:        j.SpeedLimit,
 		MaxRetries:        j.MaxRetries,
 		DestPath:          j.DestPath,
@@ -434,4 +434,14 @@ func parseJobError(raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// persistedCookie is the cookie to write to jobs.json: only while the job can
+// still need it (resume / retry). A finished download keeps no secret on disk.
+// Caller holds j.Mu (MarshalJSON does).
+func persistedCookie(j *Job) string {
+	if j.Status == StatusCompleted {
+		return ""
+	}
+	return j.Cookie
 }

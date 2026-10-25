@@ -40,7 +40,13 @@ func ExtAdd(c *gin.Context) {
 	link := strings.TrimSpace(req.URL)
 
 	if id, known := GlobalManager.GetJobIDByURL(link); known {
-		c.JSON(http.StatusOK, gin.H{"id": id, "duplicate": true})
+		// Only a download still in progress counts as "Rum has it". A finished or
+		// failed one will not be fetched again, so the browser must keep its copy.
+		if job, ok := GlobalManager.GetJob(id); ok && isLiveStatus(job.GetStatus()) {
+			c.JSON(http.StatusOK, gin.H{"id": id, "duplicate": true})
+			return
+		}
+		writeError(c, http.StatusConflict, dto.CodeConflict, "Rum already has this link")
 		return
 	}
 
@@ -49,6 +55,8 @@ func ExtAdd(c *gin.Context) {
 		UserAgent: req.UserAgent,
 		Cookie:    req.Cookie,
 		FileName:  req.Filename,
+		// A link Rum cannot fetch must stay with the browser.
+		RequireProbe: true,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -66,6 +74,10 @@ func ExtAdd(c *gin.Context) {
 		go GlobalManager.StartJob(context.Background(), job.ID)
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": job.ID, "status": string(job.Status)})
+}
+
+func isLiveStatus(st string) bool {
+	return st == download.StatusPending || st == download.StatusRunning || st == download.StatusPaused
 }
 
 // GetExtensionToken returns the pairing token for the Settings screen, creating

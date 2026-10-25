@@ -25,7 +25,8 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 // is never ranged outside the lock (which would be a fatal "concurrent map
 // iteration and map write"). Each *Job marshals under its own lock.
 func PersistJobs(jobs []*Job) error {
-	if err := filesystem.WriteMetadataFile("jobs.json", jobs); err != nil {
+	// 0600: jobs may carry a browser cookie kept for resume.
+	if err := writeJobsFile(jobs); err != nil {
 		writeErrorLog("Failed to save jobs: " + err.Error())
 		return err
 	}
@@ -106,4 +107,12 @@ func readJobsFile() []*Job {
 		recovered = append(recovered, &j)
 	}
 	return recovered
+}
+
+func writeJobsFile(jobs []*Job) error {
+	data, err := json.MarshalIndent(jobs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal jobs.json: %w", err)
+	}
+	return filesystem.AtomicWriteFile(filesystem.CreateMetadataFile("jobs.json"), data, 0o600)
 }

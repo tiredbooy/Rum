@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
+
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
 
 const testCookie = "sid=abc123; theme=dark"
@@ -42,7 +46,8 @@ func TestCookieReachesServerAndIsPersistedButNeverLogged(t *testing.T) {
 		}
 	}
 
-	// Persisted for resume.
+	// Persisted for resume (a finished job drops it; see TestCompletedJobDropsCookieFromDisk).
+	job.SetStatus(StatusPaused)
 	data, _ := json.Marshal(job)
 	var back Job
 	if err := json.Unmarshal(data, &back); err != nil || back.GetCookie() != testCookie {
@@ -77,5 +82,49 @@ func TestSuggestedFileNameWinsAndIsSanitized(t *testing.T) {
 	}
 	if got := jobs[0].FileName; got != "My Movie.mkv" && !strings.HasSuffix(got, "My Movie.mkv") || strings.ContainsAny(got, `/\`) {
 		t.Fatalf("FileName = %q", got)
+	}
+}
+
+func TestCompletedJobDropsCookieFromDisk(t *testing.T) {
+	j := &Job{ID: "x", URL: "http://h/f", Status: StatusCompleted, Cookie: "sid=SECRETVALUE"}
+	data, _ := json.Marshal(j)
+	if strings.Contains(string(data), "SECRETVALUE") {
+		t.Fatalf("finished job must not keep its cookie on disk: %s", data)
+	}
+	j.Status = StatusPaused
+	data, _ = json.Marshal(j)
+	if !strings.Contains(string(data), "SECRETVALUE") {
+		t.Fatalf("unfinished job needs its cookie to resume: %s", data)
+	}
+}
+
+func TestRequireProbeRefusesRejectedLink(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "login required", http.StatusForbidden)
+	}))
+	defer srv.Close()
+	m, _ := newManagerForTest(t, 1)
+	defer m.Shutdown()
+
+	if _, err := m.CreateJobsFromURLsWithOptions([]string{srv.URL + "/f.bin"}, JobCreateOptions{RequireProbe: true}); err == nil {
+		t.Fatal("a link the server refuses must not become a job when RequireProbe is set")
+	}
+	jobs, err := m.CreateJobsFromURLsWithOptions([]string{srv.URL + "/g.bin"}, JobCreateOptions{})
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("default behaviour must stay unchanged: %v", err)
+	}
+}
+
+func TestJobsFileIsPrivate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := PersistJobs([]*Job{{ID: "a", URL: "http://h/f", Status: StatusPaused, Cookie: "sid=1"}}); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(filesystem.CreateMetadataFile("jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Fatalf("jobs.json mode %v, want 0600", fi.Mode().Perm())
 	}
 }

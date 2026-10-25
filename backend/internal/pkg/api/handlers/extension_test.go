@@ -165,3 +165,35 @@ func TestExtOpenCallsHookOrReportsHeadless(t *testing.T) {
 		t.Fatalf("open: %d called=%d", w.Code, called)
 	}
 }
+
+func TestExtAddRefusesLinkRumCannotFetch(t *testing.T) {
+	setupManager(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "login required", http.StatusForbidden)
+	}))
+	defer srv.Close()
+	w := doJSON(t, ExtAdd, http.MethodPost, "/ext/add", "", extAddBody(srv.URL+"/private.bin", ""))
+	if w.Code < 400 {
+		t.Fatalf("status %d: the browser keeps its download unless Rum really has the file", w.Code)
+	}
+	if _, known := GlobalManager.GetJobIDByURL(srv.URL + "/private.bin"); known {
+		t.Fatal("no job should exist for a refused link")
+	}
+}
+
+func TestExtAddDuplicateOfFinishedJobIsNotAccepted(t *testing.T) {
+	setupManager(t)
+	srv := newBatchFileServer(t)
+	defer srv.Close()
+	u := srv.URL + "/done.bin"
+	first := doJSON(t, ExtAdd, http.MethodPost, "/ext/add", "", extAddBody(u, ""))
+	var r struct{ ID string }
+	_ = json.Unmarshal(first.Body.Bytes(), &r)
+	job, _ := GlobalManager.GetJob(r.ID)
+	job.SetStatus("completed")
+
+	second := doJSON(t, ExtAdd, http.MethodPost, "/ext/add", "", extAddBody(u, ""))
+	if second.Code != http.StatusConflict {
+		t.Fatalf("status %d: Rum will not fetch it again, so the browser must", second.Code)
+	}
+}
