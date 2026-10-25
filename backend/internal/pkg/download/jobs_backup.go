@@ -31,7 +31,7 @@ func backupCurrentJobs(path string) {
 	if json.Unmarshal(data, &probe) != nil {
 		return
 	}
-	if err := filesystem.AtomicWriteFile(path+".bak", data, 0o600) // may hold a browser cookie; err != nil {
+	if err := filesystem.AtomicWriteFile(path+".bak", data, 0o600); err != nil { // .bak may hold a browser cookie
 		log.Printf("jobs backup failed: %v", err)
 	}
 }
@@ -67,7 +67,7 @@ func copyCorrupt(path string, data []byte) {
 		}
 		dst = fmt.Sprintf("%s.corrupt-%s-%d", path, time.Now().Format("20060102-150405"), n)
 	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
 		log.Printf("could not keep copy of %s: %v", path, err)
 	}
 }
@@ -105,7 +105,7 @@ func loadJobsWithRecovery(path string) []*Job {
 		keepCorrupt(path + ".bak")
 		return nil
 	}
-	if err := filesystem.AtomicWriteFile(path, bak, 0o644); err != nil {
+	if err := filesystem.AtomicWriteFile(path, bak, 0o600); err != nil {
 		log.Printf("could not rewrite jobs.json from backup: %v", err)
 	}
 	jobsRestored.Store(true)
