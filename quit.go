@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/tiredbooy/Rum/backend/cmd/server"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -38,4 +39,15 @@ func confirmQuitWithDownloads(ctx context.Context, n int) bool {
 		return false
 	}
 	return res == quitPauseLabel
+}
+
+// quitFromTray runs the graceful quit used by the tray menu: it asks first when
+// downloads are running and reports whether the app is quitting.
+func quitFromTray(ctx context.Context) bool {
+	if n := server.ActiveDownloads(); n > 0 && !confirmQuitWithDownloads(ctx, n) {
+		return false
+	}
+	isQuitting = true
+	runtime.Quit(ctx)
+	return true
 }

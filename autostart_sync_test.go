@@ -85,8 +85,8 @@ func TestSyncAutostartToleratesMissingSettings(t *testing.T) {
 // UI can disable the tray switches instead of offering inert ones.
 func TestCapabilitiesReportsTrayAvailability(t *testing.T) {
 	caps := NewApp().Capabilities()
-	if caps.Tray != trayAvailable {
-		t.Fatalf("Capabilities().Tray = %v, want %v", caps.Tray, trayAvailable)
+	if caps.Tray != trayAvailable() {
+		t.Fatalf("Capabilities().Tray = %v, want %v", caps.Tray, trayAvailable())
 	}
 	if caps.Platform == "" {
 		t.Fatal("Capabilities().Platform is empty")

@@ -84,7 +84,7 @@ func main() {
 			// trayAvailable / tray_others.go) fall through to the normal
 			// confirm/quit path so the window can never vanish with no way to bring
 			// it back.
-			if ds.CloseToTray && trayAvailable {
+			if shouldHideOnClose(ds.CloseToTray, trayAvailable()) {
 				runtime.WindowHide(ctx)
 				return true // prevent close
 			}

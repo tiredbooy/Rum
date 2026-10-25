@@ -195,7 +195,7 @@ func (a *App) watchMinimize(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if !loadDesktopSettings().MinimizeToTray {
+			if !loadDesktopSettings().MinimizeToTray || !trayAvailable() {
 				continue
 			}
 			if runtime.WindowIsMinimised(a.ctx) {
