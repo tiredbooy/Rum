@@ -7,6 +7,7 @@ import (
 	_ "embed"
 
 	"github.com/getlantern/systray"
+	"github.com/tiredbooy/Rum/backend/cmd/server"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -60,6 +61,9 @@ func startTray(ctx context.Context, apiBase string) {
 					case <-mPauseAll.ClickedCh:
 						postNoBody(apiBase, "/api/v1/downloads/pause-all")
 					case <-mQuit.ClickedCh:
+						if n := server.ActiveDownloads(); n > 0 && !confirmQuitWithDownloads(ctx, n) {
+							continue
+						}
 						close(done)
 						// Mark intentional quit so OnBeforeClose lets the app exit
 						// instead of hiding to tray.

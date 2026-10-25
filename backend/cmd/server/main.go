@@ -324,36 +324,76 @@ func Serve() {
 	}()
 	log.Printf("Rum API server listening on %s", APIBase())
 
+	// Periodic backstop: a crash or power loss mid-download then costs at most
+	// a few seconds of progress metadata in jobs.json.
+	if mgr != nil {
+		go mgr.RunPeriodicPersist(rootCtx, persistInterval)
+	}
+
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
 	log.Println("Shutting down server...")
-
-	// Stop the controller and the manager dispatcher before closing the HTTP
-	// server so no new downloads are scheduled mid-shutdown.
-	if ctrl != nil {
-		ctrl.Stop()
-	}
-	if dw != nil {
-		dw.Stop()
-	}
-	if res != nil {
-		res.Stop()
-	}
-	srvMu.Lock()
-	if rootCancel != nil {
-		rootCancel()
-	}
-	srvMu.Unlock()
-	if mgr != nil {
-		mgr.Shutdown()
-	}
+	GracefulStop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
+}
+
+// persistInterval is how often running jobs are flushed to jobs.json.
+const persistInterval = 5 * time.Second
+
+// quitDeadline bounds the whole pause-and-save sequence on quit.
+const quitDeadline = 8 * time.Second
+
+var stopOnce sync.Once
+
+// GracefulStop pauses running downloads, saves their state and stops the
+// background controllers, within quitDeadline. It is idempotent and shared by
+// the signal path and the Wails shutdown hook, so whichever fires first does
+// the work and the other returns immediately.
+func GracefulStop() {
+	stopOnce.Do(func() {
+		srvMu.Lock()
+		ctrl, res, mgr, cancel := controller, resumer, manager, rootCancel
+		dw := diskWatch
+		srvMu.Unlock()
+
+		// Stop the background controllers first so none restarts a job while
+		// the manager is pausing them.
+		if ctrl != nil {
+			ctrl.Stop()
+		}
+		if dw != nil {
+			dw.Stop()
+		}
+		if res != nil {
+			res.Stop()
+		}
+		if cancel != nil {
+			cancel()
+		}
+		if mgr != nil {
+			ctx, done := context.WithTimeout(context.Background(), quitDeadline)
+			defer done()
+			mgr.GracefulShutdown(ctx)
+		}
+	})
+}
+
+// ActiveDownloads reports how many downloads are running right now, so the
+// desktop layer can warn before quitting.
+func ActiveDownloads() int {
+	srvMu.Lock()
+	mgr := manager
+	srvMu.Unlock()
+	if mgr == nil {
+		return 0
+	}
+	return mgr.ActiveCount()
 }
 
 // Start preserves the original entry point: it binds the server (Listen) and

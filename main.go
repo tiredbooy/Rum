@@ -89,6 +89,16 @@ func main() {
 				return true // prevent close
 			}
 
+			// Downloads running: one combined prompt (replaces the generic confirm).
+			if n := server.ActiveDownloads(); n > 0 {
+				if !confirmQuitWithDownloads(ctx, n) {
+					return true // user cancelled: keep the window open
+				}
+				isQuitting = true
+				runtime.Quit(ctx)
+				return false
+			}
+
 			if !ds.ConfirmOnExit {
 				// No confirmation needed – quit the app directly
 				isQuitting = true
@@ -114,8 +124,8 @@ func main() {
 				runtime.Quit(ctx)
 				return false
 			}
-			// User clicked Cancel – do nothing
-			return false
+			// User clicked Cancel – keep the window open
+			return true
 		},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "com.tiredbooy.rum",
