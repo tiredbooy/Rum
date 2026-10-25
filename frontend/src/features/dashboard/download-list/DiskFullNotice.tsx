@@ -1,6 +1,7 @@
 import type { Download } from "@/_lib/types/download-types";
 import { diskFullHeadline } from "@/_lib/disk-full";
 import { Button } from "@/components/ui/button";
+import { OpenActions } from "./OpenActions";
 import { HardDrive, RotateCcw } from "lucide-react";
 
 interface DiskFullNoticeProps {
@@ -27,6 +28,7 @@ export function DiskFullNotice({ download, onRetry }: DiskFullNoticeProps) {
           {disk_path ? `${disk_path} · ` : ""}Resumes by itself
         </p>
       </div>
+      <OpenActions download={download} withOpen={false} />
       <Button
         variant="outline"
         size="sm"

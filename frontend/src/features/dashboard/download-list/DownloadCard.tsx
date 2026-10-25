@@ -26,6 +26,7 @@ import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
 import { DownloadErrorNote } from "./DownloadErrorNote";
 import { DiskFullNotice } from "./DiskFullNotice";
+import { OpenActions } from "./OpenActions";
 import { isDiskFull } from "@/_lib/disk-full";
 import { BlockedPageNotice, isBlockedPage } from "./BlockedPageNotice";
 import { ExpiredLinkNotice } from "./ExpiredLinkNotice";
@@ -238,6 +239,8 @@ function DownloadCardImpl({
             </div>
           </div>
         )}
+
+        {status === "completed" && <OpenActions download={download} />}
 
         {diskFull && <DiskFullNotice download={download} onRetry={onRetry} />}
 

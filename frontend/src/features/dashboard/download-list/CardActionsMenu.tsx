@@ -28,6 +28,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { priorityConfig } from "./PriorityBadge";
+import { openActionsFor, showInFolder } from "@/_lib/open-download";
 
 interface CardActionsMenuProps {
   download: Download;
@@ -68,7 +69,11 @@ export function CardActionsMenu({
   const busy = verify.isPending || repair.isPending;
 
   const handleOpenFolder = () => {
-    if (dest_path) {
+    if (openActionsFor(download).folder) {
+      void showInFolder(download).then((r) => {
+        if (r.status === "failed") toast.error("Can't open it. Check the file still exists.");
+      });
+    } else if (dest_path) {
       // No reveal-in-folder binding yet — copy the destination path instead.
       void copyToClipboard(dest_path, "Folder path");
     } else {

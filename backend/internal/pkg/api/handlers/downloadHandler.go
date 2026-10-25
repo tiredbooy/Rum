@@ -489,6 +489,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		TotalSize:  job.TotalSize,
 		Speed:      job.GetSpeed(),
 		Category:   job.GetCategory(),
+		OutputPath: job.GetOutputPath(),
 	}
 	if e := job.GetError(); e != nil {
 		resp.Error = e.Error()
