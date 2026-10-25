@@ -17,6 +17,8 @@
 $script:RumGoBin = ""
 $script:RumGoVer = ""
 $script:RumGoSource = ""
+# Windows PowerShell 5.1 may default to TLS 1.0/1.1, which every mirror rejects.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]3072 } catch { Write-Verbose $_.Exception.Message }
 $script:RumGoOlderBin = ""
 $script:RumGoOlderVer = ""
 $script:RumGoSpareBin = ""
@@ -39,7 +41,7 @@ function ConvertTo-RumVer([string]$v) {
         $patch = 0
         if ($Matches[3]) { $patch = [int]$Matches[3] }
         $final = 1
-        if ($Matches[4] -match '^(rc|beta|alpha)') { $final = 0 }
+        if ($Matches[4] -match '^(rc|beta|alpha|-pre)') { $final = 0 }
         return @([int]$Matches[1], [int]$Matches[2], $patch, $final)
     }
     return $null

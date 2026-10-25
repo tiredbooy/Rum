@@ -56,7 +56,7 @@ rum_ver_norm() {
   local v="${1#go version }" re='^([0-9]+)\.([0-9]+)(\.([0-9]+))?(.*)$' pre=1
   v="${v%% *}"; v="${v#go}"; v="${v#v}"
   [[ "$v" =~ $re ]] || return 1
-  case "${BASH_REMATCH[5]}" in rc*|beta*|alpha*) pre=0 ;; esac
+  case "${BASH_REMATCH[5]}" in rc*|beta*|alpha*|-pre*) pre=0 ;; esac
   printf '%d %d %d %d' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[4]:-0}" "$pre"
 }
 
