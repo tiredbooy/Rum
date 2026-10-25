@@ -30,6 +30,10 @@ type Options struct {
 	MaxRetries int
 	Silent     bool
 
+	// StallTimeout aborts and retries (Range-resumes) a response body that
+	// delivers no bytes for this long. 0 = default (30s); negative = disabled.
+	StallTimeout time.Duration
+
 	// Connections is the number of concurrent connections (segments) to use
 	// for a single download when the server supports HTTP Range requests and
 	// the total size is known and large enough. 0 or 1 => single-stream

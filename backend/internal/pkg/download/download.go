@@ -100,12 +100,15 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 		offset = 0
 	}
 
-	var body io.ReadCloser = resp.Body
+	// Stall watchdog wraps the raw network body, inside any rate limiter, so
+	// limiter waits never count as a stall.
+	rawBody := newIdleReader(resp.Body, opt.stallTimeout())
+	var body io.ReadCloser = rawBody
 	if opt.Governor != nil {
 		// Shared, live-adjustable global cap (desktop server path). The governor
 		// enforces one budget across all concurrent downloads and honors live
 		// bandwidth-window changes.
-		body = opt.Governor.Wrap(ctx, resp.Body)
+		body = opt.Governor.Wrap(ctx, rawBody)
 	} else {
 		// Engine/CLI path: per-download limiter. Per-job override (opt.SpeedLimit,
 		// KB/s) takes precedence; otherwise fall back to the global setting.
@@ -119,7 +122,7 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 		}
 		if limiter := newSpeedLimiter(limitKB); limiter != nil {
 			body = &rateLimitedReader{
-				reader:  resp.Body,
+				reader:  rawBody,
 				limiter: limiter,
 				ctx:     ctx,
 			}

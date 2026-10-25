@@ -50,6 +50,11 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A stalled connection (no bytes within the stall timeout) is transient.
+	if errors.Is(err, errStalled) {
+		return true
+	}
+
 	// HTTP status based decisions.
 	var se *httpStatusError
 	if errors.As(err, &se) {
