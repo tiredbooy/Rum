@@ -60,3 +60,14 @@ func (r *idleReader) Read(p []byte) (int, error) {
 }
 
 func (r *idleReader) Close() error { return r.rc.Close() }
+
+// stalledFinalMessage is the persisted text of a job that failed because stall
+// retries ran out (errStalled's own text describes a retry in flight).
+const stalledFinalMessage = "Connection stalled \u2014 no data received"
+
+// stalledFinalError is the final-failure form of errStalled: it still matches
+// errors.Is(err, errStalled), so the retry/reconnect logic treats it as transient.
+type stalledFinalError struct{}
+
+func (stalledFinalError) Error() string        { return stalledFinalMessage }
+func (stalledFinalError) Is(target error) bool { return target == errStalled }
