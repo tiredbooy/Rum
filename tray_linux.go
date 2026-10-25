@@ -30,8 +30,10 @@ var trayStarted atomic.Bool
 // on every call (cheap D-Bus property read) so closing to tray never hides the
 // window when the host has vanished since launch.
 func trayAvailable() bool {
-	return trayStarted.Load() && probeSNIHost()
+	return trayStarted.Load() && hostProbe.Get()
 }
+
+var hostProbe = &cachedProbe{ttl: 3 * time.Second, now: time.Now, probe: probeSNIHost}
 
 // probeSNIHost asks the session bus whether a StatusNotifierHost is registered.
 func probeSNIHost() bool {

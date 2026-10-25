@@ -1,5 +1,10 @@
 package main
 
+import (
+	"sync"
+	"time"
+)
+
 // trayAction is one entry of the tray menu.
 type trayAction int
 
@@ -45,4 +50,26 @@ func sniHostUsable(watcherPresent, hostRegistered bool, err error) bool {
 // asked for it AND a tray icon is alive to restore the window from.
 func shouldHideOnClose(closeToTray, trayAlive bool) bool {
 	return closeToTray && trayAlive
+}
+
+// cachedProbe memoizes a boolean probe for ttl so hot paths (the 400ms minimize
+// poll) do not open a D-Bus connection on every call.
+type cachedProbe struct {
+	mu    sync.Mutex
+	ttl   time.Duration
+	now   func() time.Time
+	probe func() bool
+	at    time.Time
+	val   bool
+	set   bool
+}
+
+func (c *cachedProbe) Get() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.set && c.now().Sub(c.at) < c.ttl {
+		return c.val
+	}
+	c.val, c.at, c.set = c.probe(), c.now(), true
+	return c.val
 }

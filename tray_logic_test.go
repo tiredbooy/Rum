@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestSNIHostUsable(t *testing.T) {
@@ -58,5 +59,19 @@ func TestDispatchTrayAction(t *testing.T) {
 	dispatchTrayAction(trayAction(99), f)
 	if len(f.calls) != 0 {
 		t.Errorf("unknown action must be a no-op, got %v", f.calls)
+	}
+}
+
+func TestCachedProbeReusesResultWithinTTL(t *testing.T) {
+	now := time.Unix(0, 0)
+	calls := 0
+	c := &cachedProbe{ttl: 5 * time.Second, now: func() time.Time { return now },
+		probe: func() bool { calls++; return calls == 1 }}
+	if !c.Get() || !c.Get() || calls != 1 {
+		t.Fatalf("within TTL must reuse first result, calls=%d", calls)
+	}
+	now = now.Add(6 * time.Second)
+	if c.Get() || calls != 2 {
+		t.Fatalf("after TTL must re-probe, calls=%d", calls)
 	}
 }
