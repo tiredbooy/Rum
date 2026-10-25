@@ -24,9 +24,11 @@ import {
   FolderOpen,
   Link2,
   MoreVertical,
+  Trash2,
   ShieldCheck,
   Wrench,
 } from "lucide-react";
+import { useUndoableDelete } from "@/_lib/services/queries/undo-delete.queries";
 import { priorityConfig } from "./PriorityBadge";
 
 interface CardActionsMenuProps {
@@ -64,6 +66,7 @@ export function CardActionsMenu({
 
   const verify = useVerifyDownload();
   const repair = useRepairDownload();
+  const { removeIds } = useUndoableDelete();
   const isCompleted = status === "completed";
   const busy = verify.isPending || repair.isPending;
 
@@ -194,6 +197,15 @@ export function CardActionsMenu({
         <DropdownMenuItem className="gap-2" onClick={handleOpenFolder}>
           <FolderOpen className="h-3.5 w-3.5" />
           Open folder
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="gap-2 text-destructive focus:text-destructive"
+          onClick={() => void removeIds([id], true)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete file
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

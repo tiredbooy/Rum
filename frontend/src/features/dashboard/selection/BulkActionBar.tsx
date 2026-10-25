@@ -3,15 +3,11 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { useDownloads } from "@/_lib/services/queries/download.queries";
 import type { Download } from "@/_lib/types/download-types";
@@ -26,7 +22,8 @@ import { useBulkActions, type BulkActionKind } from "./useBulkActions";
  *
  * Accessibility: rendered in a `role="toolbar"` region with an aria-label and a
  * polite live region announcing the count; the destructive delete goes through
- * an AlertDialog confirm.
+ * a dropdown (Remove from list / Delete file) and
+ * is undoable from the toast, so there is no confirm dialog.
  */
 export function BulkActionBar() {
   const selectedIds = useSelection((s) => s.selectedIds);
@@ -42,16 +39,15 @@ export function BulkActionBar() {
     return list.filter((d: Download) => selectedIds.has(d.id));
   }, [allDownloads, selectedIds]);
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, setPending] = useState<BulkActionKind | null>(null);
 
   const count = selectedIds.size;
 
-  const handle = async (kind: BulkActionKind) => {
+  const handle = async (kind: BulkActionKind, deleteFile = false) => {
     if (pending) return;
     setPending(kind);
     try {
-      await run(kind, selected);
+      await run(kind, selected, { deleteFile });
       if (kind === "delete") clear();
     } finally {
       setPending(null);
@@ -127,20 +123,34 @@ export function BulkActionBar() {
                 )}
                 Retry
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 h-8 text-destructive hover:text-destructive"
-                onClick={() => setConfirmDelete(true)}
-                disabled={pending !== null}
-              >
-                {pending === "delete" ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <Trash2 className="size-3.5" />
-                )}
-                Delete
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 h-8 text-destructive hover:text-destructive"
+                    disabled={pending !== null}
+                  >
+                    {pending === "delete" ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                    Delete
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top">
+                  <DropdownMenuItem onSelect={() => void handle("delete")}>
+                    Remove from list
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => void handle("delete", true)}
+                  >
+                    Delete file
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
               <Button
@@ -159,31 +169,6 @@ export function BulkActionBar() {
         )}
       </AnimatePresence>
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {count} download{count === 1 ? "" : "s"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the selected download{count === 1 ? "" : "s"} and
-              their partial files. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                setConfirmDelete(false);
-                void handle("delete");
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

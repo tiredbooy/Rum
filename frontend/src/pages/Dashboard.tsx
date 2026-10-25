@@ -1,9 +1,8 @@
 import {
-  useDeleteDownloads,
   usePauseAllDownloads,
   useStartAllDownloads
 } from "@/_lib/services/queries/download.queries";
-import type { DownloadStatus } from "@/_lib/types/download-types";
+import { useUndoableDelete } from "@/_lib/services/queries/undo-delete.queries";
 import DownloadDialog from "@/features/dashboard/create-download/DownloadDialog";
 import { DownloadStatusPage } from "@/features/dashboard/download-list/DownloadStatusPage";
 import { FilterTabs } from "@/features/dashboard/FilterTabs";
@@ -21,7 +20,7 @@ export default function Dashboard() {
 
   const startDownloads = useStartAllDownloads();
   const pauseDownloads = usePauseAllDownloads();
-  const deleteDownloads = useDeleteDownloads();
+  const { removeByStatus } = useUndoableDelete();
   const clearSelection = useSelection((s) => s.clear);
 
   // Escape clears an active bulk selection (when not typing in a field).
@@ -85,13 +84,11 @@ export default function Dashboard() {
   };
 
   const handleDeleteCompleteds = () => {
-    deleteDownloads.mutateAsync("completed");
+    void removeByStatus("completed");
   };
 
   const handleDeleteAll = () => {
-    // The DELETE endpoint accepts status=all; the shared hook is typed to
-    // DownloadStatus, so widen here (the API + backend explicitly support "all").
-    deleteDownloads.mutateAsync("all" as DownloadStatus);
+    void removeByStatus("all");
     clearSelection();
   };
 
