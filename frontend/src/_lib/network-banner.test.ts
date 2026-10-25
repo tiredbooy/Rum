@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerMessage, expireBack, nextBannerKind } from "./network-banner";
+import { bannerMessage, expireBack, isInternetOnline, nextBannerKind } from "./network-banner";
 
 const up = { engineUp: true, internetOnline: true };
 
@@ -40,5 +40,23 @@ describe("bannerMessage", () => {
   });
   it("is empty for none", () => {
     expect(bannerMessage("none", 0)).toBe("");
+  });
+});
+
+describe("isInternetOnline", () => {
+  it("treats a blocked site as online, so no offline banner", () => {
+    const s = { online: true, state: "site_blocked" };
+    expect(isInternetOnline(s)).toBe(true);
+    expect(nextBannerKind("none", { engineUp: true, internetOnline: isInternetOnline(s) })).toBe("none");
+  });
+  it("is offline only for a real outage", () => {
+    expect(isInternetOnline({ online: false, state: "offline" })).toBe(false);
+    expect(isInternetOnline({ online: false })).toBe(false);
+  });
+  it("reads unknown as online", () => {
+    expect(isInternetOnline(undefined)).toBe(true);
+  });
+  it("words the offline banner plainly", () => {
+    expect(bannerMessage("offline", 0)).toBe("No internet. Check your connection.");
   });
 });

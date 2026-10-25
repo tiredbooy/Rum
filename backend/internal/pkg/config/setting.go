@@ -64,7 +64,10 @@ type Setting struct {
 	} `json:"post_download,omitempty"`
 	FileConflict string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        string `json:"proxy,omitempty"`
-	LogLevel     string `json:"log_level"` // "info", "debug"
+	// ProbeEndpoints overrides the URLs used to tell "no internet" from "this
+	// site is blocked". Empty uses the built-in list. Edited in settings.json.
+	ProbeEndpoints []string `json:"probe_endpoints,omitempty"`
+	LogLevel       string   `json:"log_level"` // "info", "debug"
 
 	// Categories drive auto-organize: a finished download whose extension matches
 	// a rule is moved into the rule's DestDir. EnableCategories is the master

@@ -9,6 +9,16 @@ interface BannerInput {
 }
 
 /**
+ * Whether to treat the internet as reachable. A blocked site (state
+ * "site_blocked") is NOT an outage: only a real "offline" counts. Unknown
+ * (engine down / not fetched yet) reads as online: no evidence, no banner.
+ */
+export function isInternetOnline(status?: { online: boolean; state?: string }): boolean {
+  if (!status) return true;
+  return status.state ? status.state !== "offline" : status.online;
+}
+
+/**
  * Next banner state from current connectivity, not from error history: the
  * network notice shows only while offline, then "back" once it returns.
  */
@@ -31,7 +41,7 @@ export function bannerMessage(kind: BannerKind, failed: number): string {
     case "offline":
       return failed > 0
         ? `Network problem. ${failed} ${failed === 1 ? "download" : "downloads"} can't continue. Check internet or VPN.`
-        : "No internet. Downloads resume when it returns.";
+        : "No internet. Check your connection.";
     case "back":
       return failed > 0 ? "Back online. Some downloads failed." : "Back online.";
     default:
