@@ -480,6 +480,18 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	g, gctx := errgroup.WithContext(withBlockJob(ctx, job))
 	g.SetLimit(connections)
 
+	// Slow-segment watchdog: reopens a segment crawling far below its siblings.
+	slowCfg := defaultSlowConfig()
+	if opt.slowCfg != nil {
+		slowCfg = *opt.slowCfg
+	}
+	slowMon := newSlowMonitor(slowCfg, segDone, func() bool {
+		return limiter != nil || (opt.Governor != nil && opt.Governor.Limiter() != nil)
+	})
+	slowCtx, stopSlow := context.WithCancel(gctx)
+	defer stopSlow()
+	go slowMon.run(slowCtx)
+
 	for i := range segs {
 		seg := segs[i]
 		idx := i
@@ -490,13 +502,25 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 			segCfg := cfg
 			segCfg.progress = segDone[idx].Load
 			return retryWithBackoff(gctx, segCfg, func(ctx context.Context) error {
-				return downloadSegment(ctx, opt, url, outFile, &segDone[idx], seg,
-					limiter, atomicDownloaded, totalSize, safeProgress, val)
+				for {
+					connCtx, cancel := context.WithCancelCause(ctx)
+					slowMon.attach(idx, cancel)
+					err := downloadSegment(connCtx, opt, url, outFile, &segDone[idx], seg,
+						limiter, atomicDownloaded, totalSize, safeProgress, val)
+					slowMon.detach(idx)
+					slowRestart := err != nil && ctx.Err() == nil && errors.Is(context.Cause(connCtx), errSlowRestart)
+					cancel(nil)
+					if slowRestart {
+						continue // reopen from the current offset; not a failure
+					}
+					return err
+				}
 			})
 		})
 	}
 
 	err = g.Wait()
+	stopSlow()
 
 	// Stop persistence and block until the final durable snapshot has been
 	// written. We do this for EVERY exit path (success, pause, error) so we never

@@ -34,6 +34,9 @@ type Options struct {
 	// delivers no bytes for this long. 0 = default (30s); negative = disabled.
 	StallTimeout time.Duration
 
+	// slowCfg overrides the slow-segment detector (tests only); nil = defaults.
+	slowCfg *slowConfig
+
 	// JobSpeedLimit is a per-download cap in KB/s (0 = none) that applies IN
 	// ADDITION to the shared Governor. SpeedLimit alone cannot express it because
 	// the manager's global limit is also stored there and, with a Governor
