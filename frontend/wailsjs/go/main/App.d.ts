@@ -21,3 +21,5 @@ export function ResumedOnLaunch():Promise<number>;
 export function RevealDownload(arg1:string):Promise<void>;
 
 export function SaveTextFile(arg1:string,arg2:string):Promise<boolean>;
+
+export function SetWindowVisible(arg1:boolean):Promise<void>;

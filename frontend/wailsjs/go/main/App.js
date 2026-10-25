@@ -41,3 +41,7 @@ export function RevealDownload(arg1) {
 export function SaveTextFile(arg1, arg2) {
   return window['go']['main']['App']['SaveTextFile'](arg1, arg2);
 }
+
+export function SetWindowVisible(arg1) {
+  return window['go']['main']['App']['SetWindowVisible'](arg1);
+}

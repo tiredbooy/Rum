@@ -41,6 +41,9 @@ type downloadItem struct {
 	OutputPath string `json:"output_path"`
 	ErrorCode  string `json:"error_code"`
 	DiskPath   string `json:"disk_path"`
+	// Used by the hidden-window notifier.
+	Retryable   bool  `json:"retryable"`
+	NeededBytes int64 `json:"needed_bytes"`
 }
 
 // watchCompletions polls {APIBase}/api/v1/downloads?status=completed and fires a
@@ -202,6 +205,7 @@ func (a *App) watchMinimize(ctx context.Context) {
 				// Un-minimise first so the next WindowShow restores cleanly, then hide.
 				runtime.WindowUnminimise(a.ctx)
 				runtime.WindowHide(a.ctx)
+				windowVis.SetHidden(true)
 			}
 		}
 	}
