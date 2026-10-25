@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rum options</title>
+  <link rel="stylesheet" href="ui.css">
+  <style>main { max-width: 440px; margin: 0 auto; padding-top: 32px; }</style>
+</head>
+<body>
+  <main>
+    <h1>Rum options</h1>
+    <form id="form" class="grid" style="display:grid;gap:12px" autocomplete="off">
+      <label for="token">Pairing token
+        <input type="password" id="token" spellcheck="false" autocomplete="off">
+        <span class="muted">Copy it from Rum, Settings, Browser extension.</span>
+      </label>
+      <label for="port">Port
+        <input type="number" id="port" min="1" max="65535">
+        <span class="muted">Rum uses 8080 unless it is busy.</span>
+      </label>
+      <div class="row"><label for="auto"><input type="checkbox" id="auto"> Capture browser downloads</label></div>
+      <label for="min">Minimum size (MB)
+        <input type="number" id="min" min="0" step="1">
+      </label>
+      <div class="row">
+        <button type="submit" class="primary">Save</button>
+        <span id="result" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

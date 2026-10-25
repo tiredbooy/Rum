@@ -67,6 +67,9 @@ TUI all share.
 **Add downloads**
 - ➕ Single or **batch** (paste many URLs at once), with optional checksum,
   category, and scheduled-start.
+- 🌐 **Browser extension** (Chrome, Edge, Brave, Firefox): right-click a link
+  or send big browser downloads to Rum automatically.
+  See **[browser-extension/README.md](browser-extension/README.md)**.
 
 ## Install
 
