@@ -15,6 +15,7 @@ import { StorageSettings } from "./StorageSettings";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
+import { BrowserExtensionSettings } from "./BrowserExtensionSettings";
 
 export function SettingsForm() {
   return (
@@ -47,6 +48,9 @@ export function SettingsForm() {
 
       {/* Desktop preferences (PATCH /settings) */}
       <DesktopSettings />
+
+      {/* Browser-extension pairing token (GET/POST /extension/token) */}
+      <BrowserExtensionSettings />
     </div>
   );
 }
