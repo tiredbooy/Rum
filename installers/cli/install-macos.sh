@@ -18,6 +18,18 @@
 #   --dry-run      Detect, print the plan, and exit without changing the system.
 #   -h, --help     Show this help.
 #
+# Go: a Go that is already installed (PATH, /opt/homebrew, /usr/local/go, ~/sdk, ...)
+# and meets go.mod is used as-is with GOTOOLCHAIN=local; nothing is downloaded.
+# Only if none fits is Go fetched (go.dev, dl.google.com, then non-Google
+# mirrors, sha256-verified).
+#   RUM_GO_ROOT=DIR          use the Go in DIR (a GOROOT)
+#   RUM_GO_MIRROR=URL        try URL/go<ver>.<os>-<arch>.tar.gz first
+#   RUM_GO_NO_DOWNLOAD=1     never download Go (fail with instructions)
+#   GOPROXY / GOSUMDB        respected; a fallback chain is used only if the
+#                            default proxy is unreachable and you set neither
+#
+
+# shellcheck disable=SC2034  # shared constants are read by installers/lib/rum-go.sh
 set -Eeuo pipefail
 
 APP="rum"
@@ -29,7 +41,6 @@ PREFIX="${PREFIX:-}"
 MIRROR=""
 DEFAULT_MIRROR="https://go.devneeds.ir/"
 IRANIAN_GOPROXY="https://mirror-go.runflare.com|https://package-mirror.liara.ir/repository/go|https://mirror.abrha.net/repository/go|${DEFAULT_MIRROR%/}"
-BUILTIN_GOPROXY="${IRANIAN_GOPROXY}|https://proxy.golang.org,direct"
 RETRY_MAX="${RUM_RETRY_MAX:-5}"
 GO_DL_BASE="${RUM_GO_DL_BASE:-https://go.dev/dl}"
 GO_GOOGLE_DL="${RUM_GO_GOOGLE_DL:-https://dl.google.com/go}"
@@ -83,10 +94,16 @@ log() {
   printf '%s %s\n' "$ts" "$(redact "$*")" >>"$LOG_FILE" 2>/dev/null || true
 }
 
-info() { printf '\033[0;36m==>\033[0m %s\n' "$*"; log "INFO  $*"; }
-ok()   { printf '\033[0;32m=>\033[0m %s\n' "$*"; log "OK    $*"; }
-warn() { printf '\033[0;33m! %s\033[0m\n' "$*"; log "WARN  $*"; }
-err()  { printf '\033[0;31mx %s\033[0m\n' "$*" >&2; log "ERROR $*"; }
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  C_CY=$'\033[0;36m'; C_GR=$'\033[0;32m'; C_YE=$'\033[0;33m'; C_RS=$'\033[0m'
+else
+  C_CY=""; C_GR=""; C_YE=""; C_RS=""
+fi
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then C_RD=$'\033[0;31m'; else C_RD=""; fi
+info() { printf '%s==>%s %s\n' "$C_CY" "$C_RS" "$*"; log "INFO  $*"; }
+ok()   { printf '%s=>%s %s\n' "$C_GR" "$C_RS" "$*"; log "OK    $*"; }
+warn() { printf '%s! %s%s\n' "$C_YE" "$*" "$C_RS"; log "WARN  $*"; }
+err()  { printf '%sx %s%s\n' "$C_RD" "$*" "$C_RS" >&2; log "ERROR $*"; }
 die()  { err "$*"; [[ -n "$LOG_FILE" ]] && err "Full log: $LOG_FILE"; exit 1; }
 
 cleanup() {
@@ -270,30 +287,16 @@ detect_shell_rc() {
 }
 SHELL_RC="$(detect_shell_rc)"
 
-read_go_min() {
-  local f="$BACKEND_DIR/go.mod" v=""
-  [[ -f "$f" ]] || f="$REPO_ROOT/go.mod"
-  [[ -f "$f" ]] && v="$(awk '/^go[[:space:]]/ {print $2; exit}' "$f")"
-  printf '%s' "${v:-1.25.7}"
-}
-GO_MIN="$(read_go_min)"
-
-version_ge() {
-  local a="${1#go}" b="${2#go}"
-  a="${a#v}"; b="${b#v}"
-  a="${a%%-*}"; b="${b%%-*}"
-  [[ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | tail -n1)" == "$a" ]]
-}
-
-go_meets_min() {
-  command -v go >/dev/null 2>&1 || return 1
-  local cur
-  cur="$(go env GOVERSION 2>/dev/null || true)"
-  [[ -n "$cur" ]] || cur="$(go version 2>/dev/null | awk '{print $3}')"
-  cur="${cur#go}"
-  [[ -n "$cur" ]] || return 1
-  version_ge "$cur" "$GO_MIN"
-}
+RUM_GO_OS=darwin
+if [[ ! -r "$REPO_ROOT/installers/lib/rum-go.sh" ]]; then
+  printf 'Missing %s\nRun this script from a full checkout of the repository.\n' "$REPO_ROOT/installers/lib/rum-go.sh" >&2
+  exit 1
+fi
+# shellcheck source=../lib/rum-go.sh
+. "$REPO_ROOT/installers/lib/rum-go.sh"
+GO_MIN="$(rum_read_go_min "$BACKEND_DIR/go.mod" "$REPO_ROOT/go.mod")"
+# Prefer a Go that is already installed; nothing is downloaded unless none fits go.mod.
+rum_select_local_go || true
 
 try_brew_install() {
   command -v brew >/dev/null 2>&1 || return 1
@@ -304,186 +307,9 @@ try_brew_install() {
   RETRY_DESC="brew install $*" retry env HOMEBREW_NO_AUTO_UPDATE=1 brew install "$@"
 }
 
-fetch_go_sha256() {
-  local filename="$1" json="$WORK_DIR/go-dl.json" sha=""
-  download_file "${GO_DL_BASE%/}/?mode=json&include=all" "$json" || return 1
-  if command -v python3 >/dev/null 2>&1; then
-    sha="$(python3 - "$filename" "$json" <<'PY'
-import json, sys
-fn, path = sys.argv[1], sys.argv[2]
-data = json.load(open(path, encoding="utf-8"))
-for rel in data:
-    for f in rel.get("files", []):
-        if f.get("filename") == fn and f.get("sha256"):
-            print(f["sha256"])
-            sys.exit(0)
-sys.exit(1)
-PY
-)" || true
-  fi
-  if [[ -z "$sha" ]]; then
-    sha="$(grep -o "\"filename\":\"${filename}\"[^}]*\"sha256\":\"[a-f0-9]*\"" "$json" 2>/dev/null \
-      | grep -o '"sha256":"[a-f0-9]*"' | head -1 | cut -d'"' -f4 || true)"
-  fi
-  [[ -n "$sha" ]] && printf '%s' "$sha"
-}
+pkg_install_go() { try_brew_install go; }
 
-# GOSUMDB remains enabled for both the mirror chain and toolchain fetches.
-# The checksum database is the integrity check for modules fetched from any
-# third-party proxy.
-GO_SUMDB_DEFAULT="${RUM_GO_SUMDB:-sum.golang.org}"
-
-# Holds the GOROOT of a toolchain fetched by go_toolchain_root (set by it).
-GO_TOOLCHAIN_ROOT=""
-
-# go_toolchain_root VER — resolve the requested Go toolchain through the module
-# proxy, downloading it if necessary, and set GO_TOOLCHAIN_ROOT to its GOROOT.
-#
-# Toolchains are published as ordinary modules
-# (golang.org/toolchain@v0.0.1-go<ver>.<os>-<arch>), so this reaches the Go
-# module proxy rather than the tarball hosts — a different network path, which
-# is the point of having it as a last resort.
-#
-# We let the `go` command do the download rather than fetching the zip
-# ourselves: it verifies the module against the checksum database, whereas a
-# raw download would be unverifiable (the sha256 published on go.dev is for the
-# .tar.gz, a different artefact, and cannot validate the module zip).
-go_toolchain_root() {
-  local ver="$1" root=""
-  GO_TOOLCHAIN_ROOT=""
-  command -v go >/dev/null 2>&1 || return 1
-
-  # GOFLAGS/GOPRIVATE are cleared so a caller's settings cannot redirect this,
-  # and GOSUMDB is forced on so the module is verified even when a mirror path
-  # has disabled it.
-  root="$(GOTOOLCHAIN="go${ver}" GOSUMDB="$GO_SUMDB_DEFAULT" GOPRIVATE= GONOSUMDB= GOFLAGS= \
-    go env GOROOT 2>>"$LOG_FILE")" || return 1
-  [[ -n "$root" && -x "$root/bin/go" ]] || return 1
-
-  # A go older than 1.21 ignores GOTOOLCHAIN and would hand back its own GOROOT.
-  # Confirm we really got the version we asked for before trusting it.
-  "$root/bin/go" version 2>/dev/null | grep -q "go${ver} " || return 1
-
-  GO_TOOLCHAIN_ROOT="$root"
-}
-
-# install_go_from_module_proxy VER EXTRACTDIR — populate EXTRACTDIR/go with the
-# requested toolchain, so the caller's install/move logic is identical to the
-# tarball route. Returns non-zero (without dying) when the route is unavailable.
-install_go_from_module_proxy() {
-  local ver="$1" extract="$2"
-
-  if ! command -v go >/dev/null 2>&1; then
-    warn "No existing Go, so the module-proxy fallback cannot be used (it needs a go command to bootstrap)."
-    return 1
-  fi
-
-  info "Trying the Go module proxy for go${ver} (golang.org/toolchain)…"
-  if ! RETRY_DESC="go toolchain fetch" retry go_toolchain_root "$ver"; then
-    warn "Module proxy did not provide go${ver}."
-    return 1
-  fi
-
-  # The module layout is NOT the tarball layout: entries live under
-  # golang.org/toolchain@v0.0.1-go<ver>.<os>-<arch>/ rather than go/, and the
-  # module cache is stored read-only. Normalise both so the shared code below
-  # sees exactly what `tar -xzf` would have produced.
-  mkdir -p "$extract/go"
-  cp -a "$GO_TOOLCHAIN_ROOT/." "$extract/go/" || { warn "Could not stage the toolchain from $GO_TOOLCHAIN_ROOT"; return 1; }
-  chmod -R u+w "$extract/go" 2>/dev/null || true
-  [[ -x "$extract/go/bin/go" ]] || { warn "Module toolchain did not contain bin/go"; return 1; }
-
-  # The caller prints the single authoritative verification verdict.
-  log "module proxy supplied go${ver} from $GO_TOOLCHAIN_ROOT"
-}
-
-# go_can_bootstrap_module_proxy — whether the module-proxy route is usable at all.
-#
-# It drives the download with the `go` command already on this machine, so a box
-# with no Go cannot use it: there the tarball is the ONLY way to get a toolchain,
-# and preferring the module route would deadlock the installer. This is the
-# explicit guard for that; do not collapse it into an inline test.
-go_can_bootstrap_module_proxy() {
-  command -v go >/dev/null 2>&1
-}
-
-install_go_tarball() {
-  local ver="$1"
-  local file="go${ver}.darwin-${OS_ARCH}.tar.gz"
-  local dest="$WORK_DIR/$file"
-  local sha=""
-  local extract="$WORK_DIR/go-extract"
-  info "Obtaining Go ${ver}"
-  sha="$(fetch_go_sha256 "$file" || true)"
-  local urls=(
-    "${GO_DL_BASE%/}/${file}"
-    "${GO_GOOGLE_DL%/}/${file}"
-    "${GO_FALLBACK_DL%/}/${file}"
-  )
-  # Route precedence, strongest verification first: never take an unverified
-  # route while a verified one is available.
-  #   1. tarball + known sha256        -> verified
-  #   2. module proxy (sumdb enforced) -> verified
-  #   3. tarball with no sha256        -> UNVERIFIED, last resort, loud warning
-  # The module route is verified or it fails (go_toolchain_root pins GOSUMDB),
-  # so it has no "succeeded but unverified" outcome.
-  local route="" verified=0 module_tried=0
-  if [[ -z "$sha" ]] && go_can_bootstrap_module_proxy; then
-    info "No official checksum for ${file}; trying the verified module-proxy route first."
-    module_tried=1
-    rm -rf "$extract"; mkdir -p "$extract"
-    if install_go_from_module_proxy "$ver" "$extract"; then
-      route="module proxy"; verified=1
-    else
-      warn "Verified module-proxy route unavailable; falling back to an unverified tarball."
-    fi
-  fi
-
-  if [[ -z "$route" ]]; then
-    local ok_dl=0 u
-    for u in "${urls[@]}"; do
-      if download_file "$u" "$dest" "$sha"; then ok_dl=1; break; fi
-      warn "Download failed: $u"
-    done
-    if (( ok_dl == 1 )); then
-      rm -rf "$extract"; mkdir -p "$extract"
-      tar -C "$extract" -xzf "$dest"
-      route="tarball"; [[ -n "$sha" ]] && verified=1
-    elif (( module_tried == 0 )) && go_can_bootstrap_module_proxy; then
-      warn "All Go tarball mirrors failed; falling back to the Go module proxy."
-      rm -rf "$extract"; mkdir -p "$extract"
-      install_go_from_module_proxy "$ver" "$extract" || die "Could not download Go ${ver} from any tarball mirror or the module proxy. brew install go  or https://go.dev/dl/"
-      route="module proxy"; verified=1
-    else
-      die "Could not download Go ${ver} from any tarball mirror or the module proxy. brew install go  or https://go.dev/dl/"
-    fi
-  fi
-
-  if (( verified == 1 )); then
-    if [[ "$route" == "tarball" ]]; then
-      ok "Go ${ver} obtained via the ${route} and verified (sha256)."
-    else
-      ok "Go ${ver} obtained via the ${route} and verified (checksum database ${GO_SUMDB_DEFAULT})."
-    fi
-  else
-    warn "Go ${ver} obtained via the ${route} but could NOT be verified: no official sha256 was reachable$(go_can_bootstrap_module_proxy || printf '%s' ', and no existing Go was present to use the verified module-proxy route')."
-    if [[ "${RUM_REQUIRE_VERIFIED_GO:-0}" == "1" ]]; then
-      die "RUM_REQUIRE_VERIFIED_GO=1 is set and Go ${ver} could not be verified — refusing to install."
-    fi
-    warn "Continuing anyway. Set RUM_REQUIRE_VERIFIED_GO=1 to make this fatal."
-  fi
-
-  [[ -x "$extract/go/bin/go" ]] || die "The downloaded Go ${ver} did not contain bin/go"
-  local goroot="$HOME/.local/go"
-  info "Installing Go to $goroot (user-local)"
-  mkdir -p "$HOME/.local"
-  rm -rf "$goroot"
-  mv "$extract/go" "$goroot"
-  export GOROOT="$goroot"
-  export PATH="$goroot/bin:$PATH"
-  hash -r 2>/dev/null || true
-  ok "Installed $(go version) at $goroot"
-}
+ensure_go() { rum_ensure_go; }
 
 ensure_xcode_clt() {
   if xcode-select -p >/dev/null 2>&1; then
@@ -497,36 +323,6 @@ ensure_xcode_clt() {
   warn "Xcode Command Line Tools are missing; attempting xcode-select --install"
   xcode-select --install >/dev/null 2>&1 || true
   die "Xcode Command Line Tools are required. Finish the installer dialog, then re-run:"$'\n'"  xcode-select --install"
-}
-
-ensure_go() {
-  if go_meets_min; then
-    ok "Found $(go version)"
-    return 0
-  fi
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    info "dry-run: would install Go ${GO_MIN}"
-    return 0
-  fi
-  if try_brew_install go && go_meets_min; then
-    hash -r 2>/dev/null || true
-    ok "Installed $(go version) via Homebrew"
-    return 0
-  fi
-  install_go_tarball "$GO_MIN"
-  go_meets_min || die "Go ${GO_MIN}+ is required. brew install go  or https://go.dev/dl/"
-}
-
-configure_goproxy() {
-  if [[ -n "$MIRROR" ]]; then
-    if [[ "$MIRROR" == "$DEFAULT_MIRROR" ]]; then
-      export GOPROXY="$BUILTIN_GOPROXY"
-    else
-      export GOPROXY="${MIRROR}|${BUILTIN_GOPROXY}"
-    fi
-    export GOSUMDB="$GO_SUMDB_DEFAULT"
-    ok "Using Go module proxy chain: $GOPROXY"
-  fi
 }
 
 ensure_path_in_rc() {
@@ -607,26 +403,26 @@ if ((${#PLAN[@]})); then info "Will install: ${PLAN[*]}"; else info "All build p
 [[ -e "$TARGET" ]] && info "Existing install will be replaced: $TARGET"
 info "Log file: $LOG_FILE"
 
-if ! reachable "https://proxy.golang.org" && ! reachable "https://go.dev" && ! reachable "https://github.com"; then
-  warn "Could not reach go.dev / proxy.golang.org / github.com — will try bundled Iranian module mirrors"
-  [[ -z "$MIRROR" ]] && MIRROR="$DEFAULT_MIRROR"
-fi
+rum_preflight_space "$HOME" 524288
+rum_preflight_space "${TMPDIR:-/tmp}" 262144
+rum_preflight_writable "$BIN_DIR" "Re-run with --prefix \"\$HOME/.local\""
+rum_go_report
+configure_goproxy
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
+  ensure_go   # dry-run: reports local Go or the planned download, changes nothing
   info "dry-run complete (no changes). Re-run without --dry-run to install."
   exit 0
 fi
 
 ensure_xcode_clt
-configure_goproxy
 ensure_go
 
 info "Building $APP (this may take a moment)…"
 BUILD_OUT="$WORK_DIR/$APP"
 if ! RETRY_DESC="go mod download" retry run_logged bash -c "cd \"$BACKEND_DIR\" && go mod download"; then
-  if [[ "${GOPROXY:-}" != *"$IRANIAN_GOPROXY"* ]]; then
-    warn "go mod download failed; retrying with bundled Iranian module mirrors"
-    export GOPROXY="$BUILTIN_GOPROXY" GOSUMDB="$GO_SUMDB_DEFAULT"
+  if rum_proxy_fallback; then
+    warn "go mod download failed; retrying with the fallback module proxies"
     RETRY_DESC="go mod download (mirror)" retry run_logged bash -c "cd \"$BACKEND_DIR\" && go mod download" \
       || die "go mod download failed. Log: $LOG_FILE"
   else
@@ -635,9 +431,8 @@ if ! RETRY_DESC="go mod download" retry run_logged bash -c "cd \"$BACKEND_DIR\" 
 fi
 
 if ! run_logged bash -c "cd \"$BACKEND_DIR\" && go build -buildvcs=false -trimpath -ldflags \"-s -w\" -o \"$BUILD_OUT\" ./cmd/rum"; then
-  if [[ "${GOPROXY:-}" != *"$IRANIAN_GOPROXY"* ]]; then
-    warn "go build failed; retrying with bundled Iranian module mirrors"
-    export GOPROXY="$BUILTIN_GOPROXY" GOSUMDB="$GO_SUMDB_DEFAULT"
+  if rum_proxy_fallback; then
+    warn "go build failed; retrying with the fallback module proxies"
     run_logged bash -c "cd \"$BACKEND_DIR\" && go build -buildvcs=false -trimpath -ldflags \"-s -w\" -o \"$BUILD_OUT\" ./cmd/rum" \
       || die "go build failed. Log: $LOG_FILE"
   else
@@ -654,5 +449,8 @@ ensure_path_in_rc "$BIN_DIR"
 export PATH="$BIN_DIR:$PATH"
 
 echo
-ok "Done. Try:  $APP --version  &&  $APP --help"
+ok "Done. Installed $APP to $TARGET"
+rum_print_summary
+info "Next: open a new terminal, then run:  $APP --version  &&  $APP --help"
+info "Remove later:  $0 --uninstall"
 info "Log: $LOG_FILE"

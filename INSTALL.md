@@ -226,6 +226,14 @@ authenticated. You can pass any Go module proxy:
 .\installers\gui\install-windows.ps1 -Mirror https://your-proxy.example/
 ```
 
+**Google is blocked where you are.** If Go is already installed (on `PATH` or in
+a usual location) and meets `go.mod`, the installers use it and download nothing,
+with `GOTOOLCHAIN=local`. Otherwise they try go.dev, dl.google.com, then
+Aliyun / USTC / golang.google.cn mirrors (`RUM_GO_MIRROR=URL` goes first), and
+switch to `goproxy.cn` / `goproxy.io` when `proxy.golang.org` is unreachable.
+Your own `GOPROXY` / `GOSUMDB` / npm registry are never overridden. Try
+`--dry-run` to see what would happen.
+
 **Something else went wrong.** Re-read the message the script printed — it names
 exactly what's missing and the command to fix it. The last line always points
 at the log file.

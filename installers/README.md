@@ -67,6 +67,30 @@ Node ≥ **18**. Wails CLI version comes from the root `go.mod` (fallback
 **v2.12.0**). Linux GUI tries WebKit 4.1 then 4.0 and passes
 `-tags webkit2_41` when only 4.1 is present.
 
+## Go toolchain, mirrors and shared helpers
+
+All six installers share `installers/lib/rum-go.sh` / `rum-go.ps1`, so they must
+be run from a full checkout (they already build from the source tree; there is no
+`curl | bash` form).
+
+1. **Local Go first.** `go` on `PATH`, then `/usr/local/go`, `/usr/lib/go`,
+   `~/go`, `~/.local/go`, `~/sdk/go*`, Homebrew, snap, scoop/choco, Program Files.
+   Its `go version` is compared with the `go` line in `go.mod`; if it is
+   enough, nothing is downloaded. Point at one explicitly with `RUM_GO_ROOT`.
+2. **`GOTOOLCHAIN=local`** is exported whenever a local Go is used, so Go never
+   fetches a toolchain from Google. A too-old Go is reported and left untouched.
+3. **Download fallback**: go.dev, dl.google.com, then mirrors.aliyun.com,
+   mirrors.ustc.edu.cn, golang.google.cn. SHA256-verified when an index is
+   reachable; resumable, retried, atomic. `RUM_GO_MIRROR=https://host/path` is
+   tried first; `RUM_GO_NO_DOWNLOAD=1` forbids downloads.
+4. **Module proxy / npm**: a `GOPROXY`, `GOSUMDB` or npm registry you set is
+   always respected. Otherwise `proxy.golang.org` is probed; if unreachable, the
+   run uses `goproxy.cn` / `goproxy.io` chains and `sum.golang.google.cn`, and
+   npm falls back to `registry.npmmirror.com` (`RUM_NPM_REGISTRY` to change).
+   Nothing is persisted (no `go env -w`, no `npm config set`).
+
+`--dry-run` / `-DryRun` prints which Go it would use or download.
+
 ## CLI
 
 ```bash

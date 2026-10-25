@@ -3,9 +3,16 @@
     Rum GUI (desktop) installer for Windows.
 .DESCRIPTION
     Builds the Wails desktop app for Windows and installs it. Prerequisites
-    (Go, Node.js + npm, Wails CLI, WebView2) are auto-detected and installed
-    when a package manager (winget / choco / scoop) is available, otherwise
-    official archives are downloaded with checksum verification.
+    (Go, Node.js + npm, Wails CLI, WebView2) are auto-detected. A Go that is
+    already installed on go.mod's minor line is used as-is (GOTOOLCHAIN=local,
+    nothing downloaded); otherwise Go is fetched from go.dev, dl.google.com or
+    non-Google mirrors (checksum-verified). Node.js and WebView2 use
+    winget / choco / scoop or official archives.
+
+    Environment: RUM_GO_ROOT (use this Go), RUM_GO_MIRROR (try this mirror
+    first), RUM_GO_NO_DOWNLOAD=1, RUM_NPM_REGISTRY, GOPROXY / GOSUMDB
+    (respected; a fallback chain is used only if the default proxy is
+    unreachable and you set neither).
 
     If Inno Setup (iscc.exe) is available it produces Rum-Setup.exe;
     otherwise it installs Rum.exe into %LOCALAPPDATA%\Programs\Rum and
@@ -48,7 +55,6 @@ $script:IranianGoProxies = @(
     "https://mirror.abrha.net/repository/go",
     $DefaultMirror.TrimEnd('/')
 )
-$script:BuiltInGoProxy = ($script:IranianGoProxies + "https://proxy.golang.org,direct") -join "|"
 $RetryMax = if ($env:RUM_RETRY_MAX) { [int]$env:RUM_RETRY_MAX } else { 5 }
 $NodeMin = [version]"18.0.0"
 $WailsFallback = "v2.12.0"
@@ -165,26 +171,6 @@ function Sync-SessionPath {
     $env:Path = @($env:Path, $machine, $user) -join ";"
 }
 
-function Test-Reachable([string]$Url) {
-    try {
-        $req = [System.Net.HttpWebRequest]::Create($Url)
-        $req.Method = "HEAD"
-        $req.Timeout = 8000
-        $req.AllowAutoRedirect = $true
-        $resp = $req.GetResponse()
-        $resp.Close()
-        return $true
-    } catch {
-        try {
-            if (Get-CommandSafe "curl.exe") {
-                & curl.exe -fsS -o NUL --connect-timeout 5 --max-time 8 -I $Url 2>$null
-                if ($LASTEXITCODE -eq 0) { return $true }
-            }
-        } catch { Write-Verbose $_.Exception.Message }
-        return $false
-    }
-}
-
 function Get-RemoteFile {
     param([Parameter(Mandatory)][string]$Url, [Parameter(Mandatory)][string]$Dest, [string]$Sha256 = "")
     if ($DryRun) { Info "dry-run: would download $Url -> $Dest"; return }
@@ -209,15 +195,6 @@ function Get-RemoteFile {
     Move-Item -Force $tmp $Dest
 }
 
-function Get-GoMin {
-    $gomod = Join-Path $RepoRoot "go.mod"
-    if (Test-Path $gomod) {
-        $line = Select-String -Path $gomod -Pattern '^go\s+(\S+)' | Select-Object -First 1
-        if ($line) { return $line.Matches[0].Groups[1].Value }
-    }
-    return "1.25.7"
-}
-
 function Get-WailsVer {
     $gomod = Join-Path $RepoRoot "go.mod"
     if (Test-Path $gomod) {
@@ -225,27 +202,6 @@ function Get-WailsVer {
         if ($line) { return $line.Matches[0].Groups[1].Value }
     }
     return $WailsFallback
-}
-
-function Convert-GoVersion([string]$v) {
-    $v = $v -replace '^go', '' -replace '-.*$', ''
-    try { return [version]$v } catch { return [version]"0.0.0" }
-}
-
-function Test-GoMeetsMin([string]$min) {
-    $cmd = Get-CommandSafe "go"
-    if (-not $cmd) { return $false }
-    $cur = (& go env GOVERSION 2>$null)
-    if (-not $cur) { return $false }
-    return (Convert-GoVersion $cur) -ge (Convert-GoVersion $min)
-}
-
-function Test-GoNewerThanMin([string]$min) {
-    $cmd = Get-CommandSafe "go"
-    if (-not $cmd) { return $false }
-    $cur = (& go env GOVERSION 2>$null)
-    if (-not $cur) { return $false }
-    return (Convert-GoVersion $cur) -gt (Convert-GoVersion $min)
 }
 
 function Test-NodeMeetsMin {
@@ -312,181 +268,6 @@ function Install-Pkg {
     }
 }
 
-function Get-GoSha256([string]$filename) {
-    $jsonPath = Join-Path $script:WorkDir "go-dl.json"
-    Get-RemoteFile -Url "https://go.dev/dl/?mode=json&include=all" -Dest $jsonPath
-    $data = Get-Content -Raw $jsonPath | ConvertFrom-Json
-    foreach ($rel in $data) {
-        foreach ($f in $rel.files) {
-            if ($f.filename -eq $filename -and $f.sha256) { return $f.sha256 }
-        }
-    }
-    return ""
-}
-
-# GOSUMDB remains enabled for both the mirror chain and toolchain fetches.
-# The checksum database is the integrity check for modules fetched from any
-# third-party proxy.
-$script:GoSumDbDefault = if ($env:RUM_GO_SUMDB) { $env:RUM_GO_SUMDB } else { "sum.golang.org" }
-
-# Copy-Item-based staging of a Go toolchain obtained through the Go module proxy.
-#
-# Toolchains are published as ordinary modules
-# (golang.org/toolchain@v0.0.1-go<ver>.<os>-<arch>), so this reaches the module
-# proxy rather than the tarball hosts - a different network path, which is the
-# point of having it as a last resort.
-#
-# The `go` command does the download rather than us fetching the zip directly:
-# it verifies the module against the checksum database, whereas a raw download
-# would be unverifiable (the sha256 published on go.dev is for the .zip release
-# artefact, not the module, and cannot validate it).
-function Install-GoFromModuleProxy([string]$ver, [string]$destRoot) {
-    if (-not (Get-CommandSafe "go")) {
-        Warn "No existing Go, so the module-proxy fallback cannot be used (it needs a go command to bootstrap)."
-        return $false
-    }
-    Info "Trying the Go module proxy for go$ver (golang.org/toolchain)..."
-
-    $saved = @{
-        GOTOOLCHAIN = $env:GOTOOLCHAIN; GOSUMDB = $env:GOSUMDB
-        GOPRIVATE   = $env:GOPRIVATE;   GOFLAGS = $env:GOFLAGS
-    }
-    try {
-        # Clear GOFLAGS/GOPRIVATE so a caller's settings cannot redirect this,
-        # and force GOSUMDB on so the module is verified even when a mirror
-        # path has disabled it.
-        $env:GOTOOLCHAIN = "go$ver"
-        $env:GOSUMDB     = $script:GoSumDbDefault
-        $env:GOPRIVATE   = ""
-        $env:GOFLAGS     = ""
-
-        $root = ""
-        Invoke-WithRetry -Name "go toolchain fetch" -Script {
-            $script:__tcRoot = (& go env GOROOT 2>$null)
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($script:__tcRoot)) { throw "go env GOROOT failed" }
-        }
-        $root = $script:__tcRoot
-        if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path (Join-Path $root "bin\go.exe"))) {
-            Warn "Module proxy did not provide go$ver."
-            return $false
-        }
-        # A go older than 1.21 ignores GOTOOLCHAIN and would hand back its own
-        # GOROOT. Confirm we really got the version we asked for.
-        $got = & (Join-Path $root "bin\go.exe") version 2>$null
-        if ($got -notmatch "go$([regex]::Escape($ver))\s") {
-            Warn "Module proxy returned $got, not go$ver."
-            return $false
-        }
-
-        # The module layout is NOT the release-zip layout: entries live under
-        # golang.org/toolchain@v0.0.1-go<ver>.<os>-<arch>/ rather than go/, and
-        # the module cache is stored read-only. Normalise both.
-        if (Test-Path $destRoot) { Remove-Item -Recurse -Force $destRoot }
-        New-Item -ItemType Directory -Force -Path $destRoot | Out-Null
-        Copy-Item -Recurse -Force -Path (Join-Path $root "*") -Destination $destRoot
-        Get-ChildItem -Recurse -Force $destRoot | ForEach-Object { $_.IsReadOnly = $false }
-        if (-not (Test-Path (Join-Path $destRoot "bin\go.exe"))) {
-            Warn "Module toolchain did not contain bin\go.exe"
-            return $false
-        }
-        # The caller prints the single authoritative verification verdict.
-        return $true
-    } catch {
-        Warn "Module-proxy fallback failed: $($_.Exception.Message)"
-        return $false
-    } finally {
-        $env:GOTOOLCHAIN = $saved.GOTOOLCHAIN; $env:GOSUMDB = $saved.GOSUMDB
-        $env:GOPRIVATE   = $saved.GOPRIVATE;   $env:GOFLAGS = $saved.GOFLAGS
-    }
-}
-
-# Test-GoCanBootstrapModuleProxy - whether the module-proxy route is usable.
-#
-# It drives the download with the `go` command already on this machine, so a box
-# with no Go cannot use it: there the archive is the ONLY way to get a toolchain
-# and preferring the module route would deadlock the installer. Explicit guard.
-function Test-GoCanBootstrapModuleProxy {
-    return [bool](Get-CommandSafe "go")
-}
-
-function Install-GoZip([string]$ver) {
-    $arch = Get-CpuArch
-    $file = "go$ver.windows-$($arch.Go).zip"
-    $dest = Join-Path $script:WorkDir $file
-    Info "Obtaining Go $ver ($file)"
-    $sha = ""
-    try { $sha = Get-GoSha256 $file } catch { Warn "Could not fetch Go checksums: $($_.Exception.Message)" }
-    $urls = @(
-        "https://go.dev/dl/$file",
-        "https://dl.google.com/go/$file",
-        "$($DefaultMirror.TrimEnd('/'))/$file"
-    )
-    # Route precedence, strongest verification first: never take an unverified
-    # route while a verified one is available.
-    #   1. archive + known sha256       -> verified
-    #   2. module proxy (sumdb enforced)-> verified
-    #   3. archive with no sha256       -> UNVERIFIED, last resort, loud warning
-    # The module route is verified or it fails (Install-GoFromModuleProxy pins
-    # GOSUMDB), so it has no "succeeded but unverified" outcome.
-    $staged = Join-Path $script:WorkDir "go-module-toolchain"
-    $route = ""; $verified = $false; $moduleTried = $false
-    if ([string]::IsNullOrEmpty($sha) -and (Test-GoCanBootstrapModuleProxy)) {
-        Info "No official checksum for $file; trying the verified module-proxy route first."
-        $moduleTried = $true
-        if (Install-GoFromModuleProxy $ver $staged) { $route = "module proxy"; $verified = $true }
-        else { Warn "Verified module-proxy route unavailable; falling back to an unverified archive." }
-    }
-
-    if ([string]::IsNullOrEmpty($route)) {
-        $ok = $false
-        foreach ($u in $urls) {
-            try { Get-RemoteFile -Url $u -Dest $dest -Sha256 $sha; $ok = $true; break } catch { Warn "Download failed: $u" }
-        }
-        if ($ok) {
-            $route = "archive"; if (-not [string]::IsNullOrEmpty($sha)) { $verified = $true }
-        } elseif ((-not $moduleTried) -and (Test-GoCanBootstrapModuleProxy)) {
-            Warn "All Go download mirrors failed; falling back to the Go module proxy."
-            if (Install-GoFromModuleProxy $ver $staged) { $route = "module proxy"; $verified = $true }
-            else { throw "Could not download Go $ver from any mirror or the module proxy" }
-        } else {
-            throw "Could not download Go $ver from any mirror or the module proxy"
-        }
-    }
-    $fromProxy = ($route -eq "module proxy")
-
-    if ($verified) {
-        if ($route -eq "archive") { Ok "Go $ver obtained via the $route and verified (sha256)." }
-        else { Ok "Go $ver obtained via the $route and verified (checksum database $script:GoSumDbDefault)." }
-    } else {
-        $why = "no official sha256 was reachable"
-        if (-not (Test-GoCanBootstrapModuleProxy)) { $why += ", and no existing Go was present to use the verified module-proxy route" }
-        Warn "Go $ver obtained via the $route but could NOT be verified: $why."
-        if ($env:RUM_REQUIRE_VERIFIED_GO -eq "1") {
-            throw "RUM_REQUIRE_VERIFIED_GO=1 is set and Go $ver could not be verified - refusing to install."
-        }
-        Warn "Continuing anyway. Set RUM_REQUIRE_VERIFIED_GO=1 to make this fatal."
-    }
-    $goroot = Join-Path $env:LOCALAPPDATA "Go"
-    Info "Installing Go to $goroot (user-local)"
-    if (Test-Path $goroot) { Remove-Item -Recurse -Force $goroot }
-    if ($fromProxy) {
-        Move-Item -Force $staged $goroot
-    } else {
-        Expand-Archive -Path $dest -DestinationPath $script:WorkDir -Force
-        $extracted = Join-Path $script:WorkDir "go"
-        Move-Item -Force $extracted $goroot
-    }
-    $bin = Join-Path $goroot "bin"
-    $env:Path = "$bin;$env:Path"
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -notlike "*$bin*") {
-        $new = if ([string]::IsNullOrEmpty($userPath)) { $bin } else { "$bin;$userPath" }
-        [Environment]::SetEnvironmentVariable("Path", $new, "User")
-    }
-    Sync-SessionPath
-    Ok "Installed $(go version) at $goroot"
-}
-
 function Install-NodeZip {
     $arch = Get-CpuArch
     $shasums = Join-Path $script:WorkDir "node-SHASUMS256.txt"
@@ -520,30 +301,6 @@ function Install-NodeZip {
     Ok "Installed node $(node --version) / npm $(npm --version)"
 }
 
-function Install-RequiredGo([string]$min) {
-    Sync-SessionPath
-    if (Test-GoMeetsMin $min) {
-        Ok "Found $(go version)"
-    } else {
-        if (Get-CommandSafe "go") { Warn "Go is too old ($(go version)); need >= $min" } else { Info "Go $min+ is not installed" }
-        if ($DryRun) { Info "dry-run: would install Go $min"; return }
-        $ok = Install-Pkg -WingetId "GoLang.Go" -ChocoId "golang" -ScoopId "go"
-        Sync-SessionPath
-        if (-not ($ok -and (Test-GoMeetsMin $min))) {
-            Install-GoZip $min
-            Sync-SessionPath
-        }
-        if (-not (Test-GoMeetsMin $min)) { throw "Go $min+ is required. Install from https://go.dev/dl/ and re-run." }
-        Ok "Installed $(go version)"
-    }
-    if (Test-GoNewerThanMin $min) {
-        Info "Go $(go version) is newer than $min; installing exact go$min for Wails (GOTOOLCHAIN=local)."
-        if ($DryRun) { Info "dry-run: would install Go $min zip"; return }
-        Install-GoZip $min
-        Sync-SessionPath
-    }
-}
-
 function Install-RequiredNode {
     Sync-SessionPath
     if (Test-NodeMeetsMin) { Ok "Found node $(node --version) / npm $(npm --version)"; return }
@@ -568,21 +325,6 @@ function Install-WebView2Runtime {
     }
 }
 
-function Set-GoProxy {
-    [CmdletBinding(SupportsShouldProcess)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("GOPROXY", "configure")) { return }
-    if ($Mirror) {
-        $env:GOPROXY = if ($Mirror -eq $DefaultMirror) { $script:BuiltInGoProxy } else { "$Mirror|$script:BuiltInGoProxy" }
-        $env:GOSUMDB = $script:GoSumDbDefault
-        Ok "Using Go module proxy chain: $env:GOPROXY"
-        return
-    }
-    if ($env:GOPROXY -and $env:GOPROXY -ne "https://proxy.golang.org,direct") {
-        Ok "Using GOPROXY from environment"
-    }
-}
-
 function Invoke-GoNet {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$GoArgs)
     try {
@@ -591,10 +333,8 @@ function Invoke-GoNet {
             if ($LASTEXITCODE -ne 0) { throw "go exit $LASTEXITCODE" }
         }
     } catch {
-        if ($env:GOPROXY -and $env:GOPROXY.Contains($script:IranianGoProxies[0])) { throw }
-        Warn "Go command failed; retrying with bundled Iranian module mirrors"
-        $env:GOPROXY = $script:BuiltInGoProxy
-        $env:GOSUMDB = $script:GoSumDbDefault
+        if (-not (Use-RumProxyFallback)) { throw }
+        Warn "Go command failed; retrying with the fallback module proxies"
         Invoke-WithRetry -Name "go $($GoArgs -join ' ') (mirror)" -Script {
             & go @GoArgs
             if ($LASTEXITCODE -ne 0) { throw "go exit $LASTEXITCODE" }
@@ -628,6 +368,15 @@ function Add-AppShortcut {
     $sc.Save()
 }
 
+# The desktop build needs go.mod's minor line (Wails cannot typecheck newer Go).
+$script:RumSameMinor = $true
+$RumGoLib = Join-Path $RepoRoot "installers\lib\rum-go.ps1"
+if (-not (Test-Path $RumGoLib)) {
+    Write-Host "ERR Missing $RumGoLib - run this script from a full checkout of the repository." -ForegroundColor Red
+    exit 1
+}
+. $RumGoLib
+
 Initialize-Log
 $script:WorkDir = Join-Path $env:TEMP ("rum-gui-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $script:WorkDir | Out-Null
@@ -646,7 +395,7 @@ try {
         return
     }
 
-    $GoMin = Get-GoMin
+    $GoMin = Get-RumGoMin @((Join-Path $RepoRoot "go.mod"), (Join-Path $RepoRoot "backend\go.mod"))
     $WailsVer = Get-WailsVer
     $arch = Get-CpuArch
     $mgr = Get-PkgMgr
@@ -654,27 +403,23 @@ try {
     Info "Go minimum (from go.mod): $GoMin  |  Wails: $WailsVer  |  Node minimum: $NodeMin"
 
     $plan = @()
-    if (-not (Test-GoMeetsMin $GoMin)) { $plan += "Go $GoMin+" }
+    $null = Select-RumLocalGo $GoMin
+    if (-not $script:RumGoBin) { $plan += "Go $GoMin+" }
     if (-not (Test-NodeMeetsMin)) { $plan += "Node.js $NodeMin+ / npm" }
     if (-not (Get-CommandSafe "wails")) { $plan += "wails CLI $WailsVer" }
     if ($plan.Count -gt 0) { Info "Will install: $($plan -join ', ')" } else { Info "All build prerequisites already present" }
     if (Test-Path $Target) { Info "Existing install will be replaced: $Target" } else { Info "Install target: $Target" }
     Info "Log file: $($script:LogFile)"
 
-    $free = (Get-PSDrive -Name ($env:LOCALAPPDATA.Substring(0,1))).Free
-    if ($free -and $free -lt 2GB) { Warn "Low disk space on $($env:LOCALAPPDATA.Substring(0,1)): (GUI build may need ~2 GiB)" }
+    Test-RumFreeSpace $env:LOCALAPPDATA 2GB
+    Write-RumGoReport $GoMin
+    Set-RumGoProxy
 
-    $net = (Test-Reachable "https://proxy.golang.org") -or (Test-Reachable "https://go.dev") -or (Test-Reachable "https://github.com")
-    if ($net) { Ok "Network is reachable" } else {
-        Warn "Could not reach go.dev / proxy.golang.org / github.com — will try bundled Iranian module mirrors"
-        if (-not $Mirror) { $Mirror = $DefaultMirror }
-    }
+    if ($DryRun) { Install-RumGo $GoMin; Info "dry-run complete (no changes). Re-run without -DryRun to install."; return }
 
-    if ($DryRun) { Info "dry-run complete (no changes). Re-run without -DryRun to install."; return }
-
-    Set-GoProxy
-    Install-RequiredGo $GoMin
+    Install-RumGo $GoMin
     Install-RequiredNode
+    Set-RumNpmRegistry
     Install-WebView2Runtime
     Install-WailsCli $WailsVer
 
@@ -724,10 +469,8 @@ try {
             & wails build -platform windows/amd64 -clean
             if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
         } catch {
-            if (-not $env:GOPROXY -or -not $env:GOPROXY.Contains($script:IranianGoProxies[0])) {
-                Warn "wails build failed; retrying with bundled Iranian module mirrors"
-                $env:GOPROXY = $script:BuiltInGoProxy
-                $env:GOSUMDB = $script:GoSumDbDefault
+            if (Use-RumProxyFallback) {
+                Warn "wails build failed; retrying with the fallback module proxies"
                 & wails build -platform windows/amd64 -clean
                 if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
             } else { throw }
@@ -767,7 +510,10 @@ try {
     Add-AppShortcut $desktop   $Target; Ok "Created Desktop shortcut"
 
     Write-Host ""
-    Ok "Done. Launch Rum from the Start Menu or run: `"$Target`""
+    Ok "Done. Installed $AppName to $Target"
+    Write-RumSummary
+    Info "Next: launch Rum from the Start Menu or run: `"$Target`""
+    Info "Remove later:  $($MyInvocation.MyCommand.Path) -Uninstall"
     Info "Log: $($script:LogFile)"
 } catch {
     Fail $_.Exception.Message
