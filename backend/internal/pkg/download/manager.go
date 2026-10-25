@@ -90,6 +90,11 @@ type JobManager struct {
 	appliedProxy        string
 	appliedBlockPrivate bool
 	transportApplied    bool
+
+	// undoWindow is how long a soft delete can be undone (0 = default);
+	// deleteTimers holds the deadline timer per hidden job. Both under mu.
+	undoWindow   time.Duration
+	deleteTimers map[string]*time.Timer
 }
 
 type SortField string
@@ -212,6 +217,7 @@ func (m *JobManager) dispatch() {
 
 func (m *JobManager) loadFromDisk() {
 	LoadJobsFromDisk(m.jobs, m.urls)
+	m.resolvePendingDeletesLocked()
 }
 
 // recoverJob is the deferred panic safety net for download goroutines. An
@@ -592,6 +598,9 @@ func (m *JobManager) GetJob(id string) (*Job, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	job, ok := m.jobs[id]
+	if ok && job.IsPendingDelete() {
+		return nil, false // hidden until the delete is undone or finalized
+	}
 	return job, ok
 }
 
@@ -600,6 +609,9 @@ func (m *JobManager) GetAllJobs() []*Job {
 	defer m.mu.RUnlock()
 	jobs := make([]*Job, 0, len(m.jobs))
 	for _, j := range m.jobs {
+		if j.IsPendingDelete() {
+			continue
+		}
 		jobs = append(jobs, j)
 	}
 
@@ -632,6 +644,10 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.mu.Lock()
 	job, exists := m.jobs[jobID]
 	if !exists {
+		m.mu.Unlock()
+		return fmt.Errorf("job %s not found", jobID)
+	}
+	if job.IsPendingDelete() {
 		m.mu.Unlock()
 		return fmt.Errorf("job %s not found", jobID)
 	}
@@ -823,7 +839,7 @@ func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) int {
 	m.mu.RLock()
 	var toResume []string
 	for id, job := range m.jobs {
-		if job.GetStatus() == StatusPaused && job.GetInterrupted() {
+		if job.GetStatus() == StatusPaused && job.GetInterrupted() && !job.IsPendingDelete() {
 			toResume = append(toResume, id)
 		}
 	}
@@ -950,7 +966,7 @@ func (m *JobManager) StartAllJobs(ctx context.Context) {
 	m.mu.RLock()
 
 	for _, job := range m.jobs {
-		if s := job.GetStatus(); s == StatusPending || s == StatusPaused {
+		if s := job.GetStatus(); (s == StatusPending || s == StatusPaused) && !job.IsPendingDelete() {
 			eligibleJobs = append(eligibleJobs, job)
 		}
 	}
@@ -1121,6 +1137,7 @@ func (m *JobManager) ApplySettings(s config.Setting) {
 // exit.
 func (m *JobManager) Shutdown() {
 	m.shutdownOnce.Do(func() {
+		m.stopDeleteTimers()
 		if m.stopSaves() {
 			m.saveToDisk() // flush a persist still waiting on its debounce
 		}
@@ -1587,6 +1604,9 @@ func (m *JobManager) GetDashboardStats() DashboardStats {
 	var totalSpeed float64
 
 	for _, job := range m.jobs {
+		if job.IsPendingDelete() {
+			continue
+		}
 		status := job.GetStatus()
 		completedAt := job.GetCompletedAt()
 		totalSize := job.GetTotalSize()

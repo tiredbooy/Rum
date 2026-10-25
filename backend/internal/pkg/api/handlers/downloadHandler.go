@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
@@ -339,6 +340,20 @@ func RefreshDownloadURL(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": jobID, "resumed": res.Resumed, "restarted": res.Restarted})
 }
 
+// deleteResponse is shared by single and bulk delete: the hidden ids, the
+// deadline, and the undo window so the UI can size its toast.
+func deleteResponse(ids []string, at time.Time) gin.H {
+	secs := int(time.Until(at).Round(time.Second) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	return gin.H{"ids": ids, "pending_delete_at": at.UTC().Format(time.RFC3339), "undo_seconds": secs}
+}
+
+// DeleteDownload hides a download and defers the removal so it can be undone
+// (POST /downloads/:id/restore). ?delete_file=true also deletes the file or
+// partial at the deadline; without it only the list entry goes ("remove from
+// list") and the data stays on disk.
 func DeleteDownload(c *gin.Context) {
 	jobID := c.Param("id")
 	if jobID == "" {
@@ -346,28 +361,54 @@ func DeleteDownload(c *gin.Context) {
 		return
 	}
 
-	if err := GlobalManager.DeleteJob(jobID); err != nil {
+	at, err := GlobalManager.SoftDeleteJob(jobID, c.Query("delete_file") == "true")
+	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
 
 	// NOTE: kept as 200 + JSON body (not a bodyless 204) because the frontend's
 	// fetch wrapper calls res.json() unconditionally; an empty body would throw.
-	c.JSON(http.StatusOK, gin.H{"message": "Download Deleted."})
+	c.JSON(http.StatusOK, deleteResponse([]string{jobID}, at))
 }
 
+// DeleteDownloads is the bulk form (?status=all|completed|error, plus
+// ?delete_file=true). Undo it with POST /downloads/restore {ids}.
 func DeleteDownloads(c *gin.Context) {
 	filter := c.Query("status")
 
-	if err := GlobalManager.DeleteJobsByFilter(filter); err != nil {
+	ids, at, err := GlobalManager.SoftDeleteJobsByFilter(filter, c.Query("delete_file") == "true")
+	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
+	if ids == nil {
+		ids = []string{}
+		at = time.Now()
+	}
+	c.JSON(http.StatusOK, deleteResponse(ids, at))
+}
 
-	// Kept as 200 + JSON body for the same reason as DeleteDownload (frontend
-	// parses the body). The DELETE /downloads frontend call also tolerates a
-	// non-array object, returning [].
-	c.JSON(http.StatusOK, gin.H{"message": "Jobs deleted successfully."})
+// RestoreDownload cancels a pending delete. 404 once the undo window is over.
+func RestoreDownload(c *gin.Context) {
+	jobID := c.Param("id")
+	if err := GlobalManager.RestoreJob(jobID); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"restored": 1})
+}
+
+// RestoreDownloads undoes a bulk delete.
+func RestoreDownloads(c *gin.Context) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "ids are required")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"restored": GlobalManager.RestoreJobs(req.IDs)})
 }
 
 func GetDownloadsStats(c *gin.Context) {

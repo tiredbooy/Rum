@@ -82,6 +82,15 @@ type Job struct {
 	// AllowBlockedPage is a one-time, in-memory override: the next run writes an
 	// HTML response even though the job does not expect one. Never persisted.
 	AllowBlockedPage bool `json:"-"`
+
+	// PendingDeleteAt is set while a delete can still be undone: the job is
+	// hidden and its transfer paused, and data removal waits for this deadline.
+	// PendingDeleteFile says whether the deadline also deletes the file/partial
+	// ("Delete file") or only drops the list entry ("Remove from list").
+	// PendingDeleteResume re-queues the job if the delete is undone.
+	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
+	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
+	PendingDeleteResume bool      `json:"pending_delete_resume,omitempty"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -250,6 +259,10 @@ type jobJSON struct {
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
 	FinalHost         string        `json:"final_host,omitempty"`
+
+	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
+	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
+	PendingDeleteResume bool      `json:"pending_delete_resume,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -297,6 +310,8 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		out.NeededBytes, out.FreeBytes, out.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
 	}
 	out.FinalHost = j.FinalHost
+	out.PendingDeleteAt, out.PendingDeleteFile, out.PendingDeleteResume =
+		j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume
 	return json.Marshal(out)
 }
 
@@ -363,6 +378,10 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		FreeBytes         int64           `json:"free_bytes"`
 		DiskPath          string          `json:"disk_path"`
 		FinalHost         string          `json:"final_host"`
+
+		PendingDeleteAt     time.Time `json:"pending_delete_at"`
+		PendingDeleteFile   bool      `json:"pending_delete_file"`
+		PendingDeleteResume bool      `json:"pending_delete_resume"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -404,6 +423,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
 	j.Interrupted = in.Interrupted
 	j.FinalHost = in.FinalHost
+	j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume =
+		in.PendingDeleteAt, in.PendingDeleteFile, in.PendingDeleteResume
 	return nil
 }
 
