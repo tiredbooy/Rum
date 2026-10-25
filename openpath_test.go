@@ -119,3 +119,20 @@ func TestTargetForDownload(t *testing.T) {
 		t.Error("no path known must error")
 	}
 }
+
+func TestExplorerRawCmdLine(t *testing.T) {
+	got := explorerRawCmdLine(`C:\My Files\a b.zip`)
+	want := `explorer /select,"C:\My Files\a b.zip"`
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestDiskFullFolderFallsBackToExistingParent(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "not", "yet")
+	p, err := targetFor(actionFolder, downloadItem{ErrorCode: "disk_full", DiskPath: missing})
+	if err != nil || p != dir {
+		t.Fatalf("got %q %v, want %q", p, err, dir)
+	}
+}

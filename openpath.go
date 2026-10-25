@@ -97,6 +97,9 @@ func targetFor(action openAction, it downloadItem) (string, error) {
 		return "", errors.New("no location known")
 	}
 	p = filepath.Clean(p)
+	if action == actionFolder && it.ErrorCode == "disk_full" {
+		p = nearestExisting(p)
+	}
 	isDir, err := validateKnownPath(p)
 	if err != nil {
 		return "", err
@@ -105,6 +108,28 @@ func targetFor(action openAction, it downloadItem) (string, error) {
 		return "", errors.New("unexpected path type")
 	}
 	return p, nil
+}
+
+// nearestExisting walks up from p to the closest existing ancestor, so a
+// disk-full destination that was never created still opens its volume.
+func nearestExisting(p string) string {
+	for {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return p
+		}
+		p = parent
+	}
+}
+
+// explorerRawCmdLine is the exact Windows command line for revealing path.
+// Go's argv quoting wraps the whole "/select,path" token in quotes, which
+// explorer misparses for paths with spaces, so the line is built by hand.
+func explorerRawCmdLine(path string) string {
+	return `explorer /select,"` + path + `"`
 }
 
 // runFirst runs candidates until one succeeds; it returns the last error.
@@ -131,6 +156,9 @@ func execArgv(argv []string) error {
 		return exec.CommandContext(ctx, argv[0], argv[1:]...).Run()
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
+	if goruntime.GOOS == "windows" && argv[0] == "explorer" && len(argv) == 2 && strings.HasPrefix(argv[1], "/select,") {
+		setRawCmdLine(cmd, explorerRawCmdLine(strings.TrimPrefix(argv[1], "/select,")))
+	}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
