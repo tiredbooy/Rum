@@ -112,6 +112,10 @@ type Setting struct {
 	TempDir              string `json:"temp_dir"`
 	KeepPartialOnFailure bool   `json:"keep_partial_on_failure"`
 
+	// PreventSleep keeps the system awake (not the display) while any download
+	// is running. On by default.
+	PreventSleep bool `json:"prevent_sleep"`
+
 	// Desktop / Wails preferences. These live in the backend config (the root
 	// module imports it) but are read/written by the desktop layer.
 	LaunchOnStartup      bool        `json:"launch_on_startup"` // OS login autostart
@@ -188,6 +192,7 @@ type SettingReq struct {
 	ReducedMotion         *bool   `json:"reduced_motion"`
 	TempDir               *string `json:"temp_dir"`
 	KeepPartialOnFailure  *bool   `json:"keep_partial_on_failure"`
+	PreventSleep          *bool   `json:"prevent_sleep"`
 }
 
 type SpeedRule struct {
@@ -564,6 +569,9 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.VerifyIntegrity != nil {
 		s.VerifyIntegrity = *req.VerifyIntegrity
 	}
+	if req.PreventSleep != nil {
+		s.PreventSleep = *req.PreventSleep
+	}
 	if req.BlockPrivateHosts != nil {
 		s.BlockPrivateHosts = *req.BlockPrivateHosts
 	}
@@ -683,6 +691,7 @@ func (s *Setting) setDefaults() {
 	s.ReducedMotion = false
 	s.TempDir = ""
 	s.KeepPartialOnFailure = true
+	s.PreventSleep = true
 }
 
 // defaultTrueBools maps the JSON key of every setting that defaults to ON to its
@@ -695,6 +704,7 @@ func (s *Setting) defaultTrueBools() map[string]*bool {
 		"auto_resume_on_launch":    &s.AutoResumeOnLaunch,
 		"keep_partial_on_failure":  &s.KeepPartialOnFailure,
 		"scheduled_start_enabled":  &s.ScheduledStartEnabled,
+		"prevent_sleep":            &s.PreventSleep,
 	}
 }
 
