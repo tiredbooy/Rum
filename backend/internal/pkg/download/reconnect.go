@@ -135,8 +135,8 @@ func (c *ResumeController) tick(ctx context.Context) {
 		if job.GetStatus() != StatusError {
 			continue
 		}
-		if jobBlocked(job) || !isRetryableError(job.GetError()) {
-			continue // a 404 / checksum mismatch is not a connectivity problem
+		if !c.eligible(job) {
+			continue // a 404 / checksum mismatch / full disk is not a connectivity problem
 		}
 		// Progress since the last auto-resume means the link works, just badly:
 		// give the job a fresh budget.
@@ -163,6 +163,22 @@ func (c *ResumeController) tick(ctx context.Context) {
 			job.SetStatus(StatusError)
 		}
 	}
+}
+
+// eligible reports whether a failed job may be auto-resumed on reconnect. Disk
+// full and block pages are never eligible (they need the user or the
+// DiskWatcher); otherwise the live typed error decides, falling back to the
+// persisted classifier flag because a job reloaded after a restart only has the
+// error text.
+func (c *ResumeController) eligible(job *Job) bool {
+	code, retryable := job.GetErrorCode()
+	if jobBlocked(job) || code == ErrCodeDiskFull || code == ErrCodeLinkExpired {
+		return false
+	}
+	if _, ok := AsDiskFull(job.GetError()); ok {
+		return false
+	}
+	return isRetryableError(job.GetError()) || (code != "" && retryable)
 }
 
 // hostPortForURL turns a download URL into a dialable "host:port", defaulting

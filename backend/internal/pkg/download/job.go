@@ -274,7 +274,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Speed:             j.Speed,
 		RemainingTime:     j.RemainingTime,
 		Error:             errString(j.Error),
-		ErrorCode:         persistedCode(j.ErrorCode),
+		ErrorCode:         persistedCode(j.ErrorCode, j.Error != nil),
 		Retryable:         j.Retryable,
 		BatchID:           j.BatchID,
 		CreatedAt:         j.CreatedAt,
@@ -300,9 +300,11 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// persistedCode drops the transient stalled code: it would be stale after a crash.
-func persistedCode(c string) string {
-	if c == ErrorCodeStalled {
+// persistedCode drops the transient stalled code (set while a retry is in
+// flight, with no Error): it would be stale after a crash. A job that FAILED
+// stalled has an Error and keeps its code.
+func persistedCode(c string, hasError bool) string {
+	if c == ErrorCodeStalled && !hasError {
 		return ""
 	}
 	return c
