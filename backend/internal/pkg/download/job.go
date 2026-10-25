@@ -96,6 +96,13 @@ type Job struct {
 	// HTML response even though the job does not expect one. Never persisted.
 	AllowBlockedPage bool `json:"-"`
 
+	// Mirrors are extra URLs serving the same file (max MaxMirrors). The engine
+	// switches to a verified one when the primary URL fails (see mirror.go).
+	// ActiveMirror is the host:port of the mirror the last run was served from;
+	// "" means the primary URL.
+	Mirrors      []string `json:"mirrors,omitempty"`
+	ActiveMirror string   `json:"active_mirror,omitempty"`
+
 	// PendingDeleteAt is set while a delete can still be undone: the job is
 	// hidden and its transfer paused, and data removal waits for this deadline.
 	// PendingDeleteFile says whether the deadline also deletes the file/partial
@@ -283,6 +290,8 @@ type jobJSON struct {
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
 	FinalHost         string        `json:"final_host,omitempty"`
+	Mirrors           []string      `json:"mirrors,omitempty"`
+	ActiveMirror      string        `json:"active_mirror,omitempty"`
 
 	PendingDeleteAt     time.Time `json:"pending_delete_at,omitzero"`
 	PendingDeleteFile   bool      `json:"pending_delete_file,omitempty"`
@@ -337,6 +346,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		out.NeededBytes, out.FreeBytes, out.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
 	}
 	out.FinalHost = j.FinalHost
+	out.Mirrors, out.ActiveMirror = append([]string(nil), j.Mirrors...), j.ActiveMirror
 	out.PendingDeleteAt, out.PendingDeleteFile, out.PendingDeleteResume =
 		j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume
 	return json.Marshal(out)
@@ -408,6 +418,8 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		FreeBytes         int64           `json:"free_bytes"`
 		DiskPath          string          `json:"disk_path"`
 		FinalHost         string          `json:"final_host"`
+		Mirrors           []string        `json:"mirrors"`
+		ActiveMirror      string          `json:"active_mirror"`
 
 		PendingDeleteAt     time.Time `json:"pending_delete_at"`
 		PendingDeleteFile   bool      `json:"pending_delete_file"`
@@ -455,6 +467,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Interrupted = in.Interrupted
 	j.NightQueue, j.NightPaused = in.NightQueue, in.NightPaused
 	j.FinalHost = in.FinalHost
+	j.Mirrors, j.ActiveMirror = in.Mirrors, in.ActiveMirror
 	j.PendingDeleteAt, j.PendingDeleteFile, j.PendingDeleteResume =
 		in.PendingDeleteAt, in.PendingDeleteFile, in.PendingDeleteResume
 	return nil

@@ -52,6 +52,7 @@ func CreateDownload(c *gin.Context) {
 		MaxRetries:   req.MaxRetries,
 		DestPath:     req.DestPath,
 		NightQueue:   req.NightQueue,
+		Mirrors:      req.Mirrors,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -367,6 +368,28 @@ func RefreshDownloadURL(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": jobID, "resumed": res.Resumed, "restarted": res.Restarted})
 }
 
+// SetDownloadMirrors replaces a download's mirror list. Body: { "mirrors": [...] }.
+// Takes effect on the next run (or the next failover of a running one).
+func SetDownloadMirrors(c *gin.Context) {
+	jobID := c.Param("id")
+	if jobID == "" {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "job id is required")
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCreateBodyBytes)
+	var req dto.UpdateMirrorsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
+		return
+	}
+	list, err := GlobalManager.SetJobMirrors(jobID, req.Mirrors)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": jobID, "mirrors": list})
+}
+
 // deleteResponse is shared by single and bulk delete: the hidden ids, the
 // deadline, and the undo window so the UI can size its toast.
 func deleteResponse(ids []string, at time.Time) gin.H {
@@ -560,6 +583,7 @@ func toDownloadResponse(job *download.Job) dto.DownloadResponse {
 		OutputPath: job.GetOutputPath(),
 	}
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
+	resp.Mirrors, resp.ActiveMirror = job.GetMirrors(), job.GetActiveMirror()
 	setNightLimit(&resp, job)
 	if e := job.GetError(); e != nil {
 		resp.Error = e.Error()
@@ -604,6 +628,7 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	}
 	resp.FinalHost = job.FinalHost
 	resp.NightQueue, resp.NightPaused = job.GetNightQueue(), job.GetNightPaused()
+	resp.Mirrors, resp.ActiveMirror = job.GetMirrors(), job.GetActiveMirror()
 	if resp.ErrorCode == "" {
 		setNightLimit(&resp, job)
 	}

@@ -477,6 +477,16 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	cfg := newRetryConfig(opt)
 	cfg.job = job
 
+	// Mirrors: a worker whose URL keeps failing moves every segment to a verified
+	// mirror; each continues from its own offset, so nothing is refetched.
+	ms := newMirrorSet(job, url, fullPath, func() []region {
+		rs := make([]region, 0, len(segs))
+		for i := range segs {
+			rs = append(rs, region{segs[i].Start, segDone[i].Load()})
+		}
+		return rs
+	}, val.get2)
+
 	g, gctx := errgroup.WithContext(withBlockJob(ctx, job))
 	g.SetLimit(connections)
 
@@ -489,9 +499,17 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 		g.Go(func() error {
 			segCfg := cfg
 			segCfg.progress = segDone[idx].Load
-			return retryWithBackoff(gctx, segCfg, func(ctx context.Context) error {
-				return downloadSegment(ctx, opt, url, outFile, &segDone[idx], seg,
-					limiter, atomicDownloaded, totalSize, safeProgress, val)
+			return ms.run(gctx, opt, func(ctx context.Context, cur string, o Options) error {
+				// If-Range carries the primary's validator; another server may
+				// legitimately differ, so the check is skipped for mirrors.
+				v := val
+				if !ms.isPrimary(cur) {
+					v = nil
+				}
+				return retryWithBackoff(ctx, segCfg, func(ctx context.Context) error {
+					return downloadSegment(ctx, o, cur, outFile, &segDone[idx], seg,
+						limiter, atomicDownloaded, totalSize, safeProgress, v)
+				})
 			})
 		})
 	}
@@ -636,6 +654,12 @@ func (s *sharedValidator) get() (etag, lastMod string, contentLen int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.etag, s.lastModified, s.contentLen
+}
+
+// get2 is get without the length, for callers that only compare validators.
+func (s *sharedValidator) get2() (etag, lastMod string) {
+	etag, lastMod, _ = s.get()
+	return
 }
 
 // has reports whether a usable validator (ETag or Last-Modified) was captured.

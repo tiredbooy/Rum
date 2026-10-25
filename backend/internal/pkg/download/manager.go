@@ -362,6 +362,8 @@ type JobCreateOptions struct {
 	SpeedLimit   int // KB/s for this job only
 	MaxRetries   int
 	DestPath     string // directory; relative paths resolve under the download folder
+	// Mirrors are extra URLs for the same file (single-URL creates only).
+	Mirrors []string
 }
 
 // CreateJobsFromURLsWithOptions creates jobs for the given URLs (same dedupe /
@@ -388,6 +390,14 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 		return nil, err
 	}
 	opts.DestPath = dest
+	if len(opts.Mirrors) > 0 {
+		if len(urls) != 1 {
+			return nil, mirrorValidationError("mirrors need exactly one link")
+		}
+		if opts.Mirrors, err = NormalizeMirrors(urls[0], opts.Mirrors); err != nil {
+			return nil, err
+		}
+	}
 
 	jobs, err := m.createJobs(urls, opts)
 	if err != nil {
@@ -410,6 +420,9 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 		}
 		if opts.NightQueue {
 			job.SetNightQueue(true)
+		}
+		if len(opts.Mirrors) > 0 {
+			job.SetMirrors(opts.Mirrors)
 		}
 	}
 

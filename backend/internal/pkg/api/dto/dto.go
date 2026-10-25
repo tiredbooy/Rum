@@ -29,6 +29,9 @@ type CreateDownloadRequest struct {
 	Category     string `json:"category,omitempty"`
 	// NightQueue assigns the download to the night plan ("Download at night").
 	NightQueue bool `json:"night_queue,omitempty"`
+	// Mirrors are extra links to the same file, used if the main link fails.
+	// Only valid with a single URL; at most download.MaxMirrors.
+	Mirrors []string `json:"mirrors,omitempty"`
 }
 
 // Validate performs field-level validation at the edge, before anything reaches
@@ -56,6 +59,9 @@ func (r *CreateDownloadRequest) Validate() map[string]string {
 		}
 	}
 
+	if len(r.Mirrors) > 0 && len(r.URLs) != 1 {
+		fields["mirrors"] = "need exactly one URL"
+	}
 	if r.SpeedLimit < 0 {
 		fields["speed_limit"] = "must be >= 0"
 	}
@@ -146,6 +152,10 @@ type DownloadResponse struct {
 	// the plan itself paused it (it restarts when the window opens).
 	NightQueue  bool `json:"night_queue,omitempty"`
 	NightPaused bool `json:"night_paused,omitempty"`
+	// Mirrors are the job's extra links; ActiveMirror the host serving it now
+	// ("" = main link).
+	Mirrors      []string `json:"mirrors,omitempty"`
+	ActiveMirror string   `json:"active_mirror,omitempty"`
 }
 
 type BatchCreateResponse struct {
@@ -260,6 +270,12 @@ func (s *CategorySettings) Validate() map[string]string {
 		return nil
 	}
 	return fields
+}
+
+// UpdateMirrorsRequest is the body for PUT /downloads/:id/mirrors: the full new
+// mirror list (empty clears it).
+type UpdateMirrorsRequest struct {
+	Mirrors []string `json:"mirrors"`
 }
 
 // UpdateURLRequest is the body for PATCH /downloads/:id/url: a fresh link for a

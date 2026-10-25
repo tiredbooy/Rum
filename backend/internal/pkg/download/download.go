@@ -285,8 +285,13 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	cfg := newRetryConfig(opt)
 	cfg.job = job
 	cfg.progress = job.GetDownloaded
-	if err := retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
-		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
+	// When the link itself fails and the job has mirrors, ms moves to a verified
+	// one and the attempt resumes from the bytes on disk.
+	ms := newMirrorSet(job, url, fullPath, fileRegions(fullPath), nil)
+	if err := ms.run(ctx, opt, func(ctx context.Context, cur string, o Options) error {
+		return retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
+			return downloadSingleAttempt(ctx, o, job, cur, fullPath, progressFn)
+		})
 	}); err != nil {
 		return err
 	}
