@@ -124,8 +124,8 @@ func main() {
 				runtime.Quit(ctx)
 				return false
 			}
-			// User clicked Cancel – do nothing
-			return false
+			// User clicked Cancel – keep the window open
+			return true
 		},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "com.tiredbooy.rum",
