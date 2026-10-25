@@ -89,6 +89,16 @@ func main() {
 				return true // prevent close
 			}
 
+			// Downloads running: one combined prompt (replaces the generic confirm).
+			if n := server.ActiveDownloads(); n > 0 {
+				if !confirmQuitWithDownloads(ctx, n) {
+					return true // user cancelled: keep the window open
+				}
+				isQuitting = true
+				runtime.Quit(ctx)
+				return false
+			}
+
 			if !ds.ConfirmOnExit {
 				// No confirmation needed – quit the app directly
 				isQuitting = true

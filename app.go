@@ -69,11 +69,13 @@ func (a *App) startup(ctx context.Context) {
 }
 
 // shutdown is wired to options.App.OnShutdown. It cancels every background
-// goroutine so none survive the process exit.
+// goroutine so none survive the process exit, then pauses and saves downloads.
 func (a *App) shutdown(ctx context.Context) {
 	if a.bgCancel != nil {
 		a.bgCancel()
 	}
+	// Pause running downloads and save their state so they resume next launch.
+	server.GracefulStop()
 }
 
 // GetApiBase returns the resolved loopback API base URL. It prefers the value

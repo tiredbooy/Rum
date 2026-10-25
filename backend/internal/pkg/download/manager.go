@@ -72,6 +72,10 @@ type JobManager struct {
 	dispatchWG     sync.WaitGroup
 	shutdownOnce   sync.Once
 
+	// runWG tracks live download goroutines so GracefulShutdown can wait for
+	// them to flush their resume state after being paused.
+	runWG sync.WaitGroup
+
 	// saveMu guards the debounced-persist state below. It is never held while
 	// taking m.mu in the requesting path (see requestSave).
 	saveMu     sync.Mutex
@@ -196,7 +200,9 @@ func (m *JobManager) dispatch() {
 		var releaseOnce sync.Once
 		release := func() { releaseOnce.Do(func() { m.sched.Done(id) }) }
 
+		m.runWG.Add(1)
 		go func(id string, ctx context.Context, cancel context.CancelFunc, release func()) {
+			defer m.runWG.Done()
 			defer release()
 			defer m.recoverJob(id) // turn a panic into one failed job, not a dead app
 			m.runDownload(ctx, id, cancel, release)
@@ -1045,6 +1051,82 @@ func (m *JobManager) Shutdown() {
 		m.sched.Close()
 		m.dispatchWG.Wait()
 	})
+}
+
+// GracefulShutdown is the quit path: it stops the dispatcher, pauses every
+// running job, flags running and queued jobs Interrupted (so resume-on-launch
+// restarts them), waits for the download goroutines to flush their segment
+// sidecars, and persists jobs.json. It returns when done or when ctx expires,
+// whichever is first; in the latter case jobs.json is still written, with the
+// stragglers flagged, so nothing is lost. A job the user paused by hand or that
+// already finished is left untouched.
+func (m *JobManager) GracefulShutdown(ctx context.Context) {
+	// No new downloads may start from here on (also flushes a pending save).
+	m.Shutdown()
+
+	var flagged []*Job
+	m.mu.Lock()
+	for _, job := range m.jobs {
+		switch job.GetStatus() {
+		case StatusRunning:
+			job.SetInterrupted(true)
+			flagged = append(flagged, job)
+			if cancel := job.GetCancelFunc(); cancel != nil {
+				cancel()
+			}
+		case StatusPending:
+			if job.GetStartAt().After(time.Now()) {
+				continue // waiting on its schedule, not interrupted
+			}
+			job.SetStatus(StatusPaused)
+			job.SetInterrupted(true)
+			flagged = append(flagged, job)
+		}
+	}
+	m.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() { m.runWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		log.Println("shutdown: deadline reached before every download paused")
+	}
+
+	// A job that finished (or failed) while we waited is not awaiting recovery.
+	for _, job := range flagged {
+		if st := job.GetStatus(); st == StatusCompleted || st == StatusError {
+			job.SetInterrupted(false)
+		}
+	}
+	m.saveToDisk()
+}
+
+// RunPeriodicPersist writes jobs.json every interval while a download is active,
+// so a crash or power loss costs at most one interval of progress metadata. It
+// blocks until ctx is done; run it in a goroutine.
+func (m *JobManager) RunPeriodicPersist(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m.mu.RLock()
+			active := false
+			for _, j := range m.jobs {
+				if st := j.GetStatus(); st == StatusRunning || st == StatusPending {
+					active = true
+					break
+				}
+			}
+			m.mu.RUnlock()
+			if active {
+				m.saveToDisk()
+			}
+		}
+	}
 }
 
 func (m *JobManager) PauseJob(jobID string) error {
