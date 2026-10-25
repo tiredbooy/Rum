@@ -47,6 +47,10 @@ export interface Download {
   checksum_status?: "verified" | "mismatch";
   checksum_result_algo?: ChecksumAlgo;
   checksum_source?: "user" | "header" | "sidecar";
+  /** Extra links for the same file, tried if the main link fails. */
+  mirrors?: string[];
+  /** Host serving the file right now when it is a mirror; unset = main link. */
+  active_mirror?: string;
 }
 
 /** Result of POST /downloads/:id/verify-checksum. */
@@ -93,6 +97,8 @@ export interface DownloadReq {
   category?: string;
   /** Run only inside the night window ("Download at night"). */
   night_queue?: boolean;
+  /** Extra links for the same file (single URL only, at most 5). */
+  mirrors?: string[];
 }
 
 /** Options accepted by the batch endpoint (POST /downloads/batch). */

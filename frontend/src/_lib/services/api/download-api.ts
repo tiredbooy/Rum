@@ -200,6 +200,17 @@ export async function refreshDownloadUrl(
   });
 }
 
+/** Replace a download's mirror list (empty clears it). Returns the stored list. */
+export async function setDownloadMirrors(
+  id: string,
+  mirrors: string[],
+): Promise<{ id: string; mirrors: string[] }> {
+  return request<{ id: string; mirrors: string[] }>(
+    `/api/v1/downloads/${id}/mirrors`,
+    { method: "PUT", body: JSON.stringify({ mirrors }) },
+  );
+}
+
 export async function startAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/start-all", { method: "POST" });
 }

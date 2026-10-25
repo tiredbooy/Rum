@@ -43,6 +43,7 @@ func SetupRouter(r *gin.Engine) {
 		v1.POST("/downloads/:id/repair", handlers.RepairDownload)
 		v1.PATCH("/downloads/:id/priority", handlers.SetDownloadPriority)
 		v1.PATCH("/downloads/:id/url", handlers.RefreshDownloadURL)
+		v1.PUT("/downloads/:id/mirrors", handlers.SetDownloadMirrors)
 
 		v1.GET("/settings", handlers.GetSettings)
 		v1.PATCH("/settings", handlers.UpdateSetting)
