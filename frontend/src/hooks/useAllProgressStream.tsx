@@ -4,6 +4,7 @@ import { apiBaseSync } from "@/_lib/wails";
 import { downloadKeys } from "@/_lib/services/queries/download.queries";
 import { useProgressStore } from "@/stores/download-progress-store";
 import type { Download } from "@/_lib/types/download-types";
+import { countNetworkBlocked, probeBackend } from "@/_lib/utils/backend-probe";
 
 /**
  * Normalize a raw SSE progress payload (snake_case, possibly bogus values)
@@ -70,6 +71,9 @@ function hasActiveDownloads(queryClient: QueryClient): boolean {
     );
 }
 
+/** How often the idle (stream-paused) app checks that the backend is alive. */
+const IDLE_PROBE_MS = 15000;
+
 export function AllProgressStream() {
   const queryClient = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
@@ -79,22 +83,31 @@ export function AllProgressStream() {
   const setOnline = useProgressStore((s) => s.setOnline);
   const setHasActivity = useProgressStore((s) => s.setHasActivity);
   const hasActivity = useProgressStore((s) => s.hasActivity);
+  const setNetworkBlocked = useProgressStore((s) => s.setNetworkBlocked);
 
   // Keep the activity flag in sync with the download cache. Subscribing to the
   // query cache means adding/completing a download flips the flag, which in turn
   // (via the connect effect below) opens or pauses the SSE stream.
   useEffect(() => {
-    const recompute = () => setHasActivity(hasActiveDownloads(queryClient));
+    const recompute = () => {
+      setHasActivity(hasActiveDownloads(queryClient));
+      setNetworkBlocked(
+        countNetworkBlocked(
+          queryClient
+            .getQueriesData<Download[]>({ queryKey: downloadKeys.all })
+            .flatMap(([, list]) => (Array.isArray(list) ? list : [])),
+        ),
+      );
+    };
     recompute();
     const cache = queryClient.getQueryCache();
     const unsubscribe = cache.subscribe(recompute);
     return unsubscribe;
-  }, [queryClient, setHasActivity]);
+  }, [queryClient, setHasActivity, setNetworkBlocked]);
 
   useEffect(() => {
-    // No work to watch: keep the stream closed but report "online" so the
-    // connection banner stays hidden — this is an intentional idle pause, not
-    // a dropped connection.
+    // No work to watch: keep the stream closed (an intentional idle pause), but
+    // do not assume the backend is fine — probe it so a dead backend still shows.
     if (!hasActivity) {
       if (reconnectRef.current) {
         clearTimeout(reconnectRef.current);
@@ -103,8 +116,18 @@ export function AllProgressStream() {
       esRef.current?.close();
       esRef.current = null;
       attemptsRef.current = 0;
-      setOnline(true);
-      return;
+
+      let stopped = false;
+      const check = async () => {
+        const ok = await probeBackend(apiBaseSync());
+        if (!stopped) setOnline(ok);
+      };
+      void check();
+      const timer = setInterval(check, IDLE_PROBE_MS);
+      return () => {
+        stopped = true;
+        clearInterval(timer);
+      };
     }
 
     let cancelled = false;

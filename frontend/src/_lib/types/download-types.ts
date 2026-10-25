@@ -21,6 +21,10 @@ export interface Download {
   speed?: number;
   remaining: number;
   error?: string;
+  /** Machine reason for `error` (network_down, dns, disk_full, ...). */
+  error_code?: string;
+  /** True when retrying later may succeed. */
+  retryable?: boolean;
   priority?: DownloadPriority;
   dest_path?: string;
   created_at?: string;

@@ -20,6 +20,9 @@ interface ProgressState {
    * turns true. Defaults to true so the stream connects on first load.
    */
   hasActivity: boolean;
+  /** Downloads that failed because of the network (drives the "network problem" notice). */
+  networkBlocked: number;
+  setNetworkBlocked: (n: number) => void;
   updateProgress: (id: string, data: Partial<ProgressEntry>) => void;
   setOnline: (online: boolean) => void;
   setHasActivity: (hasActivity: boolean) => void;
@@ -34,6 +37,8 @@ export const useProgressStore = create<ProgressState>((set) => ({
   // Optimistic default: connect on first render; the controller recomputes this
   // from the download cache and pauses the stream once everything is idle.
   hasActivity: true,
+  networkBlocked: 0,
+  setNetworkBlocked: (networkBlocked) => set({ networkBlocked }),
   updateProgress: (id, data) =>
     set((state) => ({
       progressMap: {
