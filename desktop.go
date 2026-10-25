@@ -71,7 +71,11 @@ func (a *App) watchCompletions(ctx context.Context) {
 				continue
 			}
 
-			silent := loadDesktopSettings().Silent
+			ds := loadDesktopSettings()
+			// While the window is hidden the hidden-window notifier owns finish
+			// notices ("All downloads finished"); notifying here too would
+			// show two for the same event.
+			quiet := ds.Silent || (ds.NotifyWhenHidden && windowVis.Hidden())
 
 			for _, it := range items {
 				if it.ID == "" {
@@ -82,7 +86,7 @@ func (a *App) watchCompletions(ctx context.Context) {
 				}
 				seen[it.ID] = struct{}{}
 				// Don't notify for downloads already finished before we started.
-				if first || silent {
+				if first || quiet {
 					continue
 				}
 				name := it.Filename
