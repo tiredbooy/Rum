@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -44,6 +45,57 @@ func TestNotifyCommand(t *testing.T) {
 	}
 	if _, _, ok := notifyCommand("windows", "a", "b", true); ok {
 		t.Fatal("windows should use the beeep fallback")
+	}
+}
+
+func TestDarwinDialogCommand(t *testing.T) {
+	evil := `x" & (do shell script "id") & "`
+	name, args, ok := notifyCommand("darwin", "Rum", evil, true)
+	if !ok || name != "osascript" || args[0] != "-e" || args[1] != darwinDialogScript {
+		t.Fatalf("darwin dialog: %q %#v", name, args)
+	}
+	if args[len(args)-1] != evil || !strings.Contains(args[1], "giving up after 60") {
+		t.Fatalf("args = %#v", args)
+	}
+	_, args, _ = notifyCommand("darwin", "Rum", "b", false)
+	if args[1] != darwinScript {
+		t.Fatal("no-actions should be a plain notification")
+	}
+}
+
+func TestParseDarwinDialogOutput(t *testing.T) {
+	for in, want := range map[string]string{
+		"button returned:Cancel Action, gave up:false\n": "cancel",
+		"button returned:Continue, gave up:false":        "default",
+		"button returned:Continue, gave up:true":         "",
+	} {
+		if got := parseNotifyAction(in); got != want {
+			t.Errorf("parse(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestWindowsDialogMapping(t *testing.T) {
+	for ret, want := range map[int]string{idYes: "cancel", idNo: "default", 32000: "", 0: ""} {
+		if got := windowsDialogAction(ret); got != want {
+			t.Errorf("action(%d)=%q want %q", ret, got, want)
+		}
+	}
+	if windowsDialogFlags&mbTopmost == 0 || windowsDialogFlags&mbYesNo == 0 {
+		t.Fatal("flags must be top-most Yes/No")
+	}
+	if !strings.HasSuffix(windowsDialogText("b"), "Cancel it?") {
+		t.Fatal("text must ask the question")
+	}
+}
+
+func TestWindowsCancelActionCancelsFinish(t *testing.T) {
+	var cancelled, shown int
+	h := finishActionHandler{cancel: func() { cancelled++ }, show: func() { shown++ }}
+	send := func(context.Context, string, string) (string, error) { return windowsDialogAction(idYes), nil }
+	deliverFinishNotice(context.Background(), finishPending{Action: "shutdown", SecondsLeft: 60}, send, h)
+	if cancelled != 1 || shown != 0 {
+		t.Fatalf("cancelled=%d shown=%d", cancelled, shown)
 	}
 }
 
