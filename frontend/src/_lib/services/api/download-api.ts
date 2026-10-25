@@ -78,6 +78,11 @@ export async function retryDownload(id: string): Promise<void> {
   await request(`/api/v1/downloads/${id}/retry`, { method: "POST" });
 }
 
+/** Restart a download that stopped on a block page, accepting HTML once. */
+export async function downloadAnyway(id: string): Promise<void> {
+  await request(`/api/v1/downloads/${id}/download-anyway`, { method: "POST" });
+}
+
 /**
  * Verify a (finished) download's integrity. `deep` forces a network
  * re-validation (re-HEAD to confirm the source still matches). Never mutates the

@@ -10,6 +10,7 @@ import {
   createBatch,
   createDownloads,
   deleteDownload,
+  downloadAnyway,
   deleteDownloads,
   getDownloads,
   fetchDownloadProgress,
@@ -198,6 +199,31 @@ export function useRetryDownload() {
       patchDownloadInCaches(queryClient, id, { status: "error" });
       toast.error(
         err instanceof Error ? err.message : "Failed to retry download",
+      );
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+/** Restart a block-page failure and accept the HTML response this once. */
+export function useDownloadAnyway() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => downloadAnyway(id),
+    onMutate: (id) => {
+      patchDownloadInCaches(queryClient, id, {
+        status: "pending",
+        error: undefined,
+        error_code: undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err, id) => {
+      patchDownloadInCaches(queryClient, id, { status: "error" });
+      toast.error(
+        err instanceof Error ? err.message : "Could not start download",
       );
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },

@@ -23,6 +23,7 @@ import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
+import { BlockedPageNotice, isBlockedPage } from "./BlockedPageNotice";
 
 interface DownloadCardProps {
   download: Download;
@@ -229,7 +230,9 @@ function DownloadCardImpl({
           </div>
         )}
 
-        {status === "error" && error && (
+        {isBlockedPage(download) && <BlockedPageNotice download={download} />}
+
+        {status === "error" && error && !isBlockedPage(download) && (
           <p
             className="text-[10px] text-destructive truncate"
             title={error}

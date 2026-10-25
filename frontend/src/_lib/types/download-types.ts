@@ -21,6 +21,10 @@ export interface Download {
   speed?: number;
   remaining: number;
   error?: string;
+  /** Stable machine code for `error` (e.g. "blocked_page"). */
+  error_code?: string;
+  /** Host that answered the first probe, after redirects. */
+  final_host?: string;
   priority?: DownloadPriority;
   dest_path?: string;
   created_at?: string;
