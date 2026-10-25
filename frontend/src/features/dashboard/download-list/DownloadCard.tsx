@@ -28,6 +28,8 @@ import { DownloadErrorNote } from "./DownloadErrorNote";
 import { DiskFullNotice } from "./DiskFullNotice";
 import { isDiskFull } from "@/_lib/disk-full";
 import { BlockedPageNotice, isBlockedPage } from "./BlockedPageNotice";
+import { ExpiredLinkNotice } from "./ExpiredLinkNotice";
+import { isLinkExpired } from "./link-refresh";
 
 interface DownloadCardProps {
   download: Download;
@@ -241,8 +243,14 @@ function DownloadCardImpl({
 
         {isBlockedPage(download) && <BlockedPageNotice download={download} />}
 
-        {status === "error" && error && !diskFull && !isBlockedPage(download) && (
-          <DownloadErrorNote code={download.error_code} error={error} />
+        {isLinkExpired(download) && <ExpiredLinkNotice download={download} />}
+
+        {status === "error" &&
+          error &&
+          !diskFull &&
+          !isBlockedPage(download) &&
+          !isLinkExpired(download) && (
+            <DownloadErrorNote code={download.error_code} error={error} />
         )}
       </div>
 

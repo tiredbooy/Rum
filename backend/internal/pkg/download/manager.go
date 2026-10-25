@@ -309,6 +309,13 @@ type JobCreateOptions struct {
 	ChecksumAlgo string
 	Category     string
 	StartAt      time.Time
+
+	// Per-download overrides; zero values mean "use the global setting".
+	Referer    string
+	UserAgent  string
+	SpeedLimit int // KB/s for this job only
+	MaxRetries int
+	DestPath   string // directory; relative paths resolve under the download folder
 }
 
 // CreateJobsFromURLsWithOptions creates jobs for the given URLs (same dedupe /
@@ -316,7 +323,27 @@ type JobCreateOptions struct {
 // per-job fields (checksum, category, scheduled start) onto each created job,
 // persisting them. It returns the newly created jobs.
 func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreateOptions) ([]*Job, error) {
-	jobs, err := m.CreateJobsFromURLs(urls)
+	// Validate the destination before any network work, and carry the resolved
+	// directory so the file-conflict check at creation looks in the right place.
+	m.mu.RLock()
+	base := m.opt.Out
+	m.mu.RUnlock()
+	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent} {
+		if strings.ContainsAny(v, "\r\n\x00") {
+			return nil, &CodedError{
+				Code: codeValidation,
+				Kind: KindValidation,
+				Err:  fmt.Errorf("invalid %s: contains a control character", name),
+			}
+		}
+	}
+	dest, err := ResolveDestPath(base, opts.DestPath)
+	if err != nil {
+		return nil, err
+	}
+	opts.DestPath = dest
+
+	jobs, err := m.createJobs(urls, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -344,6 +371,14 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 }
 
 func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
+	return m.createJobs(urls, JobCreateOptions{})
+}
+
+// createJobs is the shared creation path. Only the per-download header / limit /
+// destination overrides in opts are applied here (they must be known before the
+// HEAD probe and the conflict check); the remaining fields are stamped by
+// CreateJobsFromURLsWithOptions. opts.DestPath must already be resolved.
+func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, error) {
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("no URLs provided")
 	}
@@ -373,7 +408,14 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 	if userAgent == "" {
 		userAgent = utils.GetRandomUserAgent()
 	}
-	downloader := NewDownloader(userAgent, m.opt.Referer)
+	if opts.UserAgent != "" {
+		userAgent = opts.UserAgent
+	}
+	referer := m.opt.Referer
+	if opts.Referer != "" {
+		referer = opts.Referer
+	}
+	downloader := NewDownloader(userAgent, referer)
 
 	// 3. Run HEAD requests with bounded concurrency and a per-request timeout.
 	//
@@ -442,6 +484,11 @@ func (m *JobManager) CreateJobsFromURLs(urls []string) ([]*Job, error) {
 			SupportRange: res.info.SupportsRange,
 			Status:       StatusPending,
 			CreatedAt:    time.Now(),
+			Referer:      opts.Referer,
+			UserAgent:    opts.UserAgent,
+			SpeedLimit:   opts.SpeedLimit,
+			MaxRetries:   opts.MaxRetries,
+			DestPath:     opts.DestPath,
 		}
 
 		// Apply the file-conflict policy ONCE, here at creation, where the
@@ -499,7 +546,11 @@ func (m *JobManager) applyConflictPolicy(job *Job) (fileName string, skip bool) 
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
 
-	dest := PrepareOutputPath(*m.opt, job.FileName, job.URL, job.ContentType)
+	opt := *m.opt
+	if d := job.GetDestPath(); d != "" {
+		opt.Out = d
+	}
+	dest := PrepareOutputPath(opt, job.FileName, job.URL, job.ContentType)
 	if !filesystem.IsFileExists(dest) {
 		return job.FileName, false
 	}
@@ -673,6 +724,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		// Global categorize-on (no explicit per-job category): keep auto-detect.
 		effectiveOpt.Category = ""
 	}
+	m.applyJobOptions(&effectiveOpt, job)
 
 	// Trace the settings this download actually ran with. Every existing DebugLog
 	// call sits on an unusual branch (resume, categorize failure, changed remote),
@@ -681,7 +733,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	// two lines make the trace answer the first question a maintainer has: which
 	// options were in force, and how did it end. No-op when debug is off.
 	DebugLog(fmt.Sprintf("start job=%s url=%s out=%s connections=%d limit=%dkB/s retries=%d verify=%v tempdir=%q categorize=%v",
-		jobID, job.GetURL(), effectiveOpt.Out, effectiveOpt.Connections, effectiveOpt.SpeedLimit,
+		jobID, RedactURL(job.GetURL()), effectiveOpt.Out, effectiveOpt.Connections, effectiveOpt.SpeedLimit,
 		effectiveOpt.MaxRetries, effectiveOpt.VerifyIntegrity, effectiveOpt.TempDir, effectiveOpt.Categorize))
 
 	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
@@ -694,7 +746,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		job.SetStatus(StatusCompleted)
 		job.SetCompletedAt(time.Now())
 	} else {
-		log.Println("ERROR STARTING: ", err.Error())
+		log.Println("ERROR STARTING: ", redactErr(err))
 		err = classifyDiskFull(err, job)
 		job.SetStatus(StatusError)
 		job.SetError(err)
@@ -715,7 +767,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	m.mu.Unlock()
 
 	if err != nil {
-		DebugLog(fmt.Sprintf("end   job=%s status=%s %d/%d bytes error=%v", jobID, finalStatus, downloaded, totalSize, err))
+		DebugLog(fmt.Sprintf("end   job=%s status=%s %d/%d bytes error=%s", jobID, finalStatus, downloaded, totalSize, redactErr(err)))
 	} else {
 		DebugLog(fmt.Sprintf("end   job=%s status=%s %d/%d bytes", jobID, finalStatus, downloaded, totalSize))
 	}
@@ -800,6 +852,7 @@ func (m *JobManager) effectiveOptsForJob(job *Job) Options {
 		opt.Categorize = true
 		opt.Category = cat
 	}
+	m.applyJobOptions(&opt, job)
 	if opt.Downloader == nil {
 		opt.Downloader = NewDownloader(opt.UserAgent, opt.Referer)
 	}

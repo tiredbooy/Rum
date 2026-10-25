@@ -16,6 +16,7 @@ import {
   fetchDownloadProgress,
   pauseAllDownloads,
   pauseDownload,
+  refreshDownloadUrl,
   repairDownload,
   resumeDownload,
   retryDownload,
@@ -303,6 +304,29 @@ export function useRepairDownload() {
       toast.error(
         err instanceof Error ? err.message : "Failed to repair download",
       );
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+  });
+}
+
+/**
+ * Replace an expired link and restart the download. Errors are left to the
+ * caller (the dialog), which must tell "different file" apart from the rest.
+ */
+export function useRefreshDownloadUrl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      url,
+      restart,
+    }: {
+      id: string;
+      url: string;
+      restart?: boolean;
+    }) => refreshDownloadUrl(id, url, restart),
+    onSuccess: (res) => {
+      toast.success(res.restarted ? "Restarted from zero" : "Resumed with new link");
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
   });

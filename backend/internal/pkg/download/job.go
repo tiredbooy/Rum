@@ -51,6 +51,16 @@ type Job struct {
 	ChecksumAlgo string `json:"checksum_algo,omitempty"`
 	Category     string `json:"category,omitempty"` // forces a category; "" = auto-detect
 
+	// More per-download overrides. Zero values mean "use the global setting".
+	// Referer and UserAgent are request headers and may be sensitive: they are
+	// persisted for resume but never returned by the API or written to logs.
+	// DestPath is the resolved download directory (see ResolveDestPath).
+	Referer    string `json:"referer,omitempty"`
+	UserAgent  string `json:"user_agent,omitempty"`
+	SpeedLimit int    `json:"speed_limit,omitempty"` // KB/s for this job only
+	MaxRetries int    `json:"max_retries,omitempty"`
+	DestPath   string `json:"dest_path,omitempty"`
+
 	// IntegrityHash is the hex digest of the fully assembled file, recorded on
 	// completion when integrity verification was enabled. It lets a later verify
 	// re-check the on-disk bytes without contacting the server, and replaces the
@@ -83,6 +93,7 @@ func (j *Job) SetStatus(s string)      { j.Mu.Lock(); defer j.Mu.Unlock(); j.Sta
 func (j *Job) GetPriority() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Priority }
 func (j *Job) SetPriority(p string)    { j.Mu.Lock(); defer j.Mu.Unlock(); j.Priority = p }
 func (j *Job) GetURL() string          { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.URL }
+func (j *Job) SetURL(u string)         { j.Mu.Lock(); defer j.Mu.Unlock(); j.URL = u }
 func (j *Job) GetDownloaded() int64    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Downloaded }
 func (j *Job) SetDownloaded(v int64)   { j.Mu.Lock(); defer j.Mu.Unlock(); j.Downloaded = v }
 func (j *Job) GetTotalSize() int64     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.TotalSize }
@@ -136,6 +147,12 @@ func (j *Job) GetChecksumAlgo() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); re
 func (j *Job) SetChecksumAlgo(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.ChecksumAlgo = v }
 func (j *Job) GetCategory() string      { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Category }
 func (j *Job) SetCategory(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Category = v }
+
+func (j *Job) GetReferer() string    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Referer }
+func (j *Job) GetUserAgent() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.UserAgent }
+func (j *Job) GetSpeedLimit() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.SpeedLimit }
+func (j *Job) GetMaxRetries() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.MaxRetries }
+func (j *Job) GetDestPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.DestPath }
 
 func (j *Job) GetIntegrityHash() string { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.IntegrityHash }
 
@@ -219,6 +236,11 @@ type jobJSON struct {
 	Checksum          string        `json:"checksum,omitempty"`
 	ChecksumAlgo      string        `json:"checksum_algo,omitempty"`
 	Category          string        `json:"category,omitempty"`
+	Referer           string        `json:"referer,omitempty"`
+	UserAgent         string        `json:"user_agent,omitempty"`
+	SpeedLimit        int           `json:"speed_limit,omitempty"`
+	MaxRetries        int           `json:"max_retries,omitempty"`
+	DestPath          string        `json:"dest_path,omitempty"`
 	IntegrityHash     string        `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
 	Interrupted       bool          `json:"interrupted,omitempty"`
@@ -261,6 +283,11 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Checksum:          j.Checksum,
 		ChecksumAlgo:      j.ChecksumAlgo,
 		Category:          j.Category,
+		Referer:           j.Referer,
+		UserAgent:         j.UserAgent,
+		SpeedLimit:        j.SpeedLimit,
+		MaxRetries:        j.MaxRetries,
+		DestPath:          j.DestPath,
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
 		Interrupted:       j.Interrupted,
@@ -322,6 +349,11 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		Checksum          string          `json:"checksum"`
 		ChecksumAlgo      string          `json:"checksum_algo"`
 		Category          string          `json:"category"`
+		Referer           string          `json:"referer"`
+		UserAgent         string          `json:"user_agent"`
+		SpeedLimit        int             `json:"speed_limit"`
+		MaxRetries        int             `json:"max_retries"`
+		DestPath          string          `json:"dest_path"`
 		IntegrityHash     string          `json:"integrity_hash"`
 		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
 		Interrupted       bool            `json:"interrupted"`
@@ -361,6 +393,11 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Checksum = in.Checksum
 	j.ChecksumAlgo = in.ChecksumAlgo
 	j.Category = in.Category
+	j.Referer = in.Referer
+	j.UserAgent = in.UserAgent
+	j.SpeedLimit = in.SpeedLimit
+	j.MaxRetries = in.MaxRetries
+	j.DestPath = in.DestPath
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
 	j.Interrupted = in.Interrupted

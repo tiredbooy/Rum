@@ -391,6 +391,9 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 			limitKB = opt.SpeedLimit
 		}
 		limiter = newSpeedLimiter(limitKB)
+	} else if opt.JobSpeedLimit > 0 {
+		// A per-download cap stacks on top of the shared governor.
+		limiter = newSpeedLimiter(opt.JobSpeedLimit)
 	}
 
 	// buildSnapshot reads the live per-segment counters + captured validators into
@@ -707,8 +710,9 @@ func downloadSegment(
 		// Shared global cap across all concurrent downloads/segments, honoring live
 		// bandwidth-window changes.
 		body = opt.Governor.Wrap(ctx, rawBody)
-	} else if limiter != nil {
-		body = &rateLimitedReader{reader: rawBody, limiter: limiter, ctx: ctx}
+	}
+	if limiter != nil {
+		body = &rateLimitedReader{reader: io.NopCloser(body), limiter: limiter, ctx: ctx}
 	}
 
 	buf := make([]byte, downloadBufferSize)

@@ -116,3 +116,27 @@ func TestClampLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateDownloadRequestValidateDestPath(t *testing.T) {
+	ok := CreateDownloadRequest{URLs: []string{"https://a.com/x"}, DestPath: "movies/2024"}
+	if got := ok.Validate(); got != nil {
+		t.Fatalf("relative dest path should be valid, got %v", got)
+	}
+	for _, bad := range []string{"../etc", "a/../../b", "x\x00y"} {
+		r := CreateDownloadRequest{URLs: []string{"https://a.com/x"}, DestPath: bad}
+		if got := r.Validate(); got == nil || got["dest_path"] == "" {
+			t.Errorf("dest_path %q must be rejected, got %v", bad, got)
+		}
+	}
+}
+
+func TestUpdateURLRequestValidate(t *testing.T) {
+	if f := (&UpdateURLRequest{URL: "https://a.com/x"}).Validate(); f != nil {
+		t.Fatalf("valid url rejected: %v", f)
+	}
+	for _, bad := range []string{"", "  ", "/rel", "ftp://a.com/x"} {
+		if f := (&UpdateURLRequest{URL: bad}).Validate(); f["url"] == "" {
+			t.Errorf("url %q must be rejected, got %v", bad, f)
+		}
+	}
+}

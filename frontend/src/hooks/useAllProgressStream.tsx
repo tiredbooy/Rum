@@ -69,6 +69,12 @@ function applyPatch(queryClient: QueryClient, patch: Partial<Download> & { id: s
       });
       if (changed) queryClient.setQueryData(key, next);
     });
+
+  // The stream carries status only. Fetch the failure's message and error_code
+  // (e.g. "link_expired") so the card can offer the matching fix.
+  if (patch.status === "error") {
+    queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+  }
 }
 
 /**

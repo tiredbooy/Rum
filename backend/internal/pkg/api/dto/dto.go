@@ -60,6 +60,9 @@ func (r *CreateDownloadRequest) Validate() map[string]string {
 	if r.MaxRetries < 0 {
 		fields["max_retries"] = "must be >= 0"
 	}
+	if msg := validDestPath(r.DestPath); msg != "" {
+		fields["dest_path"] = msg
+	}
 
 	// Optional checksum: if a checksum is provided, the algo must be supported.
 	if strings.TrimSpace(r.Checksum) != "" {
@@ -83,6 +86,21 @@ func (r *CreateDownloadRequest) Validate() map[string]string {
 		return nil
 	}
 	return fields
+}
+
+// validDestPath returns a problem description for an unsafe per-download
+// destination directory, or "" when it is acceptable. The engine re-validates and
+// resolves it (download.ResolveDestPath); this gives the client a field error.
+func validDestPath(p string) string {
+	if strings.ContainsRune(p, 0) {
+		return "contains an invalid character"
+	}
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return `must not contain ".."`
+		}
+	}
+	return ""
 }
 
 // ParsedStartAt returns the parsed StartAt (zero time when empty/invalid). Call
@@ -235,6 +253,30 @@ func (s *CategorySettings) Validate() map[string]string {
 	return fields
 }
 
+// UpdateURLRequest is the body for PATCH /downloads/:id/url: a fresh link for a
+// download whose old one expired. Restart confirms that a link pointing at a
+// different file may discard the partial data and download from zero.
+type UpdateURLRequest struct {
+	URL     string `json:"url"`
+	Restart bool   `json:"restart,omitempty"`
+}
+
+// Validate requires an absolute http(s) URL.
+func (r *UpdateURLRequest) Validate() map[string]string {
+	raw := strings.TrimSpace(r.URL)
+	if raw == "" {
+		return map[string]string{"url": "is required"}
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return map[string]string{"url": "must be an absolute http(s) URL"}
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return map[string]string{"url": "scheme must be http or https"}
+	}
+	return nil
+}
+
 // BatchCreateRequest is the body for POST /downloads/batch: a list of URLs plus
 // optional shared options applied to every created job.
 type BatchCreateRequest struct {
@@ -245,6 +287,8 @@ type BatchCreateRequest struct {
 // BatchCreateOptions are the per-batch options (mirrors the optional fields of
 // CreateDownloadRequest). All fields are optional.
 type BatchCreateOptions struct {
+	Referer      string `json:"referer,omitempty"`
+	UserAgent    string `json:"user_agent,omitempty"`
 	DestPath     string `json:"dest_path"`
 	SpeedLimit   int    `json:"speed_limit"`
 	MaxRetries   int    `json:"max_retries"`
