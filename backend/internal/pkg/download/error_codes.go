@@ -107,6 +107,14 @@ const ErrCodeBlockedPage = "blocked_page"
 // Not a failure; it is reported on paused jobs only, never stored in Job.Error.
 const ErrCodeNightLimit = "night_limit"
 
+// Update-check codes (Status.Error of /api/v1/update). ErrCodeUpdateCheck: GitHub
+// and every mirror failed. ErrCodeUpdateVerify: a downloaded update did not match
+// its published SHA-256 (or none was published) and was deleted.
+const (
+	ErrCodeUpdateCheck  = "update_check_failed"
+	ErrCodeUpdateVerify = "update_verify_failed"
+)
+
 func isBlockedPage(err error) bool {
 	var bp *blockedPageError
 	return errors.As(err, &bp)

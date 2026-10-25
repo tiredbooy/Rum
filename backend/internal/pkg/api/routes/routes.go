@@ -23,6 +23,11 @@ func SetupRouter(r *gin.Engine) {
 		v1.POST("/downloads/import", handlers.ImportDownloads)
 		v1.GET("/diagnostics", handlers.GetDiagnostics)
 
+		v1.GET("/update", handlers.GetUpdateStatus)
+		v1.POST("/update/check", handlers.CheckUpdate)
+		v1.POST("/update/dismiss", handlers.DismissUpdate)
+		v1.POST("/update/download", handlers.DownloadUpdate)
+
 		v1.POST("/downloads/start-all", handlers.StartDownloads)
 		v1.POST("/downloads/pause-all", handlers.PauseDownloads)
 		v1.POST("/downloads/retry-failed", handlers.RetryFailedDownloads)
