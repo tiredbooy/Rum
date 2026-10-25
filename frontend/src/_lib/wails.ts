@@ -20,6 +20,9 @@ declare global {
           ChooseDir?: () => Promise<string> | string;
           Capabilities?: () => Promise<DesktopCapabilities>;
           ResumedOnLaunch?: () => Promise<number>;
+          OpenDownloadFolder?: (id: string) => Promise<void>;
+          RevealDownload?: (id: string) => Promise<void>;
+          OpenDownload?: (id: string) => Promise<void>;
         };
       };
     };
