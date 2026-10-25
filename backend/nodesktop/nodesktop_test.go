@@ -20,3 +20,12 @@ func TestBlockedByEnv(t *testing.T) {
 		t.Fatal("RUM_NO_DESKTOP=1 must block")
 	}
 }
+
+func TestCheckBinaryOnlyAllowsTempFakes(t *testing.T) {
+	if err := CheckBinary("/usr/bin/yt-dlp"); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("real binary = %v, want ErrBlocked", err)
+	}
+	if err := CheckBinary(t.TempDir() + "/yt-dlp"); err != nil {
+		t.Fatalf("temp fake = %v, want nil", err)
+	}
+}

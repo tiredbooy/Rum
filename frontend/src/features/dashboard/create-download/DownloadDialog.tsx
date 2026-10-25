@@ -12,6 +12,8 @@ export default function DownloadDialog() {
   const draft = useDownloadRequestStore((s) => s.draft);
   const resetDraft = useDownloadRequestStore((s) => s.resetDraft);
   const saveDownloads = useCreateDownloads();
+  // The Video tab has its own Download button.
+  const isVideo = useAddDialogStore((s) => s.currentTab === "video");
 
   // Clear the draft whenever the dialog closes so the next open starts fresh
   // instead of re-showing the previous download's URLs/folder.
@@ -38,7 +40,7 @@ export default function DownloadDialog() {
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSaveDownloads}>Save</Button>
+          {!isVideo && <Button onClick={handleSaveDownloads}>Save</Button>}
         </div>
       }
     >

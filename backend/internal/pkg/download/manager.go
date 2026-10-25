@@ -823,7 +823,12 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		jobID, RedactURL(job.GetURL()), effectiveOpt.Out, effectiveOpt.Connections, effectiveOpt.SpeedLimit,
 		effectiveOpt.MaxRetries, effectiveOpt.VerifyIntegrity, effectiveOpt.TempDir, effectiveOpt.Categorize))
 
-	err := DownloadSegmented(ctx, effectiveOpt, job, progressFn)
+	var err error
+	if job.IsVideo() {
+		err = m.runVideo(ctx, effectiveOpt, job, progressFn)
+	} else {
+		err = DownloadSegmented(ctx, effectiveOpt, job, progressFn)
+	}
 	job.SetAllowBlockedPage(false) // the override applies to one run only
 	m.settleChecksum(ctx, job, effectiveOpt, err)
 
@@ -846,7 +851,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 		// A full disk is waiting for space, not a broken download: the partial and
 		// its sidecar are exactly what the auto-resume will continue from.
 		if _, full := AsDiskFull(err); !full && !effectiveOpt.KeepPartialOnFailure && !keepsFileOnFailure(err) {
-			RemovePartialData(job.GetOutputPath())
+			removeJobPartials(job, job.GetOutputPath())
 		}
 	}
 	downloaded := job.GetDownloaded()
@@ -969,6 +974,9 @@ func (m *JobManager) VerifyJob(ctx context.Context, id string, deep bool) (Verif
 	if !ok {
 		return VerifyResult{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
 	}
+	if job.IsVideo() {
+		return VerifyResult{}, errVideoUnsupported("verify")
+	}
 	opt := m.effectiveOptsForJob(job)
 	return VerifyFile(ctx, opt, job, deep)
 }
@@ -986,6 +994,9 @@ func (m *JobManager) RepairJob(ctx context.Context, id string, segments []int) (
 	m.mu.RUnlock()
 	if !ok {
 		return VerifyResult{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.IsVideo() {
+		return VerifyResult{}, errVideoUnsupported("repair")
 	}
 	if job.GetStatus() == StatusRunning {
 		return VerifyResult{}, fmt.Errorf("job %s is downloading; pause it before repair: %w", id, ErrConflict)
@@ -1526,7 +1537,7 @@ func (m *JobManager) DeleteJob(jobID string) error {
 	if status == StatusCompleted {
 		removePartsMeta(outputPath)
 	} else {
-		RemovePartialData(outputPath)
+		removeJobPartials(job, outputPath)
 	}
 
 	// Persist the current in-memory set (the job was already removed from m.jobs
@@ -1578,6 +1589,7 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 	// Partition into deleted vs. remaining, cancelling running jobs that are being
 	// deleted so they stop writing before we remove their partials.
 	type partialTarget struct {
+		job       *Job
 		path      string
 		completed bool
 	}
@@ -1589,6 +1601,7 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 				cancel() // pause/cancel an in-flight transfer before deleting it
 			}
 			toClean = append(toClean, partialTarget{
+				job:       job,
 				path:      job.GetOutputPath(),
 				completed: job.GetStatus() == StatusCompleted,
 			})
@@ -1619,7 +1632,7 @@ func (m *JobManager) DeleteJobsByFilter(filter string) error {
 		if t.completed {
 			removePartsMeta(t.path)
 		} else {
-			RemovePartialData(t.path)
+			removeJobPartials(t.job, t.path)
 		}
 	}
 

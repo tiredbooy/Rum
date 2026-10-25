@@ -75,6 +75,9 @@ export interface Setting {
   // (empty = built-in list); edit in settings.json.
   check_for_updates?: boolean;
   update_mirrors?: string[];
+  // ytdlp_path: explicit yt-dlp binary for video-page downloads ("" = PATH,
+  // then Rum's own tools folder).
+  ytdlp_path?: string;
 }
 
 /** GET /api/v1/finish-action: a sleep/shutdown countdown the user can cancel. */

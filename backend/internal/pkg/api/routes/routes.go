@@ -66,6 +66,13 @@ func SetupRouter(r *gin.Engine) {
 
 		v1.POST("/downloads/batch", handlers.CreateBatch)
 
+		// Video pages via yt-dlp.
+		v1.GET("/ytdlp", handlers.GetYtdlpStatus)
+		v1.POST("/ytdlp/install", handlers.InstallYtdlp)
+		v1.POST("/ytdlp/update", handlers.UpdateYtdlp)
+		v1.POST("/video/info", handlers.GetVideoInfo)
+		v1.POST("/video/downloads", handlers.CreateVideoDownload)
+
 		v1.GET("/finish-action", handlers.GetFinishAction)
 		v1.POST("/finish-action/cancel", handlers.CancelFinishAction)
 
@@ -82,5 +89,6 @@ func SetupRouter(r *gin.Engine) {
 		ext.GET("/ping", handlers.ExtPing)
 		ext.POST("/add", handlers.ExtAdd)
 		ext.POST("/open", handlers.ExtOpen)
+		ext.POST("/video", handlers.ExtVideo)
 	}
 }

@@ -1,10 +1,11 @@
 // Background (service worker on Chrome/Edge/Brave, background script on Firefox).
 import { ext } from "./lib/ns.js";
 import { loadSettings } from "./lib/settings.js";
-import { addDownload, findRum } from "./lib/rum.js";
+import { addDownload, addVideo, findRum } from "./lib/rum.js";
 import { basename, buildAddPayload, cookieHeader, pickMenuUrl, shouldCapture } from "./lib/rules.js";
 
 const MENU_ID = "rum-download";
+const VIDEO_MENU_ID = "rum-video";
 const SIZE_POLLS = 5;
 const SIZE_POLL_MS = 400;
 const SUPPRESS_MS = 60_000;
@@ -179,6 +180,17 @@ async function downloadWithRum(info, tab) {
   flash(false);
 }
 
+/** "Download video with Rum" on a page: Rum lists the formats and takes the best. */
+async function downloadVideoWithRum(info, tab) {
+  const url = info.pageUrl || tab?.url || "";
+  if (!/^https?:\/\//i.test(url)) return flash(false);
+  const settings = await loadSettings();
+  const found = await findRum(settings);
+  if (found.state !== "paired") return flash(false);
+  const result = await addVideo(url, { ...settings, port: found.port });
+  flash(result.ok);
+}
+
 async function createMenu() {
   await ext.contextMenus.removeAll(); // promise form works on Chrome MV3 and Firefox
   ext.contextMenus.create({
@@ -186,9 +198,15 @@ async function createMenu() {
     title: "Download with Rum",
     contexts: ["link", "image", "video", "audio"],
   });
+  ext.contextMenus.create({
+    id: VIDEO_MENU_ID,
+    title: "Download video with Rum",
+    contexts: ["page"],
+  });
 }
 
 ext.runtime.onInstalled.addListener(() => createMenu().catch(() => {}));
 ext.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_ID) downloadWithRum(info, tab).catch(() => flash(false));
+  if (info.menuItemId === VIDEO_MENU_ID) downloadVideoWithRum(info, tab).catch(() => flash(false));
 });

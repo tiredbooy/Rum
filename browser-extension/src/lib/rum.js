@@ -7,6 +7,8 @@ const PING_TIMEOUT_MS = 1500;
 // Rum probes the link (up to a minute) before it accepts; stay under what an
 // MV3 service worker will reliably wait.
 const ADD_TIMEOUT_MS = 20000;
+// Listing a page's formats runs yt-dlp, which Rum allows up to a minute.
+const VIDEO_TIMEOUT_MS = 75000;
 
 const base = (port) => `http://127.0.0.1:${port}`;
 
@@ -73,6 +75,22 @@ export async function addDownload(payload, settings, fetchImpl = fetch) {
     return { ok: res.ok, status: res.status };
   } catch {
     return { ok: false, status: 0 };
+  }
+}
+
+/** Hand a video page to Rum (yt-dlp picks the best format). ok only when queued. */
+export async function addVideo(pageUrl, settings, fetchImpl = fetch) {
+  try {
+    const res = await call(fetchImpl, settings.port, settings.token, "/ext/video", {
+      method: "POST",
+      body: { url: pageUrl },
+      timeoutMs: VIDEO_TIMEOUT_MS,
+    });
+    let code = "";
+    if (!res.ok) code = (await res.json().catch(() => null))?.code || "";
+    return { ok: res.ok, status: res.status, code };
+  } catch {
+    return { ok: false, status: 0, code: "" };
   }
 }
 

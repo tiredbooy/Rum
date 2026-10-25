@@ -6,6 +6,8 @@ package nodesktop
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,4 +25,25 @@ func Check() error {
 		return ErrBlocked
 	}
 	return nil
+}
+
+// CheckBinary guards launching an external tool that is not a desktop action
+// itself (yt-dlp): under go test only binaries inside the temp dir (test
+// fakes) may run, so a real tool found on PATH is never executed.
+func CheckBinary(path string) error {
+	if !testing.Testing() {
+		return nil
+	}
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		tmp = os.TempDir()
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		real = path
+	}
+	if rel, err := filepath.Rel(tmp, real); err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
+		return nil
+	}
+	return ErrBlocked
 }

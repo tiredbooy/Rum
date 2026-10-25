@@ -58,6 +58,9 @@ func (m *JobManager) RefreshJobURL(ctx context.Context, id, newURL string, resta
 	if !ok {
 		return RefreshResult{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
 	}
+	if job.IsVideo() {
+		return RefreshResult{}, errVideoUnsupported("changing the link")
+	}
 	if s := job.GetStatus(); s != StatusError && s != StatusPaused {
 		return RefreshResult{}, fmt.Errorf("job %s is %s; only failed or paused downloads can change link: %w", id, s, ErrConflict)
 	}

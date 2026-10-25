@@ -199,6 +199,13 @@ func validateSettingReq(req config.SettingReq) map[string]string {
 	if req.UpdateMirrors != nil && len(updater.CleanMirrors(*req.UpdateMirrors)) != len(*req.UpdateMirrors) {
 		fields["update_mirrors"] = "Use up to 5 distinct http(s) URLs."
 	}
+	if req.YtdlpPath != nil {
+		if p := strings.TrimSpace(*req.YtdlpPath); p != "" {
+			if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+				fields["ytdlp_path"] = "File not found."
+			}
+		}
+	}
 	if req.OutDir != nil {
 		if msg := validateWritableDir(*req.OutDir, false); msg != "" {
 			fields["out_dir"] = msg

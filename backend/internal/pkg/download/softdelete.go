@@ -210,7 +210,7 @@ func (m *JobManager) removeExpiredLocked(job *Job) {
 		_ = os.Remove(path) // explicit "Delete file" is the only path that removes a finished file
 		return
 	}
-	RemovePartialData(path)
+	removeJobPartials(job, path)
 }
 
 // pathSharedLocked reports whether another job uses the same output path, e.g.

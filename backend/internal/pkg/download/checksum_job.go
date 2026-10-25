@@ -31,6 +31,9 @@ func keepsFileOnFailure(err error) bool { return errors.Is(err, ErrChecksumMisma
 // it. It never changes the job's status and never touches the file: a mismatch
 // found here is only a flag the card shows.
 func (m *JobManager) settleChecksum(ctx context.Context, job *Job, opt Options, err error) {
+	if job.IsVideo() {
+		return // yt-dlp jobs have no published checksum to look for
+	}
 	if opt.Checksum != "" {
 		switch {
 		case err == nil:
@@ -90,6 +93,9 @@ func (m *JobManager) VerifyChecksumJob(ctx context.Context, id string) (Checksum
 	if !ok {
 		return ChecksumOutcome{}, fmt.Errorf("job %s not found: %w", id, ErrNotFound)
 	}
+	if job.IsVideo() {
+		return ChecksumOutcome{}, errVideoUnsupported("checksum verification")
+	}
 	if job.GetStatus() == StatusRunning {
 		return ChecksumOutcome{}, fmt.Errorf("job %s is downloading: %w", id, ErrConflict)
 	}
@@ -125,6 +131,10 @@ func (m *JobManager) RedownloadJob(ctx context.Context, id string) error {
 	if !ok {
 		m.mu.Unlock()
 		return fmt.Errorf("job %s not found: %w", id, ErrNotFound)
+	}
+	if job.IsVideo() {
+		m.mu.Unlock()
+		return errVideoUnsupported("redownload")
 	}
 	if job.GetStatus() == StatusRunning {
 		m.mu.Unlock()
