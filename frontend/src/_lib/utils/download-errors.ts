@@ -26,6 +26,8 @@ export const DOWNLOAD_ERROR_MESSAGES: Record<string, DownloadErrorInfo> = {
   link_expired: { message: "Link expired.", action: "Get a fresh link." },
   checksum_mismatch: { message: "File is damaged.", action: "Redownload?" },
   night_limit: { message: "Night limit reached.", action: "Resumes next window." },
+  update_check_failed: { message: "Can't reach update server.", action: "Try a proxy or VPN." },
+  update_verify_failed: { message: "Update failed its check, deleted.", action: "Get it from the release page." },
   unknown: { message: "Download failed.", action: "Retry; copy details for a bug report." },
 };
 

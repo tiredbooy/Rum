@@ -69,6 +69,13 @@ type Setting struct {
 	ProbeEndpoints []string `json:"probe_endpoints,omitempty"`
 	LogLevel       string   `json:"log_level"` // "info", "debug"
 
+	// CheckForUpdates looks for a newer Rum release at startup (at most once a
+	// day). On by default. UpdateMirrors are URL prefixes tried when GitHub is
+	// unreachable ("<prefix>/https://api.github.com/..."); empty uses the built-in
+	// list (updater.DefaultMirrors). Edit in settings.json or via PATCH.
+	CheckForUpdates bool     `json:"check_for_updates"`
+	UpdateMirrors   []string `json:"update_mirrors,omitempty"`
+
 	// Categories drive auto-organize: a finished download whose extension matches
 	// a rule is moved into the rule's DestDir. EnableCategories is the master
 	// toggle; rules are ignored when it is false.
@@ -183,6 +190,9 @@ type SettingReq struct {
 	} `json:"post_download,omitempty"`
 	FileConflict *string `json:"file_confilict"` // "rename", "overwrite", "skip"
 	Proxy        *string `json:"proxy,omitempty"`
+
+	CheckForUpdates *bool     `json:"check_for_updates"`
+	UpdateMirrors   *[]string `json:"update_mirrors"`
 
 	// Desktop / Wails preference toggles (partial-update via PATCH /settings).
 	LaunchOnStartup      *bool        `json:"launch_on_startup"`
@@ -588,6 +598,12 @@ func (s *Setting) Update(req SettingReq) error {
 	if req.PreventSleep != nil {
 		s.PreventSleep = *req.PreventSleep
 	}
+	if req.CheckForUpdates != nil {
+		s.CheckForUpdates = *req.CheckForUpdates
+	}
+	if req.UpdateMirrors != nil {
+		s.UpdateMirrors = *req.UpdateMirrors
+	}
 	if req.BlockPrivateHosts != nil {
 		s.BlockPrivateHosts = *req.BlockPrivateHosts
 	}
@@ -710,6 +726,7 @@ func (s *Setting) setDefaults() {
 	s.KeepPartialOnFailure = true
 	s.PreventSleep = true
 	s.NotifyWhenHidden = true
+	s.CheckForUpdates = true
 }
 
 // defaultTrueBools maps the JSON key of every setting that defaults to ON to its
@@ -724,6 +741,7 @@ func (s *Setting) defaultTrueBools() map[string]*bool {
 		"scheduled_start_enabled":  &s.ScheduledStartEnabled,
 		"prevent_sleep":            &s.PreventSleep,
 		"notify_when_hidden":       &s.NotifyWhenHidden,
+		"check_for_updates":        &s.CheckForUpdates,
 	}
 }
 

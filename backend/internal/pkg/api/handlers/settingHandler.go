@@ -13,6 +13,7 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/dto"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/updater"
 )
 
 const maxSettingBodyBytes = 1 << 20 // 1 MiB
@@ -194,6 +195,9 @@ func validateSettingReq(req config.SettingReq) map[string]string {
 		if _, ok := config.NormalizeProxy(*req.Proxy); !ok {
 			fields["proxy"] = "Use host:port, or an http/https/socks5 URL."
 		}
+	}
+	if req.UpdateMirrors != nil && len(updater.CleanMirrors(*req.UpdateMirrors)) != len(*req.UpdateMirrors) {
+		fields["update_mirrors"] = "Use up to 5 distinct http(s) URLs."
 	}
 	if req.OutDir != nil {
 		if msg := validateWritableDir(*req.OutDir, false); msg != "" {

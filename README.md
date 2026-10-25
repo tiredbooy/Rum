@@ -131,6 +131,29 @@ Rum stores jobs, settings, the extension token and logs in
 `<user config dir>/rum` (`~/.config/rum` on Linux). Set `RUM_CONFIG_DIR` to use
 another folder, e.g. for a portable install or a throwaway profile.
 
+## Update check
+
+On startup (at most once a day, Settings > Updates > "Check for updates") Rum
+reads `https://api.github.com/repos/tiredbooy/Rum/releases/latest` through its
+own proxy setting with an 8 s timeout per source. If GitHub is unreachable it
+tries each mirror in turn. A mirror is a URL prefix: Rum requests
+`<mirror>/https://api.github.com/...`. Rum only shows a notice; it never
+installs or replaces itself. "Download" saves the installer for your system to
+your save location and checks it against the release's `SHA256SUMS`; a file that
+does not match is deleted.
+
+Mirrors: the built-in default is `https://ghproxy.net/`
+(`updater.DefaultMirrors` in `backend/internal/pkg/updater/checker.go`). To use
+your own, set `update_mirrors` in `settings.json` (or `PATCH /api/v1/settings`),
+for example `"update_mirrors": ["https://my-proxy.example/"]`. Up to 5, http(s)
+only; an empty list means the built-in default. A mirror can see and alter what
+it relays, so the checksum file protects against corruption, not a hostile
+mirror; Rum rebuilds every release and asset URL from the tag itself instead of
+trusting the mirror's payload.
+
+The running version comes from `handlers.AppVersion`; set it at build time with
+`-ldflags "-X github.com/tiredbooy/Rum/backend/internal/pkg/api/handlers.AppVersion=1.2.3"`.
+
 ## Architecture
 
 Rum keeps one engine behind a small local HTTP API and reuses it everywhere. The
