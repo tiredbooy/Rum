@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useSettings,
   useSettingsPatch,
@@ -7,6 +6,7 @@ import type { SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, FileWarning, Gauge, Zap } from "lucide-react";
 import { SettingInput, SettingSelect } from "./controls";
+import { useSyncedDrafts } from "./draft-sync";
 import { NUM_BOUNDS, clampNum, rangeError, type NumField } from "./numeric-bounds";
 
 /** The numeric fields this card owns (retries/backoff live in Integrity). */
@@ -54,20 +54,16 @@ export function DownloadSettings() {
   const { data: settings, isLoading, isError } = useSettings();
   const { patch, savedField, errorFor } = useSettingsPatch();
 
-  const [nums, setNums] = useState<Record<DownloadNumField, string>>({
-    speed_limit_kb: "0",
-    max_parallel: "3",
-    connections: "8",
-  });
-
-  useEffect(() => {
-    if (!settings) return;
-    setNums({
-      speed_limit_kb: String(settings.speed_limit_kb ?? 0),
-      max_parallel: String(settings.max_parallel ?? 3),
-      connections: String(settings.connections ?? 8),
-    });
-  }, [settings]);
+  const [nums, setNums] = useSyncedDrafts<DownloadNumField>(
+    settings
+      ? {
+          speed_limit_kb: String(settings.speed_limit_kb ?? 0),
+          max_parallel: String(settings.max_parallel ?? 1),
+          connections: String(settings.connections ?? 8),
+        }
+      : null,
+    { speed_limit_kb: "0", max_parallel: "1", connections: "8" },
+  );
 
   const setNum = (field: DownloadNumField, value: string) =>
     setNums((prev) => ({ ...prev, [field]: value }));

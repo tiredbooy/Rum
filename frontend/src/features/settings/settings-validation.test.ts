@@ -41,6 +41,12 @@ describe("clampNum", () => {
     expect(clampNum("abc", "max_retries")).toBe(3);
   });
 
+  it("matches the server's limits for retries and parallel default", () => {
+    // Server accepts 0..100 retries; a blank parallel field means its default, 1.
+    expect(clampNum("50", "max_retries")).toBe(50);
+    expect(clampNum("", "max_parallel")).toBe(1);
+  });
+
   it("rounds a fractional entry", () => {
     expect(clampNum("4.6", "connections")).toBe(5);
   });

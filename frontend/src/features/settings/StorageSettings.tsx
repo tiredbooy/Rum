@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useSettings,
   useSettingsPatch,
@@ -7,6 +6,7 @@ import type { Setting } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileArchive, HardDrive } from "lucide-react";
 import { SettingToggle } from "./controls";
+import { useSyncedDrafts } from "./draft-sync";
 import { SettingPathInput } from "./SettingPathInput";
 import { useFolderPicker } from "./useFolderPicker";
 
@@ -20,12 +20,12 @@ export function StorageSettings() {
   const { patch, savedField, errorFor } = useSettingsPatch();
   const { canPick, pick } = useFolderPicker();
 
-  const [tempDir, setTempDir] = useState<string>("");
-
-  useEffect(() => {
-    if (!settings) return;
-    setTempDir(settings.temp_dir ?? "");
-  }, [settings]);
+  const [drafts, setDrafts] = useSyncedDrafts(
+    settings ? { temp_dir: settings.temp_dir ?? "" } : null,
+    { temp_dir: "" },
+  );
+  const tempDir = drafts.temp_dir;
+  const setTempDir = (v: string) => setDrafts({ temp_dir: v });
 
   const commitTempDir = (value: string) => {
     const next = value.trim();

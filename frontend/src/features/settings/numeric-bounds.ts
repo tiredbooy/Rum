@@ -21,9 +21,9 @@ export const NUM_BOUNDS: Record<
     fallback: 0,
     message: "Must be 0 or more.",
   },
-  max_parallel: { min: 1, max: 64, fallback: 3, message: "Must be 1 to 64." },
+  max_parallel: { min: 1, max: 64, fallback: 1, message: "Must be 1 to 64." },
   connections: { min: 1, max: 16, fallback: 8, message: "Must be 1 to 16." },
-  max_retries: { min: 0, max: 10, fallback: 3, message: "Must be 0 to 10." },
+  max_retries: { min: 0, max: 100, fallback: 3, message: "Must be 0 to 100." },
   retry_backoff_sec: {
     min: 1,
     max: 60,

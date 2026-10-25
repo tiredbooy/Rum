@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useSettings,
   useSettingsPatch,
@@ -7,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CheckCircle, Globe, Zap } from "lucide-react";
 import { SettingInput, SettingSelect, SettingToggle } from "./controls";
+import { useSyncedDrafts } from "./draft-sync";
 import { isValidProxy } from "./proxy";
 
 /**
@@ -19,12 +19,12 @@ export function PostDownloadSettings() {
   const { data: settings, isLoading, isError } = useSettings();
   const { patch, savedField, errorFor } = useSettingsPatch();
 
-  const [proxy, setProxy] = useState<string>("");
-
-  useEffect(() => {
-    if (!settings) return;
-    setProxy(settings.proxy ?? "");
-  }, [settings]);
+  const [drafts, setDrafts] = useSyncedDrafts(
+    settings ? { proxy: settings.proxy ?? "" } : null,
+    { proxy: "" },
+  );
+  const proxy = drafts.proxy;
+  const setProxy = (v: string) => setDrafts({ proxy: v });
 
   const proxyInvalid = !isValidProxy(proxy);
 

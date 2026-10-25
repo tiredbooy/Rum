@@ -18,8 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSettings } from "@/_lib/services/queries/settings.queries";
-import type { UIDensity } from "@/_lib/types/setting-types";
-import { applyTheme, type PreferredTheme } from "./apply-theme";
+import { applyTheme, themeInputsFrom } from "./apply-theme";
 
 interface ThemeContextValue {
   /** Effective reduced motion: the setting OR the OS `prefers-reduced-motion`. */
@@ -65,16 +64,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const preferredTheme: PreferredTheme = settings?.preferred_theme ?? "system";
-  const accentColor = settings?.accent_color ?? "";
-  const uiDensity: UIDensity = settings?.ui_density ?? "comfortable";
-  const reducedMotionSetting = settings?.reduced_motion ?? false;
+  // null until the settings load: the page keeps its static default (see
+  // index.html) rather than flashing the OS scheme / defaults first.
+  const inputs = themeInputsFrom(settings);
+  const preferredTheme = inputs?.preferredTheme;
+  const accentColor = inputs?.accentColor ?? "";
+  const uiDensity = inputs?.uiDensity ?? "comfortable";
+  const reducedMotionSetting = inputs?.reducedMotion ?? false;
 
   // The single source of truth for "should we reduce motion".
   const reducedMotion = reducedMotionSetting || osReduce;
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof document === "undefined" || !preferredTheme) return;
     applyTheme(
       document.documentElement,
       {

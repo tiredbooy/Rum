@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useSettings,
   useSettingsPatch,
@@ -7,6 +6,7 @@ import type { LogLevel } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Monitor, ScrollText } from "lucide-react";
 import { SettingSelect, SettingToggle } from "./controls";
+import { useSyncedDrafts } from "./draft-sync";
 import { SettingPathInput } from "./SettingPathInput";
 import { useFolderPicker } from "./useFolderPicker";
 
@@ -21,12 +21,12 @@ export function GeneralSettings() {
   const { patch, savedField, errorFor } = useSettingsPatch();
   const { canPick, pick } = useFolderPicker();
 
-  const [outDir, setOutDir] = useState<string>("");
-
-  useEffect(() => {
-    if (!settings) return;
-    setOutDir(settings.out_dir ?? "");
-  }, [settings]);
+  const [drafts, setDrafts] = useSyncedDrafts(
+    settings ? { out_dir: settings.out_dir ?? "" } : null,
+    { out_dir: "" },
+  );
+  const outDir = drafts.out_dir;
+  const setOutDir = (v: string) => setDrafts({ out_dir: v });
 
   const commitOutDir = (value: string) => {
     const next = value.trim();

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useSettings,
   useSettingsPatch,
@@ -7,6 +6,7 @@ import type { Setting, SettingReq } from "@/_lib/types/setting-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Hash, Power, ShieldCheck, ShieldAlert, Timer, Wifi } from "lucide-react";
 import { SettingInput, SettingToggle } from "./controls";
+import { useSyncedDrafts } from "./draft-sync";
 import { NUM_BOUNDS, clampNum, rangeError, type NumField } from "./numeric-bounds";
 
 type IntegrityToggle =
@@ -53,8 +53,10 @@ const TOGGLES: {
   },
 ];
 
+type IntegrityNumField = Extract<NumField, "retry_backoff_sec" | "max_retries">;
+
 const NUMBERS: {
-  field: Extract<NumField, "retry_backoff_sec" | "max_retries">;
+  field: IntegrityNumField;
   label: string;
   icon: React.ReactNode;
   hint: string;
@@ -81,23 +83,20 @@ export function IntegritySettings() {
   const { data: settings, isLoading, isError } = useSettings();
   const { patch, savedField, errorFor } = useSettingsPatch();
 
-  const [nums, setNums] = useState<Record<string, string>>({
-    max_retries: "3",
-    retry_backoff_sec: "1",
-  });
-
-  useEffect(() => {
-    if (!settings) return;
-    setNums({
-      max_retries: String(settings.max_retries ?? 3),
-      retry_backoff_sec: String(settings.retry_backoff_sec ?? 1),
-    });
-  }, [settings]);
+  const [nums, setNums] = useSyncedDrafts<IntegrityNumField>(
+    settings
+      ? {
+          max_retries: String(settings.max_retries ?? 3),
+          retry_backoff_sec: String(settings.retry_backoff_sec ?? 1),
+        }
+      : null,
+    { max_retries: "3", retry_backoff_sec: "1" },
+  );
 
   const toggleValue = (field: IntegrityToggle, defaultOn: boolean): boolean =>
     (settings as Setting | undefined)?.[field] ?? defaultOn;
 
-  const commitNum = (field: NumField) => {
+  const commitNum = (field: IntegrityNumField) => {
     const { fallback } = NUM_BOUNDS[field];
     const v = clampNum(nums[field], field);
     setNums((prev) => ({ ...prev, [field]: String(v) }));

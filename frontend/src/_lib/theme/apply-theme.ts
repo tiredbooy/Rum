@@ -5,7 +5,7 @@
  * element so it can run from the provider effect and be unit-tested with a
  * stub element.
  */
-import type { UIDensity } from "@/_lib/types/setting-types";
+import type { Setting, UIDensity } from "@/_lib/types/setting-types";
 import { deriveAccentVars } from "./color";
 
 export type PreferredTheme = "system" | "light" | "dark";
@@ -15,6 +15,24 @@ export interface ThemeInputs {
   accentColor: string;
   uiDensity: UIDensity;
   reducedMotion: boolean;
+}
+
+/**
+ * Map loaded settings onto theme inputs, or null while they have not loaded.
+ * Callers must not apply anything for null: defaults applied before the real
+ * values arrive (e.g. "system" on a light OS) flip a dark-theme user to light
+ * until the first response lands.
+ */
+export function themeInputsFrom(
+  settings: Partial<Setting> | undefined,
+): ThemeInputs | null {
+  if (!settings) return null;
+  return {
+    preferredTheme: settings.preferred_theme ?? "system",
+    accentColor: settings.accent_color ?? "",
+    uiDensity: settings.ui_density ?? "comfortable",
+    reducedMotion: settings.reduced_motion ?? false,
+  };
 }
 
 /** CSS custom properties the accent overrides write to (and clear). */
