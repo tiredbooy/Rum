@@ -1,6 +1,7 @@
 package ytdlp
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -156,4 +157,18 @@ func TestClassifyStderr(t *testing.T) {
 	if strings.Contains(ClassifyStderr("ERROR: token=secret").Message, "secret") {
 		t.Error("message leaks stderr")
 	}
+}
+
+func TestBuildArgsEscapesPercentInFolder(t *testing.T) {
+	args := BuildArgs(Spec{URL: "https://example.com/v", Dir: "/home/u/100%/%(title)s", Base: "t", Selector: "b"})
+	for i, a := range args {
+		if a == "-o" {
+			want := filepath.Join("/home/u/100%%/%%(title)s", "t") + ".%(ext)s"
+			if args[i+1] != want {
+				t.Fatalf("template = %q, want %q", args[i+1], want)
+			}
+			return
+		}
+	}
+	t.Fatal("no -o")
 }

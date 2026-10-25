@@ -68,7 +68,7 @@ func BuildArgs(s Spec) []string {
 			"%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s",
 		"--print", "after_move:" + filePrefix + "%(filepath)s",
 		"-f", s.Selector,
-		"-o", filepath.Join(s.Dir, s.Base) + ".%(ext)s",
+		"-o", strings.ReplaceAll(filepath.Join(s.Dir, s.Base), "%", "%%") + ".%(ext)s",
 	}
 	if s.Proxy != "" {
 		args = append(args, "--proxy", s.Proxy)
