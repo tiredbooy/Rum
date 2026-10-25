@@ -55,6 +55,13 @@ type Job struct {
 	// download (clutter). IntegrityHashAlgo names the algorithm ("sha256").
 	IntegrityHash     string `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string `json:"integrity_hash_algo,omitempty"`
+
+	// Interrupted marks a job that was running or queued when the previous
+	// session ended (exit, crash, power loss). It is loaded as paused, and
+	// ResumeInterruptedJobs restarts exactly these, never a job the user paused
+	// by hand. Cleared as soon as the job is started again. Absent in older
+	// jobs.json files, which load as false.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -111,6 +118,9 @@ func (j *Job) SetIntegrityHash(hash, algo string) {
 	j.IntegrityHashAlgo = algo
 }
 
+func (j *Job) GetInterrupted() bool  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Interrupted }
+func (j *Job) SetInterrupted(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.Interrupted = v }
+
 func (j *Job) GetCancelFunc() context.CancelFunc {
 	j.Mu.RLock()
 	defer j.Mu.RUnlock()
@@ -149,6 +159,7 @@ type jobJSON struct {
 	Category          string        `json:"category,omitempty"`
 	IntegrityHash     string        `json:"integrity_hash,omitempty"`
 	IntegrityHashAlgo string        `json:"integrity_hash_algo,omitempty"`
+	Interrupted       bool          `json:"interrupted,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -182,6 +193,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Category:          j.Category,
 		IntegrityHash:     j.IntegrityHash,
 		IntegrityHashAlgo: j.IntegrityHashAlgo,
+		Interrupted:       j.Interrupted,
 	})
 }
 
@@ -226,6 +238,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		Category          string          `json:"category"`
 		IntegrityHash     string          `json:"integrity_hash"`
 		IntegrityHashAlgo string          `json:"integrity_hash_algo"`
+		Interrupted       bool            `json:"interrupted"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -252,6 +265,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Category = in.Category
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
+	j.Interrupted = in.Interrupted
 	return nil
 }
 

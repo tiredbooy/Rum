@@ -85,6 +85,12 @@ func (a *App) GetApiBase() string {
 	return server.APIBase()
 }
 
+// ResumedOnLaunch returns how many interrupted downloads were auto-resumed at
+// launch, once; later calls return 0. The frontend shows a notice when it is > 0.
+func (a *App) ResumedOnLaunch() int {
+	return server.TakeResumedOnLaunch()
+}
+
 // ChooseDir opens the native folder picker and returns the selected directory.
 // An empty string with a nil error means the user cancelled.
 //

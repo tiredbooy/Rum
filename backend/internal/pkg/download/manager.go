@@ -72,6 +72,12 @@ type JobManager struct {
 	dispatchWG     sync.WaitGroup
 	shutdownOnce   sync.Once
 
+	// saveMu guards the debounced-persist state below. It is never held while
+	// taking m.mu in the requesting path (see requestSave).
+	saveMu     sync.Mutex
+	saveTimer  *time.Timer
+	saveClosed bool
+
 	// appliedProxy / appliedBlockPrivate remember the transport-shaping settings
 	// the current opt.Downloader was built with. ApplySettings rebuilds the
 	// Downloader only when one of them actually changes, so a routine settings
@@ -181,6 +187,7 @@ func (m *JobManager) dispatch() {
 		job.SetStatus(StatusRunning)
 		job.SetCancelFunc(cancel)
 		m.mu.Unlock()
+		m.requestSave()
 
 		// release frees the scheduler slot. It is called as soon as the transfer
 		// finishes (before slow post-completion side effects like notifications),
@@ -246,6 +253,45 @@ func (m *JobManager) saveToDisk() {
 // write happens under the held lock.
 func (m *JobManager) saveToDiskLocked() {
 	PersistJobs(m.saveJobsSnapshotLocked())
+}
+
+// saveDebounce coalesces the persists triggered by status transitions so a burst
+// of starts costs one write, not one per job.
+const saveDebounce = 300 * time.Millisecond
+
+// requestSave schedules a persist shortly after a job enters running/pending, so
+// a crash or power loss mid-download leaves jobs.json saying the job was in
+// flight (and ResumeInterruptedJobs can pick it up). Never call it while holding
+// m.mu: the timer callback takes saveMu then m.mu.
+func (m *JobManager) requestSave() {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	if m.saveClosed || m.saveTimer != nil {
+		return
+	}
+	m.saveTimer = time.AfterFunc(saveDebounce, func() {
+		m.saveMu.Lock()
+		defer m.saveMu.Unlock()
+		m.saveTimer = nil
+		if m.saveClosed {
+			return
+		}
+		m.saveToDisk()
+	})
+}
+
+// stopSaves cancels a pending debounced persist, waits for one in flight, and
+// refuses further requests. It reports whether a persist was still pending so
+// Shutdown can flush it.
+func (m *JobManager) stopSaves() (pending bool) {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	m.saveClosed = true
+	if m.saveTimer != nil {
+		pending = m.saveTimer.Stop()
+		m.saveTimer = nil
+	}
+	return pending
 }
 
 func (m *JobManager) GetJobIDByURL(url string) (string, bool) {
@@ -526,8 +572,10 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	// Mark pending so the dispatcher's eligibility re-check passes when the slot
 	// opens. The dispatcher flips it to running just before launching.
 	job.SetStatus(StatusPending)
+	job.SetInterrupted(false) // started again: no longer awaiting recovery
 	priority := job.GetPriority()
 	m.mu.Unlock()
+	m.requestSave()
 
 	m.sched.Submit(jobID, scheduler.ParsePriority(normalizePriority(priority)))
 	return nil
@@ -680,36 +728,35 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	fireTestCompletionHook(jobID)
 }
 
-// ResumeInterruptedJobs re-queues jobs that were interrupted by a previous
-// session's exit/crash so a restart picks up where it left off. It targets jobs
-// persisted with status "running" (the app stopped mid-transfer) — these were
-// never deliberately stopped by the user, so resuming them is safe and expected.
-// Deliberately "paused" jobs are left alone (the user chose to pause them).
+// ResumeInterruptedJobs re-queues jobs that were running or queued when the
+// previous session ended (exit, crash, power loss) and returns how many it
+// started. LoadJobsFromDisk loads those as paused with the Interrupted flag; only
+// flagged jobs are resumed. A job the user paused by hand is never flagged, so it
+// stays paused.
 //
 // It is the AutoResumeOnLaunch hook; the caller (server startup) gates it on the
 // setting. The partial data on disk + the resume sidecar make this a real resume,
 // not a restart-from-zero. Safe to call once on launch.
-func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) {
+func (m *JobManager) ResumeInterruptedJobs(ctx context.Context) int {
 	m.mu.RLock()
 	var toResume []string
 	for id, job := range m.jobs {
-		// A persisted "running" status means the previous session was killed before
-		// it could flip the job to paused/completed/error — i.e. it was interrupted.
-		if job.GetStatus() == StatusRunning {
+		if job.GetStatus() == StatusPaused && job.GetInterrupted() {
 			toResume = append(toResume, id)
 		}
 	}
 	m.mu.RUnlock()
 
+	resumed := 0
 	for _, id := range toResume {
-		// Reset to pending so StartJob's eligibility check passes, then enqueue.
-		m.mu.Lock()
-		if job, ok := m.jobs[id]; ok {
-			job.SetStatus(StatusPending)
+		// StartJob accepts paused jobs, clears the Interrupted flag and enqueues.
+		if err := m.StartJob(ctx, id); err != nil {
+			log.Printf("resume on launch: %s: %v", id, err)
+			continue
 		}
-		m.mu.Unlock()
-		_ = m.StartJob(ctx, id)
+		resumed++
 	}
+	return resumed
 }
 
 // effectiveOptsForJob builds the per-download Options for a job the same way
@@ -991,6 +1038,9 @@ func (m *JobManager) ApplySettings(s config.Setting) {
 // exit.
 func (m *JobManager) Shutdown() {
 	m.shutdownOnce.Do(func() {
+		if m.stopSaves() {
+			m.saveToDisk() // flush a persist still waiting on its debounce
+		}
 		m.dispatchCancel()
 		m.sched.Close()
 		m.dispatchWG.Wait()

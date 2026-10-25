@@ -41,20 +41,34 @@ func writeErrorLog(msg string) {
 	}
 }
 
+// LoadJobsFromDisk restores the previous session's jobs. Finished jobs and
+// errored jobs keep their state (an error keeps its message, and stays eligible
+// for auto-resume on reconnect). A job that was running or queued is paused and
+// flagged Interrupted so ResumeInterruptedJobs can tell it apart from a job the
+// user paused. A pending job waiting on a future scheduled start is left pending
+// for the schedule controller.
 func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 	items := readJobsFile()
 
-	incomplete := 0
+	interrupted := 0
 	for _, job := range items {
-		if !utils.IsTerminal(job.Status) {
-			job.Status = "paused"
-			incomplete++
+		switch {
+		case utils.IsTerminal(job.Status), job.Status == StatusError:
+			// keep as-is
+		case job.Status == StatusPending && job.StartAt.After(time.Now()):
+			// keep pending until the schedule controller starts it
+		case job.Status == StatusRunning || job.Status == StatusPending:
+			job.Status = StatusPaused
+			job.Interrupted = true
+			interrupted++
+		default:
+			job.Status = StatusPaused
 		}
 		jobs[job.ID] = job
 		urlToID[job.URL] = job.ID
 	}
 
-	fmt.Printf("Loaded %d jobs (%d incomplete, paused).\n", len(items), incomplete)
+	fmt.Printf("Loaded %d jobs (%d interrupted, paused).\n", len(items), interrupted)
 }
 
 func readJobsFile() []*Job {

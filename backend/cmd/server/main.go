@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -61,6 +62,15 @@ const preferredPort = "8080"
 const loopbackHost = "127.0.0.1"
 
 var AppQuitFunc func()
+
+// resumedOnLaunch is how many interrupted downloads the launch auto-resume
+// restarted. The frontend is not mounted yet when that runs, so it fetches the
+// count once via TakeResumedOnLaunch instead of listening for an event.
+var resumedOnLaunch atomic.Int32
+
+// TakeResumedOnLaunch returns the launch auto-resume count and resets it, so the
+// "resumed N downloads" notice shows once per launch.
+func TakeResumedOnLaunch() int { return int(resumedOnLaunch.Swap(0)) }
 
 func SetQuitFunc(f func()) {
 	AppQuitFunc = f
@@ -157,7 +167,7 @@ func Listen() (baseURL string, err error) {
 	// is realized by the engine retry/backoff policy (it resumes transient network
 	// failures rather than failing); full OS network-event detection is a follow-up.
 	if setting.AutoResumeOnLaunch && handlers.GlobalManager != nil {
-		handlers.GlobalManager.ResumeInterruptedJobs(context.Background())
+		resumedOnLaunch.Store(int32(handlers.GlobalManager.ResumeInterruptedJobs(context.Background())))
 	}
 
 	r := gin.Default()

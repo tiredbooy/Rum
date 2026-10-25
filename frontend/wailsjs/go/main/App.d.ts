@@ -9,3 +9,5 @@ export function ChooseDir():Promise<string>;
 export function GetApiBase():Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
+
+export function ResumedOnLaunch():Promise<number>;
