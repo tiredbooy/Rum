@@ -51,6 +51,13 @@ func finalizeWorkingMove(opt Options, job *Job, workingPath, finalPath string) e
 		return fmt.Errorf("tempdir: create output dir: %w", err)
 	}
 	if err := moveFile(workingPath, finalPath); err != nil {
+		if isNoSpaceError(err) {
+			var size int64
+			if fi, statErr := os.Stat(workingPath); statErr == nil {
+				size = fi.Size()
+			}
+			return asDiskFull(err, filepath.Dir(finalPath), size)
+		}
 		return fmt.Errorf("tempdir: move finished file to output: %w", err)
 	}
 	// The resume sidecar (if any survived, e.g. when VerifyIntegrity kept it) is

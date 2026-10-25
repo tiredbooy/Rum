@@ -151,6 +151,11 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
+			if f := testWriteFault; f != nil {
+				if ferr := f(n); ferr != nil {
+					return ferr
+				}
+			}
 			if _, werr := outFile.Write(buffer[:n]); werr != nil {
 				return werr
 			}

@@ -1,9 +1,5 @@
 package download
 
-import (
-	"fmt"
-)
-
 // diskSpaceSafetyMargin is added on top of the requested byte count when
 // preflighting free space. Filesystems reserve some blocks, metadata grows the
 // on-disk footprint slightly beyond the payload, and segmented downloads write a
@@ -50,7 +46,7 @@ func PreflightDiskSpace(dir string, needBytes int64) error {
 		return nil
 	}
 
-	avail, ok := availableDiskBytes(dir)
+	avail, ok := diskFreeFn(dir)
 	if !ok {
 		// Could not determine free space on this platform/path: do not block.
 		DebugLog("PreflightDiskSpace: free space undeterminable for " + dir + ", skipping check")
@@ -59,8 +55,7 @@ func PreflightDiskSpace(dir string, needBytes int64) error {
 
 	need := requiredWithMargin(needBytes)
 	if avail < need {
-		return fmt.Errorf("preflight: need %d bytes (incl. margin) but only %d available in %q: %w",
-			need, avail, dir, ErrInsufficientDiskSpace)
+		return &DiskFullError{NeededBytes: needBytes, FreeBytes: avail, Path: dir}
 	}
 	return nil
 }

@@ -43,6 +43,13 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A full disk does not heal by retrying: it is surfaced as a waiting-for-space
+	// state instead. (syscall.Errno satisfies net.Error, so this must come before
+	// the net.Error check below.)
+	if isNoSpaceError(err) {
+		return false
+	}
+
 	// A changed remote validator (E1) must never be retried: resuming would only
 	// re-staple new-version bytes onto old ones. The segmented driver catches this
 	// sentinel and restarts the whole download from zero instead.

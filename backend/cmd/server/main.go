@@ -91,6 +91,8 @@ var (
 	// resumer implements the auto-resume-on-reconnect setting; stopped alongside
 	// the schedule controller on graceful shutdown.
 	resumer *download.ResumeController
+	// diskWatch resumes downloads that stopped on a full disk once space is free.
+	diskWatch *download.DiskWatcher
 	// manager is the live job manager (handlers.GlobalManager) captured at Listen
 	// time so Serve can shut its dispatcher down cleanly.
 	manager *download.JobManager
@@ -200,6 +202,7 @@ func Listen() (baseURL string, err error) {
 	if manager != nil {
 		controller = download.NewScheduleController(manager, governor, setting)
 		resumer = download.NewResumeController(manager)
+		diskWatch = download.NewDiskWatcher(manager)
 	}
 	base := apiBase
 	srvMu.Unlock()
@@ -274,6 +277,7 @@ func Serve() {
 	l := ln
 	ctrl := controller
 	res := resumer
+	dw := diskWatch
 	mgr := manager
 	srvMu.Unlock()
 
@@ -299,6 +303,9 @@ func Serve() {
 	// network-failed downloads once their host is reachable again.
 	if res != nil {
 		res.Start(rootCtx)
+	}
+	if dw != nil {
+		dw.Start(rootCtx)
 	}
 
 	// Start the idle-gated memory controller so the runtime returns freed heap
@@ -326,6 +333,9 @@ func Serve() {
 	// server so no new downloads are scheduled mid-shutdown.
 	if ctrl != nil {
 		ctrl.Stop()
+	}
+	if dw != nil {
+		dw.Stop()
 	}
 	if res != nil {
 		res.Stop()
