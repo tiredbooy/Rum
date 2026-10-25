@@ -1,0 +1,231 @@
+name: Release
+
+# Push a tag like v1.2.3 to build every platform and publish a GitHub Release.
+# See RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  meta:
+    name: Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      wails: ${{ steps.v.outputs.wails }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag '$TAG' is not vMAJOR.MINOR.PATCH" >&2; exit 1
+          fi
+          # Same source of truth as the installers: the wails line in go.mod.
+          wails="$(awk '$1=="github.com/wailsapp/wails/v2" {print $2; exit}' go.mod)"
+          [[ -n "$wails" ]] || { echo "wails version not found in go.mod" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "wails=$wails" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux (AppImage, .deb)
+    needs: meta
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install Wails CLI
+        env:
+          WAILS: ${{ needs.meta.outputs.wails }}
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS}"
+      - name: Build
+        run: wails build -clean -tags webkit2_41
+      - name: Package
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: .github/scripts/package-linux.sh "$VERSION" out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: out/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows (NSIS installer)
+    needs: meta
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+      - name: Install Wails CLI
+        env:
+          WAILS: ${{ needs.meta.outputs.wails }}
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS}"
+      - name: Build installer
+        run: |
+          export PATH="$PATH:/c/Program Files (x86)/NSIS"
+          wails build -clean -platform windows/amd64 -nsis
+      - name: Collect
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir out
+          cp build/bin/*-installer.exe "out/Rum-Setup-${VERSION}.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          path: out/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS (unsigned universal .dmg)
+    needs: meta
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Wails CLI
+        env:
+          WAILS: ${{ needs.meta.outputs.wails }}
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS}"
+      - name: Build
+        run: wails build -clean -platform darwin/universal
+      - name: Package
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: .github/scripts/package-macos.sh "$VERSION" out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: out/*
+          if-no-files-found: error
+
+  cli:
+    name: CLI binaries
+    needs: meta
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Cross-compile
+        working-directory: backend
+        run: |
+          mkdir -p ../out
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            ext=""; [[ "$os" == windows ]] && ext=".exe"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags "-s -w" -o "../out/rum-${os}-${arch}${ext}" ./cmd/rum
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli
+          path: out/*
+          if-no-files-found: error
+
+  extension:
+    name: Browser extension
+    needs: meta
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - working-directory: browser-extension
+        run: |
+          npm test
+          npm run lint
+          npm run build
+      - name: Collect
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir out
+          cp browser-extension/dist/rum-chrome.zip "out/rum-chrome-${VERSION}.zip"
+          cp browser-extension/dist/rum-firefox.xpi "out/rum-firefox-${VERSION}.xpi"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [linux, windows, macos, cli, extension]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: assets
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: assets
+        run: |
+          # "<hash>  <name>" lines, sorted, never listing SHA256SUMS itself.
+          # Write outside the directory first: in a pipeline the redirect can
+          # create the file before the glob expands, listing it in itself.
+          sha256sum -- * | sort -k2 > ../SHA256SUMS.tmp
+          mv ../SHA256SUMS.tmp SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: assets/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

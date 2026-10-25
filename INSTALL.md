@@ -25,6 +25,10 @@ Go, Node, or build tools required.
 | **Windows** 10/11 | `Rum-Setup-*.exe` | Double-click and click through the installer. Adds Start-Menu + Desktop shortcuts. (If only a raw `Rum-*.exe` is attached, just run it directly.) |
 | **macOS** (Intel + Apple Silicon) | `Rum-*-macOS-unsigned.dmg` | Open the `.dmg` and drag **Rum** to **Applications**. See the note below. |
 
+Every release also ships a `SHA256SUMS` file. To verify a download on Linux:
+`sha256sum -c --ignore-missing SHA256SUMS`. On macOS, compare `shasum -a 256 <file>`
+with the matching line.
+
 ### ⚠️ macOS note — the app is unsigned
 
 The macOS build is **unsigned** (the project has no Apple Developer signing
