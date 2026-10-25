@@ -62,6 +62,9 @@ type Job struct {
 	// by hand. Cleared as soon as the job is started again. Absent in older
 	// jobs.json files, which load as false.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// ErrorCode is in-memory only (json:"-").
+	ErrorCode string `json:"-"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -116,6 +119,19 @@ func (j *Job) SetIntegrityHash(hash, algo string) {
 	defer j.Mu.Unlock()
 	j.IntegrityHash = hash
 	j.IntegrityHashAlgo = algo
+}
+
+// ErrorCode is a transient machine code (e.g. ErrorCodeStalled) shown while the
+// engine is retrying. It is deliberately not persisted.
+func (j *Job) GetErrorCode() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.ErrorCode }
+func (j *Job) SetErrorCode(v string) { j.Mu.Lock(); defer j.Mu.Unlock(); j.ErrorCode = v }
+
+// ClearErrorCode resets the code; the read-locked pre-check keeps the per-read
+// hot path cheap.
+func (j *Job) ClearErrorCode() {
+	if j.GetErrorCode() != "" {
+		j.SetErrorCode("")
+	}
 }
 
 func (j *Job) GetInterrupted() bool  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Interrupted }

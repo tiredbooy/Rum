@@ -446,5 +446,11 @@ func toDownloadResponseFull(job *download.Job) dto.DownloadResponse {
 	if job.Error != nil {
 		resp.Error = job.Error.Error()
 	}
+	if code := job.GetErrorCode(); code != "" {
+		resp.ErrorCode = code
+		if resp.Error == "" && code == download.ErrorCodeStalled {
+			resp.Error = "stalled, reconnecting"
+		}
+	}
 	return resp
 }

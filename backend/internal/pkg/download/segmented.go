@@ -346,6 +346,7 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	var safeProgress ProgressFunc
 	if progressFn != nil {
 		safeProgress = func(d, total int64) {
+			job.ClearErrorCode() // bytes flowing again: no longer stalled
 			progressMu.Lock()
 			progressFn(d, total)
 			progressMu.Unlock()
@@ -446,6 +447,7 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 	}()
 
 	cfg := newRetryConfig(opt)
+	cfg.job = job
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(connections)

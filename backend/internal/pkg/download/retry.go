@@ -146,6 +146,8 @@ type retryConfig struct {
 	maxRetries int
 	base       time.Duration
 	maxDelay   time.Duration
+	// job, when set, gets ErrorCodeStalled while a stalled attempt is retried.
+	job *Job
 }
 
 // newRetryConfig builds a retry config from opt. opt.MaxRetries bounds the retry
@@ -184,6 +186,9 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 
 		lastErr = fn(ctx)
 		if lastErr == nil {
+			if cfg.job != nil {
+				cfg.job.ClearErrorCode()
+			}
 			return nil
 		}
 		if attempt >= cfg.maxRetries {
@@ -193,6 +198,9 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 			return lastErr
 		}
 
+		if cfg.job != nil && errors.Is(lastErr, errStalled) {
+			cfg.job.SetErrorCode(ErrorCodeStalled)
+		}
 		delay := backoffDelay(attempt, cfg.base, cfg.maxDelay, nil)
 		if err := sleepWithContext(ctx, delay); err != nil {
 			// Cancelled while waiting to retry: surface the original error if

@@ -159,6 +159,7 @@ func SaveDownloadedFile(ctx context.Context, resp *http.Response, outFile *os.Fi
 			}
 			downloaded += int64(n)
 			job.SetDownloaded(downloaded)
+			job.ClearErrorCode()
 			if progressFn != nil {
 				progressFn(downloaded, totalSize)
 			}
@@ -247,6 +248,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	// mid-stream resumes where it left off instead of restarting. Permanent
 	// errors (HTTP 4xx) and context cancellation are not retried.
 	cfg := newRetryConfig(opt)
+	cfg.job = job
 	if err := retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
 		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
 	}); err != nil {

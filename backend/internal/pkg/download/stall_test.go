@@ -138,3 +138,28 @@ func TestRateLimiterWaitIsNotStall(t *testing.T) {
 		t.Fatalf("expected 1 request, got %d", reqs.Load())
 	}
 }
+
+func TestStallSetsErrorCodeWhileRetrying(t *testing.T) {
+	payload := bytes.Repeat([]byte("abcdefgh"), 64<<10)
+	srv, _ := stallServer(t, payload, 1)
+	job, opt, dir := stallJobOpt(t, srv, len(payload), 1)
+	opt.RetryBackoffSec = 2
+
+	done := make(chan error, 1)
+	go func() { done <- DownloadSingleFile(context.Background(), opt, job, nil) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for job.GetErrorCode() != ErrorCodeStalled && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if job.GetErrorCode() != ErrorCodeStalled {
+		t.Fatal("error code never set to stalled while retrying")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if c := job.GetErrorCode(); c != "" {
+		t.Fatalf("error code not cleared after recovery: %q", c)
+	}
+	assertFile(t, filepath.Join(dir, "file.bin"), payload)
+}
