@@ -3,6 +3,8 @@ package routes
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/api/handlers"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/api/middlewares"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 )
 
 func SetupRouter(r *gin.Engine) {
@@ -43,5 +45,18 @@ func SetupRouter(r *gin.Engine) {
 		v1.PUT("/settings/categories", handlers.PutCategories)
 
 		v1.POST("/downloads/batch", handlers.CreateBatch)
+
+		// Pairing token shown in Settings (not reachable by the extension).
+		v1.GET("/extension/token", handlers.GetExtensionToken)
+		v1.POST("/extension/token/regenerate", handlers.RegenerateExtensionToken)
+	}
+
+	// Browser-extension surface: the only routes extension origins may reach.
+	// Order matters: rate limit first (so guessing is throttled), then the
+	// origin + token check.
+	ext := r.Group("/ext", middlewares.ExtRateLimit(middlewares.RateLimitConfig{}), middlewares.ExtGuard(config.VerifyExtensionToken))
+	{
+		ext.GET("/ping", handlers.ExtPing)
+		ext.POST("/add", handlers.ExtAdd)
 	}
 }

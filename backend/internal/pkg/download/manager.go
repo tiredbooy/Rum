@@ -319,7 +319,9 @@ type JobCreateOptions struct {
 	// Per-download overrides; zero values mean "use the global setting".
 	Referer    string
 	UserAgent  string
-	SpeedLimit int // KB/s for this job only
+	Cookie     string // Cookie header value; never logged or returned
+	FileName   string // suggested file name (the browser's); wins over the probe's
+	SpeedLimit int    // KB/s for this job only
 	MaxRetries int
 	DestPath   string // directory; relative paths resolve under the download folder
 }
@@ -334,7 +336,7 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 	m.mu.RLock()
 	base := m.opt.Out
 	m.mu.RUnlock()
-	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent} {
+	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent, "cookie": opts.Cookie, "file_name": opts.FileName} {
 		if strings.ContainsAny(v, "\r\n\x00") {
 			return nil, &CodedError{
 				Code: codeValidation,
@@ -422,6 +424,9 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 		referer = opts.Referer
 	}
 	downloader := NewDownloader(userAgent, referer)
+	if opts.Cookie != "" {
+		downloader.Headers["Cookie"] = opts.Cookie
+	}
 
 	// 3. Run HEAD requests with bounded concurrency and a per-request timeout.
 	//
@@ -473,6 +478,9 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 		}
 
 		fileName := m.extractFileName(res.url, res.info)
+		if opts.FileName != "" && len(toHead) == 1 {
+			fileName = filesystem.SanitizeFileName(opts.FileName)
+		}
 		totalSize := utils.ConvertSizeToInt(res.info.ContentSize)
 		if totalSize == 0 && !res.info.SupportsRange {
 			// Might be a streaming URL – handle accordingly
@@ -492,6 +500,7 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 			CreatedAt:    time.Now(),
 			Referer:      opts.Referer,
 			UserAgent:    opts.UserAgent,
+			Cookie:       opts.Cookie,
 			SpeedLimit:   opts.SpeedLimit,
 			MaxRetries:   opts.MaxRetries,
 			DestPath:     opts.DestPath,

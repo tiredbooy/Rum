@@ -24,3 +24,9 @@ const (
 	CodeUnsupported  = "unsupported"
 	CodePayloadLarge = "payload_too_large"
 )
+
+// Codes for the browser-extension (/ext/*) endpoints.
+const (
+	CodeUnauthorized = "unauthorized"
+	CodeForbidden    = "forbidden"
+)

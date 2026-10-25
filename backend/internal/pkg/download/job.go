@@ -57,6 +57,11 @@ type Job struct {
 	// DestPath is the resolved download directory (see ResolveDestPath).
 	Referer    string `json:"referer,omitempty"`
 	UserAgent  string `json:"user_agent,omitempty"`
+	// Cookie is a ready-made Cookie header value (from the browser extension).
+	// Like Referer it is persisted so a resume still authenticates, but it is
+	// never returned by the API nor logged, and it is dropped on cross-host
+	// redirects by RedirectPolicy.
+	Cookie     string `json:"cookie,omitempty"`
 	SpeedLimit int    `json:"speed_limit,omitempty"` // KB/s for this job only
 	MaxRetries int    `json:"max_retries,omitempty"`
 	DestPath   string `json:"dest_path,omitempty"`
@@ -150,6 +155,7 @@ func (j *Job) SetCategory(v string)     { j.Mu.Lock(); defer j.Mu.Unlock(); j.Ca
 
 func (j *Job) GetReferer() string    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Referer }
 func (j *Job) GetUserAgent() string  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.UserAgent }
+func (j *Job) GetCookie() string     { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.Cookie }
 func (j *Job) GetSpeedLimit() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.SpeedLimit }
 func (j *Job) GetMaxRetries() int    { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.MaxRetries }
 func (j *Job) GetDestPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.DestPath }
@@ -238,6 +244,7 @@ type jobJSON struct {
 	Category          string        `json:"category,omitempty"`
 	Referer           string        `json:"referer,omitempty"`
 	UserAgent         string        `json:"user_agent,omitempty"`
+	Cookie            string        `json:"cookie,omitempty"`
 	SpeedLimit        int           `json:"speed_limit,omitempty"`
 	MaxRetries        int           `json:"max_retries,omitempty"`
 	DestPath          string        `json:"dest_path,omitempty"`
@@ -285,6 +292,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		Category:          j.Category,
 		Referer:           j.Referer,
 		UserAgent:         j.UserAgent,
+		Cookie:            j.Cookie,
 		SpeedLimit:        j.SpeedLimit,
 		MaxRetries:        j.MaxRetries,
 		DestPath:          j.DestPath,
@@ -353,6 +361,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		Category          string          `json:"category"`
 		Referer           string          `json:"referer"`
 		UserAgent         string          `json:"user_agent"`
+		Cookie            string          `json:"cookie"`
 		SpeedLimit        int             `json:"speed_limit"`
 		MaxRetries        int             `json:"max_retries"`
 		DestPath          string          `json:"dest_path"`
@@ -397,6 +406,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.Category = in.Category
 	j.Referer = in.Referer
 	j.UserAgent = in.UserAgent
+	j.Cookie = in.Cookie
 	j.SpeedLimit = in.SpeedLimit
 	j.MaxRetries = in.MaxRetries
 	j.DestPath = in.DestPath
