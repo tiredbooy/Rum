@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
 
 func TestDownloadResponseCarriesChecksumResult(t *testing.T) {
@@ -79,5 +81,12 @@ func TestChecksumEndpoints(t *testing.T) {
 	}
 	if w := post("/downloads/nope/redownload"); w.Code != http.StatusNotFound {
 		t.Fatalf("unknown id: %d", w.Code)
+	}
+
+	// The re-queued download writes into the output dir; stop it and let it
+	// settle so TempDir cleanup never races with it.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && job.GetError() == nil && !utils.IsTerminal(job.GetStatus()) {
+		time.Sleep(10 * time.Millisecond)
 	}
 }
