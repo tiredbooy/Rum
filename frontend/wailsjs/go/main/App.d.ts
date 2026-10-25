@@ -10,4 +10,10 @@ export function GetApiBase():Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function OpenDownload(arg1:string):Promise<void>;
+
+export function OpenDownloadFolder(arg1:string):Promise<void>;
+
 export function ResumedOnLaunch():Promise<number>;
+
+export function RevealDownload(arg1:string):Promise<void>;

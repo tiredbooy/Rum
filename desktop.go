@@ -37,6 +37,10 @@ type downloadItem struct {
 	ID       string `json:"id"`
 	Filename string `json:"filename"`
 	Status   string `json:"status"`
+	// Only set by GET /downloads/:id; used by the open-folder actions.
+	OutputPath string `json:"output_path"`
+	ErrorCode  string `json:"error_code"`
+	DiskPath   string `json:"disk_path"`
 }
 
 // watchCompletions polls {APIBase}/api/v1/downloads?status=completed and fires a

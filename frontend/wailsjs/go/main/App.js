@@ -18,6 +18,18 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function OpenDownload(arg1) {
+  return window['go']['main']['App']['OpenDownload'](arg1);
+}
+
+export function OpenDownloadFolder(arg1) {
+  return window['go']['main']['App']['OpenDownloadFolder'](arg1);
+}
+
 export function ResumedOnLaunch() {
   return window['go']['main']['App']['ResumedOnLaunch']();
+}
+
+export function RevealDownload(arg1) {
+  return window['go']['main']['App']['RevealDownload'](arg1);
 }

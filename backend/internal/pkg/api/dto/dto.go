@@ -133,10 +133,13 @@ type DownloadResponse struct {
 	NeededBytes int64   `json:"needed_bytes,omitempty"`
 	FreeBytes   int64   `json:"free_bytes,omitempty"`
 	DiskPath    string  `json:"disk_path,omitempty"`
-	FinalHost   string  `json:"final_host,omitempty"`
-	Category    string  `json:"category,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-	CompletedAt string  `json:"completed_at,omitempty"`
+	// OutputPath is the file's on-disk path; set only by GET /downloads/:id (the
+	// desktop shell uses it for the open-folder actions).
+	OutputPath  string `json:"output_path,omitempty"`
+	FinalHost   string `json:"final_host,omitempty"`
+	Category    string `json:"category,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	CompletedAt string `json:"completed_at,omitempty"`
 }
 
 type BatchCreateResponse struct {
