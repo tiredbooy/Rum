@@ -1,7 +1,8 @@
 # Releasing Rum
 
 1. Make sure `master` is green (CI workflow).
-2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`
+2. New version: `make release V=1.2.3` (bumps the version, commits, tags, pushes).
+   Re-tag the current version: `make tag`. Current version: `make version`.
 3. The **Release** workflow builds everything and publishes the GitHub Release.
    Tags containing `-` (e.g. `v1.2.3-rc1`) are marked as pre-releases.
 
