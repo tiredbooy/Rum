@@ -106,6 +106,10 @@ type JobManager struct {
 	// deleteTimers holds the deadline timer per hidden job. Both under mu.
 	undoWindow   time.Duration
 	deleteTimers map[string]*time.Timer
+	// finalizeMu serialises deadline finalizes with Shutdown; deletesStopped
+	// (under finalizeMu) makes timers that fire after Shutdown do nothing.
+	finalizeMu     sync.Mutex
+	deletesStopped bool
 	// nightCapHit is set by the NightController while the night window's data
 	// cap is spent; NightHolds then keeps night jobs from (re)starting.
 	nightCapHit atomic.Bool

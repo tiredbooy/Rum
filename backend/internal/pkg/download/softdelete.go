@@ -173,6 +173,13 @@ func (m *JobManager) RestoreJobs(ids []string) int {
 
 // finalizeDelete runs at the deadline: drop the job and, if asked, its data.
 func (m *JobManager) finalizeDelete(jobID string) {
+	// Held for the whole finalize (incl. the save) so Shutdown can wait for an
+	// in-flight one instead of racing its jobs.json write.
+	m.finalizeMu.Lock()
+	defer m.finalizeMu.Unlock()
+	if m.deletesStopped {
+		return
+	}
 	m.mu.Lock()
 	job, ok := m.jobs[jobID]
 	if !ok || !job.IsPendingDelete() {
@@ -265,4 +272,8 @@ func (m *JobManager) stopDeleteTimers() {
 		delete(m.deleteTimers, id)
 	}
 	m.mu.Unlock()
+	// Wait for a finalize whose timer already fired, and block later ones.
+	m.finalizeMu.Lock()
+	m.deletesStopped = true
+	m.finalizeMu.Unlock()
 }

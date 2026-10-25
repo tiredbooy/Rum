@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,6 +22,13 @@ func videoAPI(t *testing.T, mode string) {
 	freshManager(t, &download.Options{Parallel: 1, Out: t.TempDir()})
 	t.Setenv(fakeytdlp.Env, "1")
 	t.Setenv(fakeytdlp.ModeEnv, mode)
+	// A stub ffmpeg on PATH, so merged formats (h720…) are offered whether or
+	// not the machine has a real one (CI runners don't).
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ffmpeg"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	var s config.Setting
 	s.OutDir = t.TempDir()
 	s.YtdlpPath = os.Args[0]

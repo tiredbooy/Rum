@@ -6,7 +6,7 @@
   "description": "Send browser downloads to Rum",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "lint": "node scripts/lint-manifest.mjs"
   }
 }
