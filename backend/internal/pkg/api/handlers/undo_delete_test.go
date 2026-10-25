@@ -6,9 +6,28 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// settle waits for a restored job to stop transferring, so no download
+// goroutine is still writing when the test's temp dir is removed.
+func settle(t *testing.T, id string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		j, ok := GlobalManager.GetJob(id)
+		if !ok {
+			return
+		}
+		switch j.GetStatus() {
+		case "completed", "error", "paused":
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
 
 func doQuery(t *testing.T, h gin.HandlerFunc, method, url, id, body string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -52,6 +71,7 @@ func TestDeleteThenRestoreDownload(t *testing.T) {
 	if _, ok := GlobalManager.GetJob(id); !ok {
 		t.Fatal("job not restored")
 	}
+	settle(t, id)
 	w = doQuery(t, RestoreDownload, http.MethodPost, "/api/v1/downloads/"+id+"/restore", id, "")
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("restoring a visible job = %d, want 404", w.Code)
@@ -79,7 +99,9 @@ func TestBulkDeleteAndRestore(t *testing.T) {
 	if !found {
 		t.Fatalf("ids = %v, want to contain %s", resp.IDs, id)
 	}
-	body, _ := json.Marshal(map[string]any{"ids": resp.IDs})
+	// Restore only this test's job: the shared manager may hold jobs from other tests,
+	// and restoring those would restart them inside this test's temp dir.
+	body, _ := json.Marshal(map[string]any{"ids": []string{id}})
 	w = doQuery(t, RestoreDownloads, http.MethodPost, "/api/v1/downloads/restore", "", string(body))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"restored":`) {
 		t.Fatalf("bulk restore = %d %s", w.Code, w.Body.String())
@@ -87,4 +109,5 @@ func TestBulkDeleteAndRestore(t *testing.T) {
 	if _, ok := GlobalManager.GetJob(id); !ok {
 		t.Fatal("job not restored")
 	}
+	settle(t, id)
 }
