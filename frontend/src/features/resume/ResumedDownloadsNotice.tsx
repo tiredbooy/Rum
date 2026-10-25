@@ -8,10 +8,15 @@ import { toast } from "@/lib/toast";
  * asks once on mount rather than listening for an event that would already be
  * gone.
  */
+// The engine hands the count out once, so the request must be made once per
+// page load: StrictMode mounts twice in dev and the second ask would get 0.
+let resumedCount: Promise<number> | null = null;
+
 export function ResumedDownloadsNotice() {
   useEffect(() => {
     let cancelled = false;
-    void getResumedOnLaunch().then((n) => {
+    resumedCount ??= getResumedOnLaunch();
+    void resumedCount.then((n) => {
       if (cancelled || n <= 0) return;
       toast(n === 1 ? "Resumed 1 download" : `Resumed ${n} downloads`);
     });
