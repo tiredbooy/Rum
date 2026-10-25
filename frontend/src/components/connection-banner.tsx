@@ -12,7 +12,7 @@ interface ConnectionBannerProps {
   resetKey?: string;
   /** "success" for the brief "Back online" notice. */
   tone?: "warning" | "success";
-  /** Optional trailing action (e.g. a link). */
+  /** Optional action rendered before the dismiss button (e.g. "Retry all"). */
   action?: React.ReactNode;
   className?: string;
 }

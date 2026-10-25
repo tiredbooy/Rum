@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -250,6 +251,27 @@ func RetryDownload(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "Download retry started."})
+}
+
+// RetryFailedDownloads restarts every failed download that is worth retrying now
+// (skips disk-full while space is short, block pages unless overridden, and
+// expired links).
+//
+//	POST /api/v1/downloads/retry-failed
+//	body (optional): { "include_blocked": bool }
+//	resp: { retried, skipped_disk_full, skipped_blocked, skipped_expired }
+func RetryFailedDownloads(c *gin.Context) {
+	var req struct {
+		IncludeBlocked bool `json:"include_blocked"`
+	}
+	if c.Request.ContentLength != 0 {
+		// An empty body (including unknown-length) means defaults.
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
+			return
+		}
+	}
+	c.JSON(http.StatusOK, GlobalManager.RetryFailed(c.Request.Context(), req.IncludeBlocked))
 }
 
 // DownloadAnyway restarts a download that stopped on a block page and allows the

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import StatsCards from "./StatsCards";
 import AggregateEtaBanner from "./AggregateEtaBanner";
+import { RetryAllButton } from "./list-view/RetryAllButton";
 
 interface Stats {
   active: number;
@@ -92,6 +93,7 @@ export function DashboardToolbar({
         </div>
 
         <div className="flex items-center gap-2">
+          <RetryAllButton />
           <Button
             variant="outline"
             size="sm"

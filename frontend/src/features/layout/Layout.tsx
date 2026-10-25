@@ -1,10 +1,11 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Link, Outlet } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { DiskFullAlert } from "./DiskFullAlert";
 import { bannerMessage } from "@/_lib/network-banner";
 import { useNetworkBanner } from "./useNetworkBanner";
+import { RetryAllButton } from "@/features/dashboard/list-view/RetryAllButton";
 
 export default function Layout() {
   const { kind, failed } = useNetworkBanner();
@@ -28,13 +29,7 @@ export default function Layout() {
             resetKey={kind}
             tone={back ? "success" : "warning"}
             message={bannerMessage(kind, failed)}
-            action={
-              back && failed > 0 ? (
-                <Link to="/failed" className="font-medium underline underline-offset-2">
-                  Retry failed
-                </Link>
-              ) : undefined
-            }
+            action={kind === "offline" || back ? <RetryAllButton /> : undefined}
           />
 
           {/* Downloads stopped by a full disk (resume by themselves). */}

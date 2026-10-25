@@ -161,6 +161,20 @@ export async function startAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/start-all", { method: "POST" });
 }
 
+export interface RetryFailedResult {
+  retried: number;
+  skipped_disk_full: number;
+  skipped_blocked: number;
+  skipped_expired: number;
+}
+
+/** Restart every failed download that is worth retrying now. */
+export async function retryFailedDownloads(): Promise<RetryFailedResult> {
+  return request<RetryFailedResult>("/api/v1/downloads/retry-failed", {
+    method: "POST",
+  });
+}
+
 export async function pauseAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/pause-all", { method: "POST" });
 }

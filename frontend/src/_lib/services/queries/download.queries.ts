@@ -20,6 +20,7 @@ import {
   repairDownload,
   resumeDownload,
   retryDownload,
+  retryFailedDownloads,
   setDownloadPriority,
   startAllDownloads,
   startDownload,
@@ -415,6 +416,26 @@ export function useStartAllDownloads() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
+  });
+}
+
+/** Retry every retryable failed download in one go. */
+export function useRetryFailedDownloads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => retryFailedDownloads(),
+    onSuccess: (r) => {
+      const skipped = r.skipped_disk_full + r.skipped_blocked + r.skipped_expired;
+      if (r.retried === 0 && skipped > 0) {
+        toast.info(`${skipped} can't retry yet`);
+      } else {
+        toast.success(
+          skipped > 0 ? `Retrying ${r.retried}, ${skipped} skipped` : `Retrying ${r.retried}`,
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: () => toast.error("Retry failed. Check the engine and try again."),
   });
 }
 
