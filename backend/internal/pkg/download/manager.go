@@ -857,6 +857,7 @@ func (m *JobManager) runDownload(ctx context.Context, jobID string, cancel conte
 	}
 	if err != nil && finalStatus == StatusError {
 		finalUpdate.Error = err.Error()
+		finalUpdate.ErrorCode, finalUpdate.Retryable = job.GetErrorCode()
 		if df, ok := AsDiskFull(err); ok {
 			finalUpdate.ErrorCode = ErrorCodeDiskFull
 			finalUpdate.NeededBytes, finalUpdate.FreeBytes, finalUpdate.DiskPath = df.NeededBytes, df.FreeBytes, df.Path

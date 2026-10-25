@@ -12,6 +12,7 @@ type ProgressUpdate struct {
 	// without a refetch. The disk fields go with ErrorCode "disk_full".
 	Error       string `json:"error,omitempty"`
 	ErrorCode   string `json:"error_code,omitempty"`
+	Retryable   bool   `json:"retryable,omitempty"`
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
