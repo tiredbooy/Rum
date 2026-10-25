@@ -22,6 +22,7 @@ export const DOWNLOAD_ERROR_MESSAGES: Record<string, DownloadErrorInfo> = {
   disk_full: { message: "Disk is full.", action: "Free space, then retry." },
   blocked_page: { message: "Link opened a web page, not a file.", action: "Get the direct link." },
   stalled: { message: "Connection stalled, no data received.", action: "Retry, or switch VPN." },
+  site_unreachable: { message: "This site is unreachable.", action: "Try a VPN or proxy." },
   link_expired: { message: "Link expired.", action: "Get a fresh link." },
   unknown: { message: "Download failed.", action: "Retry; copy details for a bug report." },
 };

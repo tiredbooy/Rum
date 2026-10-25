@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
@@ -56,6 +57,13 @@ type ResumeController struct {
 	// touched from the ticker goroutine.
 	attempts map[string]int
 	lastDone map[string]int64
+
+	// endpoints lists the general reachability URLs; nil means probeEndpoints()
+	// (settings or defaults). Injectable for tests.
+	endpoints func() []string
+
+	// demandAt is when the UI last asked for status (unix nanos, 0 = never).
+	demandAt atomic.Int64
 
 	// conn is the latest reachability measurement (see reconnect_status.go).
 	statusMu sync.Mutex

@@ -51,3 +51,29 @@ func TestGetStatusReportsConnectivity(t *testing.T) {
 		t.Fatalf("offline: %v", got)
 	}
 }
+
+type fakeStateStatus struct {
+	fakeStatus
+	state   string
+	touched *int
+}
+
+func (f fakeStateStatus) ConnState() string { return f.state }
+func (f fakeStateStatus) Touch()            { *f.touched++ }
+
+func TestGetStatusReportsStateAndTouches(t *testing.T) {
+	old := GlobalResumer
+	t.Cleanup(func() { GlobalResumer = old })
+
+	n := 0
+	GlobalResumer = fakeStateStatus{fakeStatus{online: true}, "site_blocked", &n}
+	got := getStatus(t)
+	if got["state"] != "site_blocked" || got["online"] != true || n != 1 {
+		t.Fatalf("got %v touched=%d; want site_blocked, online, touched once", got, n)
+	}
+
+	GlobalResumer = fakeStatus{online: false}
+	if got := getStatus(t); got["state"] != "offline" {
+		t.Fatalf("plain source offline: %v", got)
+	}
+}

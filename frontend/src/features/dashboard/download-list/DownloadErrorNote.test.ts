@@ -15,6 +15,13 @@ describe("DownloadErrorNote", () => {
     expect(html).toContain("Details");
   });
 
+  it("tells the user a blocked site is unreachable, not that the internet is down", () => {
+    const html = render({ code: "site_unreachable", error: "dial tcp: i/o timeout" });
+    expect(html).toContain("This site is unreachable.");
+    expect(html).toContain("Try a VPN or proxy.");
+    expect(html).not.toMatch(/internet/i);
+  });
+
   it("uses the unknown message when the code is missing", () => {
     expect(render({ error: "boom" })).toContain("Download failed.");
   });

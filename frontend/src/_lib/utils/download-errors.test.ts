@@ -7,7 +7,7 @@ import {
 
 const CODES = [
   "network_down", "dns", "tls", "timeout", "proxy", "server_error",
-  "permission", "disk_full", "blocked_page", "stalled", "link_expired", "unknown",
+  "permission", "disk_full", "blocked_page", "stalled", "link_expired", "site_unreachable", "unknown",
 ];
 
 describe("download error map", () => {
@@ -31,6 +31,12 @@ describe("download error map", () => {
     const i = describeDownloadError("stalled");
     expect(i.message).toMatch(/stalled.*no data/i);
     expect(i.action).toMatch(/^Retry/);
+  });
+
+  it("blames the site, not the internet, for site_unreachable", () => {
+    const i = describeDownloadError("site_unreachable");
+    expect(`${i.message} ${i.action}`).toBe("This site is unreachable. Try a VPN or proxy.");
+    expect(NETWORK_ERROR_CODES.has("site_unreachable")).toBe(false);
   });
 
   it("falls back to unknown for missing or new codes", () => {

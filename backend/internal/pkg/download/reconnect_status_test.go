@@ -6,6 +6,7 @@ import (
 )
 
 func TestConnectivityStatus(t *testing.T) {
+	isolateHome(t)
 	m := newQuietManager(t)
 	c := NewResumeController(m)
 	reachable := map[string]bool{}
@@ -49,6 +50,7 @@ func TestConnectivityStatus(t *testing.T) {
 // Offline must not stick once nothing is left to probe (jobs removed or done):
 // a stale "offline" would pin the banner forever.
 func TestConnectivityStatusClearsWhenNoJobsToProbe(t *testing.T) {
+	isolateHome(t)
 	m := newQuietManager(t)
 	c := NewResumeController(m)
 	c.probe = func(context.Context, string) bool { return false }
