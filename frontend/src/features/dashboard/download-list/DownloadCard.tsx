@@ -27,6 +27,7 @@ import { CardActionsMenu } from "./CardActionsMenu";
 import { DownloadErrorNote } from "./DownloadErrorNote";
 import { DiskFullNotice } from "./DiskFullNotice";
 import { isDiskFull } from "@/_lib/disk-full";
+import { BlockedPageNotice, isBlockedPage } from "./BlockedPageNotice";
 
 interface DownloadCardProps {
   download: Download;
@@ -238,7 +239,9 @@ function DownloadCardImpl({
 
         {diskFull && <DiskFullNotice download={download} onRetry={onRetry} />}
 
-        {status === "error" && error && !diskFull && (
+        {isBlockedPage(download) && <BlockedPageNotice download={download} />}
+
+        {status === "error" && error && !diskFull && !isBlockedPage(download) && (
           <DownloadErrorNote code={download.error_code} error={error} />
         )}
       </div>

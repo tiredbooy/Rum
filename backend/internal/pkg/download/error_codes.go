@@ -45,6 +45,8 @@ func ClassifyJobError(err error) (code string, retryable bool) {
 	var netErr net.Error
 
 	switch {
+	case isBlockedPage(err):
+		return ErrCodeBlockedPage, false
 	case errors.Is(err, errStalled):
 		return ErrorCodeStalled, true
 	case errors.Is(err, ErrInsufficientDiskSpace), errors.Is(err, syscall.ENOSPC):
@@ -92,3 +94,12 @@ const ErrorCodeDiskFull = ErrCodeDiskFull
 // for the stall timeout; the engine reconnects and resumes from the offset. It
 // is also the final code if the stall outlasts every retry.
 const ErrorCodeStalled = "stalled"
+
+// ErrCodeBlockedPage: the server answered with a web page (captive portal, ISP
+// block page, login wall) where a file was expected. Never auto-retried.
+const ErrCodeBlockedPage = "blocked_page"
+
+func isBlockedPage(err error) bool {
+	var bp *blockedPageError
+	return errors.As(err, &bp)
+}

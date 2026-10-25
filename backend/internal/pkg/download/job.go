@@ -65,6 +65,13 @@ type Job struct {
 	// by hand. Cleared as soon as the job is started again. Absent in older
 	// jobs.json files, which load as false.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// FinalHost is the host that answered the first successful probe, after
+	// redirects. Shown when a block page is detected.
+	FinalHost string `json:"final_host,omitempty"`
+	// AllowBlockedPage is a one-time, in-memory override: the next run writes an
+	// HTML response even though the job does not expect one. Never persisted.
+	AllowBlockedPage bool `json:"-"`
 }
 
 func (j *Job) GetOutputPath() string   { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.OutputPath }
@@ -106,6 +113,13 @@ func (j *Job) GetErrorCode() (string, bool) {
 	defer j.Mu.RUnlock()
 	return j.ErrorCode, j.Retryable
 }
+
+func (j *Job) GetAllowBlockedPage() bool {
+	j.Mu.RLock()
+	defer j.Mu.RUnlock()
+	return j.AllowBlockedPage
+}
+func (j *Job) SetAllowBlockedPage(v bool) { j.Mu.Lock(); defer j.Mu.Unlock(); j.AllowBlockedPage = v }
 
 func (j *Job) GetCreatedAt() time.Time  { j.Mu.RLock(); defer j.Mu.RUnlock(); return j.CreatedAt }
 func (j *Job) SetCreatedAt(v time.Time) { j.Mu.Lock(); defer j.Mu.Unlock(); j.CreatedAt = v }
@@ -213,6 +227,7 @@ type jobJSON struct {
 	NeededBytes int64  `json:"needed_bytes,omitempty"`
 	FreeBytes   int64  `json:"free_bytes,omitempty"`
 	DiskPath    string `json:"disk_path,omitempty"`
+	FinalHost         string        `json:"final_host,omitempty"`
 }
 
 // MarshalJSON serializes a Job under its read lock. Without this, persisting the
@@ -254,6 +269,7 @@ func (j *Job) MarshalJSON() ([]byte, error) {
 		out.ErrorCode = ErrorCodeDiskFull
 		out.NeededBytes, out.FreeBytes, out.DiskPath = df.NeededBytes, df.FreeBytes, df.Path
 	}
+	out.FinalHost = j.FinalHost
 	return json.Marshal(out)
 }
 
@@ -312,6 +328,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 		NeededBytes       int64           `json:"needed_bytes"`
 		FreeBytes         int64           `json:"free_bytes"`
 		DiskPath          string          `json:"disk_path"`
+		FinalHost         string          `json:"final_host"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
@@ -347,6 +364,7 @@ func (j *Job) UnmarshalJSON(data []byte) error {
 	j.IntegrityHash = in.IntegrityHash
 	j.IntegrityHashAlgo = in.IntegrityHashAlgo
 	j.Interrupted = in.Interrupted
+	j.FinalHost = in.FinalHost
 	return nil
 }
 

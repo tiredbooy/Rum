@@ -115,6 +115,7 @@ type DownloadResponse struct {
 	NeededBytes int64   `json:"needed_bytes,omitempty"`
 	FreeBytes   int64   `json:"free_bytes,omitempty"`
 	DiskPath    string  `json:"disk_path,omitempty"`
+	FinalHost   string  `json:"final_host,omitempty"`
 	Category    string  `json:"category,omitempty"`
 	CreatedAt   string  `json:"created_at"`
 	CompletedAt string  `json:"completed_at,omitempty"`

@@ -124,7 +124,7 @@ func (c *ResumeController) tick(ctx context.Context) {
 			delete(c.attempts, id)
 			continue
 		}
-		if !isRetryableError(job.GetError()) {
+		if jobBlocked(job) || !isRetryableError(job.GetError()) {
 			continue // a 404 / checksum mismatch is not a connectivity problem
 		}
 		if c.attempts[id] >= maxReconnectAttempts {

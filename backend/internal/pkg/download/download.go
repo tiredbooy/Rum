@@ -82,12 +82,36 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		if offset > 0 && resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
-			job.SetDownloaded(offset)
-			job.SetTotalSize(offset)
-			job.SetStatus(StatusCompleted)
-			return nil
+			// 416 only proves the range start is past the end. Treat the file as
+			// complete when the known total (job or "bytes */N") equals what we
+			// hold; otherwise the partial is stale or the size is unknown, so
+			// discard it and refetch from zero rather than ship a truncated file.
+			total := job.GetTotalSize()
+			if total <= 0 {
+				total = totalFromContentRange(resp.Header.Get("Content-Range"))
+			}
+			if total > 0 && total == offset {
+				job.SetDownloaded(offset)
+				job.SetTotalSize(offset)
+				job.SetStatus(StatusCompleted)
+				return nil
+			}
+			if err := outFile.Truncate(0); err != nil {
+				return err
+			}
+			if _, err := outFile.Seek(0, io.SeekStart); err != nil {
+				return err
+			}
+			job.SetDownloaded(0)
+			req.Header.Del("Range")
+			return DownloadWithRange(ctx, opt, req, fileName, outFile, 0, job, progressFn)
 		}
 		return &httpStatusError{code: resp.StatusCode}
+	}
+
+	// Refuse a block page BEFORE touching the file (the truncate below included).
+	if err := checkBlockedPage(job, resp); err != nil {
+		return err
 	}
 
 	if offset > 0 && resp.StatusCode == http.StatusOK {

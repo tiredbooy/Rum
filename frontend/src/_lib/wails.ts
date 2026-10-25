@@ -26,6 +26,7 @@ declare global {
     runtime?: {
       EventsOn?: (event: string, cb: (...data: unknown[]) => void) => () => void;
       EventsOff?: (event: string, ...extra: string[]) => void;
+      BrowserOpenURL?: (url: string) => void;
     };
   }
 }
@@ -130,6 +131,18 @@ export async function chooseDir(): Promise<ChooseDirResult> {
 /** Whether the native folder picker binding is present (desktop runtime). */
 export function hasChooseDir(): boolean {
   return typeof window.go?.main?.App?.ChooseDir === "function";
+}
+
+/** Whether the desktop runtime can open a URL in the system browser. */
+export function hasOpenInBrowser(): boolean {
+  return typeof window.runtime?.BrowserOpenURL === "function";
+}
+
+/** Open an http(s) URL in the system browser. False when unavailable or unsafe. */
+export function openInBrowser(url: string): boolean {
+  if (!hasOpenInBrowser() || !/^https?:\/\//i.test(url)) return false;
+  window.runtime!.BrowserOpenURL!(url);
+  return true;
 }
 
 /**

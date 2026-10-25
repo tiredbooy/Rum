@@ -62,6 +62,13 @@ func isRetryableError(err error) bool {
 		return true
 	}
 
+	// A block page (captive portal, ISP filter, login wall) answers the same way
+	// every time; retrying cannot fix it and the user must decide.
+	var bp *blockedPageError
+	if errors.As(err, &bp) {
+		return false
+	}
+
 	// HTTP status based decisions.
 	var se *httpStatusError
 	if errors.As(err, &se) {

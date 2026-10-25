@@ -31,6 +31,8 @@ export interface Download {
   free_bytes?: number;
   /** disk_full: folder on the affected volume. */
   disk_path?: string;
+  /** Host that answered the first probe, after redirects. */
+  final_host?: string;
   priority?: DownloadPriority;
   dest_path?: string;
   created_at?: string;

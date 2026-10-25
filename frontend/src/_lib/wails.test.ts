@@ -185,3 +185,22 @@ describe("getResumedOnLaunch", () => {
     await expect(mod.getResumedOnLaunch()).resolves.toBe(0);
   });
 });
+
+describe("openInBrowser", () => {
+  it("is unavailable without the desktop runtime", async () => {
+    installWindow();
+    const w = await loadWails();
+    expect(w.hasOpenInBrowser()).toBe(false);
+    expect(w.openInBrowser("https://example.com/a.zip")).toBe(false);
+  });
+
+  it("opens http(s) URLs through the runtime and refuses other schemes", async () => {
+    const BrowserOpenURL = vi.fn();
+    installWindow(undefined, { BrowserOpenURL });
+    const w = await loadWails();
+    expect(w.openInBrowser("https://example.com/a.zip")).toBe(true);
+    expect(BrowserOpenURL).toHaveBeenCalledWith("https://example.com/a.zip");
+    expect(w.openInBrowser("file:///etc/passwd")).toBe(false);
+    expect(BrowserOpenURL).toHaveBeenCalledTimes(1);
+  });
+});
