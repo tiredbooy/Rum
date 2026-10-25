@@ -7,6 +7,7 @@ import { useClipboardUrl } from "@/hooks/useClipBoardUrl";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { isValidUrl } from "@/_lib/utils/validators";
 import { AdvancedOptions } from "./AdvancedOptions";
+import { NightToggle } from "./NightToggle";
 import { hasWildcard } from "@/features/wildcard/wildcard";
 import { WildcardExpander } from "@/features/wildcard/WildcardExpander";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
@@ -124,6 +125,8 @@ export function SingleDownloadForm() {
           className="bg-background text-foreground"
         />
       </div>
+
+      <NightToggle />
 
       <AdvancedOptions />
     </div>

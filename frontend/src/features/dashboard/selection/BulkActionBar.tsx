@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { Moon, Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -15,6 +15,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useDownloads } from "@/_lib/services/queries/download.queries";
 import type { Download } from "@/_lib/types/download-types";
+import { useMoveToNightQueue } from "@/_lib/services/queries/night-plan.queries";
 import { useSelection } from "./useSelection";
 import { useBulkActions, type BulkActionKind } from "./useBulkActions";
 
@@ -32,6 +33,7 @@ export function BulkActionBar() {
   const selectedIds = useSelection((s) => s.selectedIds);
   const clear = useSelection((s) => s.clear);
   const { run } = useBulkActions();
+  const moveToNight = useMoveToNightQueue();
   const reduceMotion = useReducedMotion();
 
   // Resolve ids → Download objects from the canonical "all" list (already
@@ -126,6 +128,29 @@ export function BulkActionBar() {
                   <RotateCcw className="size-3.5" />
                 )}
                 Retry
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 h-8"
+                onClick={() =>
+                  moveToNight.mutate({
+                    ids: selected
+                      .filter((d) => d.status !== "completed")
+                      .map((d) => d.id),
+                    enabled: true,
+                  })
+                }
+                disabled={pending !== null || moveToNight.isPending}
+                aria-label="Move to night queue"
+                title="Move to night queue"
+              >
+                {moveToNight.isPending ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <Moon className="size-3.5" />
+                )}
+                Night
               </Button>
               <Button
                 variant="ghost"

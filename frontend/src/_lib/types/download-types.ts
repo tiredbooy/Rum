@@ -39,6 +39,10 @@ export interface Download {
   completed_at?: string;
   /** Auto-organize category, echoed by the backend when set. */
   category?: string;
+  /** Assigned to the night plan: runs only inside the night window. */
+  night_queue?: boolean;
+  /** The night plan itself paused it; it restarts when the window opens. */
+  night_paused?: boolean;
 }
 
 /**
@@ -76,6 +80,8 @@ export interface DownloadReq {
   start_at?: string;
   /** Category override for auto-organize. */
   category?: string;
+  /** Run only inside the night window ("Download at night"). */
+  night_queue?: boolean;
 }
 
 /** Options accepted by the batch endpoint (POST /downloads/batch). */

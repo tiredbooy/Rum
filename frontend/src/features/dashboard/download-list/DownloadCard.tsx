@@ -23,6 +23,7 @@ import { ElementType, memo, type ReactNode } from "react";
 import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
+import { NightBadge } from "./NightBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
 import { DownloadErrorNote } from "./DownloadErrorNote";
 import { DiskFullNotice } from "./DiskFullNotice";
@@ -215,6 +216,7 @@ function DownloadCardImpl({
             <PriorityBadge priority={priority} className="hidden sm:inline-flex" />
           )}
           <CategoryBadge category={category} className="hidden sm:inline-flex" />
+          <NightBadge download={download} />
         </div>
 
         {(status === "running" || status === "paused") && (
