@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -264,7 +265,8 @@ func RetryFailedDownloads(c *gin.Context) {
 		IncludeBlocked bool `json:"include_blocked"`
 	}
 	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
+		// An empty body (including unknown-length) means defaults.
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 			writeError(c, http.StatusBadRequest, dto.CodeValidation, "invalid request body")
 			return
 		}

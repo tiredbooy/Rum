@@ -175,3 +175,17 @@ func TestRetryFailedDownloadsEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestRetryFailedDownloadsAcceptsEmptyChunkedBody(t *testing.T) {
+	setupManager(t)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/downloads/retry-failed", strings.NewReader(""))
+	c.Request.ContentLength = -1 // unknown length, empty body
+
+	RetryFailedDownloads(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", w.Code, w.Body.String())
+	}
+}
