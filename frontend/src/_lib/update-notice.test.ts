@@ -69,3 +69,9 @@ describe("UpdateBanner", () => {
     expect(html).toContain("Downloading");
   });
 });
+
+describe("update summary after Later", () => {
+  it("still reports the available release when dismissed", () => {
+    expect(updateSummary({ ...newer, dismissed: true }, false)).toBe("Rum v1.2.0 available");
+  });
+});

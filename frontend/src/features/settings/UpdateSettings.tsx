@@ -7,7 +7,7 @@ import {
   useCheckForUpdate,
   useUpdateStatus,
 } from "@/_lib/services/queries/update.queries";
-import { showUpdateBanner, updateSummary } from "@/_lib/update-notice";
+import { updateSummary } from "@/_lib/update-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUpdateDownload } from "@/features/layout/useUpdateDownload";
@@ -52,7 +52,7 @@ export function UpdateSettings() {
           >
             <RefreshCw className="w-4 h-4" /> Check now
           </Button>
-          {showUpdateBanner(status) && (
+          {status?.available && (
             <Button onClick={start} disabled={busy}>
               {busy ? "Downloading…" : "Download"}
             </Button>
