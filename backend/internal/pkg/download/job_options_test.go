@@ -289,3 +289,16 @@ func TestRedactURL(t *testing.T) {
 		t.Errorf("RedactURL dropped the host: %s", got)
 	}
 }
+
+func TestCreateRejectsControlCharsInHeaders(t *testing.T) {
+	m, _ := newManagerForTest(t, 1)
+	defer m.Shutdown()
+	for _, o := range []JobCreateOptions{
+		{Referer: "http://a/\r\nX-Evil: 1"},
+		{UserAgent: "ua\nX-Evil: 1"},
+	} {
+		if _, err := m.CreateJobsFromURLsWithOptions([]string{"http://127.0.0.1:1/f.bin"}, o); err == nil || !strings.Contains(err.Error(), "invalid") {
+			t.Fatalf("header with control chars must be rejected, got %v", err)
+		}
+	}
+}

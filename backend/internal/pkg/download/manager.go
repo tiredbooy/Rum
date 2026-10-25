@@ -328,6 +328,15 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 	m.mu.RLock()
 	base := m.opt.Out
 	m.mu.RUnlock()
+	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent} {
+		if strings.ContainsAny(v, "\r\n\x00") {
+			return nil, &CodedError{
+				Code: codeValidation,
+				Kind: KindValidation,
+				Err:  fmt.Errorf("invalid %s: contains a control character", name),
+			}
+		}
+	}
 	dest, err := ResolveDestPath(base, opts.DestPath)
 	if err != nil {
 		return nil, err

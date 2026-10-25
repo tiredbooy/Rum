@@ -120,6 +120,11 @@ export function PasteNewLinkDialog({
           )}
         </form>
       )}
+      {confirmRestart && problem && (
+        <p role="alert" className="text-xs text-destructive">
+          {problem}
+        </p>
+      )}
     </ResponsiveDialog>
   );
 }
