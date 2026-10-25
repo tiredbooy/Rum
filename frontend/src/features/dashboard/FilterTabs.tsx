@@ -10,6 +10,8 @@ export interface TabItem {
 interface FilterTabsProps {
   tabs: TabItem[];
   defaultValue?: string;
+  /** Controlled active tab; when set it wins over defaultValue. */
+  value?: string;
   onTabChange?: (value: string) => void;
   className?: string;
 }
@@ -17,12 +19,15 @@ interface FilterTabsProps {
 export function FilterTabs({
   tabs,
   defaultValue,
+  value,
   onTabChange,
   className,
 }: FilterTabsProps) {
   return (
     <Tabs
-      defaultValue={defaultValue ?? tabs[0]?.value}
+      {...(value !== undefined
+        ? { value }
+        : { defaultValue: defaultValue ?? tabs[0]?.value })}
       onValueChange={onTabChange}
       className={className}
     >

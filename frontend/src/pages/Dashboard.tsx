@@ -12,10 +12,14 @@ import { BulkActionBar } from "@/features/dashboard/selection/BulkActionBar";
 import { useSelection } from "@/features/dashboard/selection/useSelection";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAddDialogStore } from "@/stores/add-dialog-store";
-import { useEffect, useRef, useState } from "react";
+import { ListControls } from "@/features/dashboard/list-view/ListControls";
+import { VIEW_TABS, type ViewTab } from "@/features/dashboard/list-view/list-view";
+import { useListView } from "@/features/dashboard/list-view/useListView";
+import { useEffect, useRef } from "react";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState("all");
+  const activeTab = useListView((s) => s.tab);
+  const setActiveTab = useListView((s) => s.setTab);
   const openWith = useAddDialogStore((s) => s.openWith);
   const filterRef = useRef<HTMLDivElement>(null);
 
@@ -131,11 +135,14 @@ export default function Dashboard() {
         onClearCompleted={handleDeleteCompleteds}
         onDeleteAll={handleDeleteAll}
       />
+      <ListControls />
       <div ref={filterRef}>
         <FilterTabs
           tabs={tabs}
-          defaultValue="all"
-          onTabChange={setActiveTab}
+          value={activeTab}
+          onTabChange={(v) => {
+            if (VIEW_TABS.includes(v as ViewTab)) setActiveTab(v as ViewTab);
+          }}
           className="mt-4"
         />
       </div>

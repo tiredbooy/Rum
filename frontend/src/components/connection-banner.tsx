@@ -8,6 +8,8 @@ interface ConnectionBannerProps {
   online: boolean;
   /** Optional message override. */
   message?: string;
+  /** Optional action rendered before the dismiss button (e.g. "Retry all"). */
+  action?: React.ReactNode;
   className?: string;
 }
 
@@ -21,6 +23,7 @@ interface ConnectionBannerProps {
 export function ConnectionBanner({
   online,
   message = "Connection lost. Trying to reconnect…",
+  action,
   className,
 }: ConnectionBannerProps) {
   const reduceMotion = useReducedMotion();
@@ -51,6 +54,7 @@ export function ConnectionBanner({
         >
           <WifiOff className="size-4 shrink-0 text-warning" aria-hidden="true" />
           <span className="flex-1">{message}</span>
+          {action}
           <button
             type="button"
             onClick={() => setDismissed(true)}

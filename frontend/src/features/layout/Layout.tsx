@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { DiskFullAlert } from "./DiskFullAlert";
+import { RetryAllButton } from "@/features/dashboard/list-view/RetryAllButton";
 import { useProgressStore } from "@/stores/download-progress-store";
 
 export default function Layout() {
@@ -26,7 +27,9 @@ export default function Layout() {
           </header>
 
           {/* Banner: backend unreachable, or downloads blocked by the network. */}
-          <ConnectionBanner online={online && networkBlocked === 0} message={message} />
+          <ConnectionBanner online={online && networkBlocked === 0} message={message}
+            action={online ? <RetryAllButton /> : undefined}
+          />
 
           {/* Downloads stopped by a full disk (resume by themselves). */}
           <DiskFullAlert />
