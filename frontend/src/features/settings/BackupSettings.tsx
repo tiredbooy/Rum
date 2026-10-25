@@ -44,7 +44,12 @@ export function BackupSettings() {
 
   const importFile = (file: File) =>
     run("import", async () => {
-      const doc = parseDownloadList(await file.text());
+      let doc = null;
+      try {
+        doc = parseDownloadList(await file.text());
+      } catch {
+        // unreadable file: handled as "not a list" below
+      }
       if (!doc) {
         toast.error("Not a Rum download list.");
         return;

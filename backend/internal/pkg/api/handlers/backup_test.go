@@ -20,6 +20,7 @@ func TestImportExportEndpointsRoundtrip(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/downloads/import", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
 		ImportDownloads(c)
 		return w
 	}
@@ -43,5 +44,26 @@ func TestImportExportEndpointsRoundtrip(t *testing.T) {
 	ExportDownloads(c)
 	if !strings.Contains(ew.Body.String(), "http://x.test/a.zip") || !strings.Contains(ew.Header().Get("Content-Disposition"), "attachment") {
 		t.Fatalf("export: %v %s", ew.Header(), ew.Body.String())
+	}
+}
+
+// A cross-site form/text POST needs no CORS preflight; requiring a JSON content
+// type forces one, so another web page cannot inject downloads.
+func TestImportRejectsNonJSONContentType(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	GlobalManager = download.NewJobManager(&download.Options{Parallel: 1, Out: t.TempDir()})
+	t.Cleanup(GlobalManager.Shutdown)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/downloads/import",
+		strings.NewReader(`{"version":1,"downloads":[{"url":"http://x.test/a.zip"}]}`))
+	c.Request.Header.Set("Content-Type", "text/plain")
+	ImportDownloads(c)
+	if w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("want 415, got %d", w.Code)
+	}
+	if n := len(GlobalManager.GetAllJobs()); n != 0 {
+		t.Fatalf("nothing may be imported, got %d jobs", n)
 	}
 }

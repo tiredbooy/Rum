@@ -45,7 +45,7 @@ type Diagnostics struct {
 var secretKeyRe = regexp.MustCompile(`(?i)pass|token|cookie|secret|auth|credential|api_?key`)
 
 // secretParamRe matches key=value / key: value pairs that carry credentials.
-var secretParamRe = regexp.MustCompile(`(?i)\b(token|access_token|auth|authorization|password|passwd|pwd|secret|api_?key|key|sig|signature|session|sid|cookie|set-cookie)\b(\s*[=:]\s*)(?:bearer\s+|basic\s+)?[^&\s;"']+`)
+var secretParamRe = regexp.MustCompile(`(?i)\b(token|access_token|auth|authorization|password|passwd|pwd|secret|api_?key|key|hash|credential|jwt|sig|signature|session|sid|cookie|set-cookie)\b(\s*[=:]\s*)(?:bearer\s+|basic\s+)?[^&\s;"']+`)
 
 // userinfoRe matches user:pass@ inside a URL.
 var userinfoRe = regexp.MustCompile(`(://)[^/\s:@]+(:[^/\s@]*)?@`)

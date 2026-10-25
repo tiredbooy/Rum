@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"mime"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,10 @@ func ExportDownloads(c *gin.Context) {
 //	POST /api/v1/downloads/import   body: the export file
 //	resp: { added, skipped, invalid }
 func ImportDownloads(c *gin.Context) {
+	if mt, _, _ := mime.ParseMediaType(c.GetHeader("Content-Type")); mt != "application/json" {
+		writeError(c, http.StatusUnsupportedMediaType, dto.CodeValidation, "send the list as JSON")
+		return
+	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportBodyBytes)
 
 	var doc download.ExportDoc

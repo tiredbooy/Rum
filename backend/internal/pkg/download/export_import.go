@@ -108,6 +108,12 @@ func (m *JobManager) ImportDownloads(doc ExportDoc) ImportResult {
 		if sum != "" && algo != "sha256" && algo != "md5" {
 			sum, algo = "", "" // unusable checksum: import the link without it
 		}
+		if it.SpeedLimit < 0 {
+			it.SpeedLimit = 0
+		}
+		if it.MaxRetries < 0 {
+			it.MaxRetries = 0
+		}
 		job := &Job{
 			ID: uuid.New().String(), URL: u, FileName: name, Status: StatusPaused,
 			CreatedAt: time.Now(), DestPath: dest, Category: it.Category,

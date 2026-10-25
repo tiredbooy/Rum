@@ -87,3 +87,16 @@ func TestImportRejectsBadItems(t *testing.T) {
 		t.Fatalf("got %+v", res)
 	}
 }
+
+func TestImportClampsNegativeOptions(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := NewJobManager(&Options{Parallel: 1, Out: t.TempDir()})
+	t.Cleanup(m.Shutdown)
+	m.ImportDownloads(ExportDoc{Version: ExportVersion, Downloads: []ExportedDownload{
+		{URL: "http://x.test/a.zip", SpeedLimit: -5, MaxRetries: -1},
+	}})
+	jobs := m.GetAllJobs()
+	if len(jobs) != 1 || jobs[0].GetSpeedLimit() != 0 || jobs[0].GetMaxRetries() != 0 {
+		t.Fatalf("negative options must be dropped: %+v", jobs)
+	}
+}
