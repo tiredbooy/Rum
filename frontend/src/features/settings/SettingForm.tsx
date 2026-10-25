@@ -18,6 +18,8 @@ import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
 import { BackupSettings } from "./BackupSettings";
 
+import { BrowserExtensionSettings } from "./BrowserExtensionSettings";
+
 export function SettingsForm() {
   return (
     <div className="space-y-6">
@@ -55,6 +57,9 @@ export function SettingsForm() {
 
       {/* Download list export/import + diagnostics */}
       <BackupSettings />
+
+      {/* Browser-extension pairing token (GET/POST /extension/token) */}
+      <BrowserExtensionSettings />
     </div>
   );
 }

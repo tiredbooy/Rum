@@ -26,7 +26,8 @@ func SaveJobsToDisk(jobs map[string]*Job) error {
 // iteration and map write"). Each *Job marshals under its own lock.
 func PersistJobs(jobs []*Job) error {
 	backupCurrentJobs(filesystem.CreateMetadataFile("jobs.json"))
-	if err := filesystem.WriteMetadataFile("jobs.json", jobs); err != nil {
+	// 0600: jobs may carry a browser cookie kept for resume.
+	if err := writeJobsFile(jobs); err != nil {
 		writeErrorLog("Failed to save jobs: " + err.Error())
 		return err
 	}
@@ -108,4 +109,12 @@ func decodeJobs(data []byte) (jobs []*Job, skipped int, ok bool) {
 		recovered = append(recovered, &j)
 	}
 	return recovered, skipped, true
+}
+
+func writeJobsFile(jobs []*Job) error {
+	data, err := json.MarshalIndent(jobs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal jobs.json: %w", err)
+	}
+	return filesystem.AtomicWriteFile(filesystem.CreateMetadataFile("jobs.json"), data, 0o600)
 }

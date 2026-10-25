@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rum</title>
+  <link rel="stylesheet" href="ui.css">
+  <style>body { width: 300px; }</style>
+</head>
+<body>
+  <main>
+    <h1>Rum</h1>
+    <div class="row" role="status" aria-live="polite">
+      <span id="dot" class="dot" aria-hidden="true"></span>
+      <span id="status">Checking…</span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="auto"> Auto-capture</label>
+    </div>
+    <div class="row">
+      <button id="open" class="primary" disabled>Open Rum</button>
+      <button id="options">Options</button>
+    </div>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

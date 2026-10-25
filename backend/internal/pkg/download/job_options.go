@@ -78,8 +78,8 @@ func (m *JobManager) applyJobOptions(opt *Options, job *Job) {
 // job overrides neither User-Agent nor Referer, otherwise a fresh Downloader
 // carrying the job's headers (falling back to the shared one's for the other).
 func jobDownloader(opt *Options, job *Job) *Downloader {
-	ua, ref := job.GetUserAgent(), job.GetReferer()
-	if ua == "" && ref == "" {
+	ua, ref, cookie := job.GetUserAgent(), job.GetReferer(), job.GetCookie()
+	if ua == "" && ref == "" && cookie == "" {
 		return opt.Downloader
 	}
 	if ua == "" {
@@ -94,7 +94,11 @@ func jobDownloader(opt *Options, job *Job) *Downloader {
 			ref = opt.Downloader.Headers["Referer"]
 		}
 	}
-	return NewDownloader(ua, ref)
+	d := NewDownloader(ua, ref)
+	if cookie != "" {
+		d.Headers["Cookie"] = cookie
+	}
+	return d
 }
 
 // rewriteSidecarURL re-keys the resume sidecar next to outputPath to newURL,

@@ -31,7 +31,7 @@ func backupCurrentJobs(path string) {
 	if json.Unmarshal(data, &probe) != nil {
 		return
 	}
-	if err := filesystem.AtomicWriteFile(path+".bak", data, 0o644); err != nil {
+	if err := filesystem.AtomicWriteFile(path+".bak", data, 0o600) // may hold a browser cookie; err != nil {
 		log.Printf("jobs backup failed: %v", err)
 	}
 }

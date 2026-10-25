@@ -26,3 +26,5 @@ Rum
 .env
 .env.local
 !.env.example
+browser-extension/dist
+browser-extension/node_modules

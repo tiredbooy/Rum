@@ -351,11 +351,17 @@ type JobCreateOptions struct {
 	NightQueue   bool // assign to the night plan (runs only inside the window)
 
 	// Per-download overrides; zero values mean "use the global setting".
-	Referer    string
-	UserAgent  string
-	SpeedLimit int // KB/s for this job only
-	MaxRetries int
-	DestPath   string // directory; relative paths resolve under the download folder
+	Referer   string
+	UserAgent string
+	Cookie    string // Cookie header value; never logged or returned
+	FileName  string // suggested file name (the browser's); wins over the probe's
+	// RequireProbe refuses a link whose probe got no answer or an error status
+	// (instead of queueing a job that is bound to fail). The browser extension
+	// sets it: it cancels the browser's own copy once Rum accepts.
+	RequireProbe bool
+	SpeedLimit   int // KB/s for this job only
+	MaxRetries   int
+	DestPath     string // directory; relative paths resolve under the download folder
 }
 
 // CreateJobsFromURLsWithOptions creates jobs for the given URLs (same dedupe /
@@ -368,7 +374,7 @@ func (m *JobManager) CreateJobsFromURLsWithOptions(urls []string, opts JobCreate
 	m.mu.RLock()
 	base := m.opt.Out
 	m.mu.RUnlock()
-	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent} {
+	for name, v := range map[string]string{"referer": opts.Referer, "user_agent": opts.UserAgent, "cookie": opts.Cookie, "file_name": opts.FileName} {
 		if strings.ContainsAny(v, "\r\n\x00") {
 			return nil, &CodedError{
 				Code: codeValidation,
@@ -459,6 +465,9 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 		referer = opts.Referer
 	}
 	downloader := NewDownloader(userAgent, referer)
+	if opts.Cookie != "" {
+		downloader.Headers["Cookie"] = opts.Cookie
+	}
 
 	// 3. Run HEAD requests with bounded concurrency and a per-request timeout.
 	//
@@ -509,7 +518,15 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 			continue
 		}
 
+		if opts.RequireProbe && (res.info.StatusCode == 0 || res.info.StatusCode >= 400) {
+			log.Printf("probe refused for %s (status %d)", RedactURL(res.url), res.info.StatusCode)
+			continue
+		}
+
 		fileName := m.extractFileName(res.url, res.info)
+		if opts.FileName != "" && len(toHead) == 1 {
+			fileName = filesystem.SanitizeFileName(opts.FileName)
+		}
 		totalSize := utils.ConvertSizeToInt(res.info.ContentSize)
 		if totalSize == 0 && !res.info.SupportsRange {
 			// Might be a streaming URL – handle accordingly
@@ -529,6 +546,7 @@ func (m *JobManager) createJobs(urls []string, opts JobCreateOptions) ([]*Job, e
 			CreatedAt:    time.Now(),
 			Referer:      opts.Referer,
 			UserAgent:    opts.UserAgent,
+			Cookie:       opts.Cookie,
 			SpeedLimit:   opts.SpeedLimit,
 			MaxRetries:   opts.MaxRetries,
 			DestPath:     opts.DestPath,

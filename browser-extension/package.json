@@ -1,0 +1,12 @@
+{
+  "name": "rum-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Send browser downloads to Rum",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/",
+    "lint": "node scripts/lint-manifest.mjs"
+  }
+}
