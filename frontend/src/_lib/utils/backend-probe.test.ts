@@ -20,6 +20,11 @@ describe("probeBackend", () => {
 });
 
 describe("countNetworkBlocked", () => {
+  it("counts a download once when several cached lists contain it", () => {
+    const d = { id: "a", status: "error", error_code: "dns" };
+    expect(countNetworkBlocked([d, { ...d }, { id: "b", status: "error", error_code: "dns" }])).toBe(2);
+  });
+
   it("counts only errored downloads with a connectivity code", () => {
     expect(
       countNetworkBlocked([

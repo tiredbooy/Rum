@@ -21,11 +21,19 @@ export async function probeBackend(
   }
 }
 
-/** Number of downloads that failed for a connectivity reason. */
+/** Number of distinct downloads that failed for a connectivity reason. */
 export function countNetworkBlocked(
-  list: ReadonlyArray<{ status?: string; error_code?: string } | null | undefined>,
+  list: ReadonlyArray<{ id?: string; status?: string; error_code?: string } | null | undefined>,
 ): number {
-  return list.filter(
-    (d) => d?.status === "error" && !!d.error_code && NETWORK_ERROR_CODES.has(d.error_code),
-  ).length;
+  const seen = new Set<string>();
+  let n = 0;
+  for (const d of list) {
+    if (d?.status !== "error" || !d.error_code || !NETWORK_ERROR_CODES.has(d.error_code)) continue;
+    if (d.id) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+    }
+    n++;
+  }
+  return n;
 }
