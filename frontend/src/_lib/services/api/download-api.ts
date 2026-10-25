@@ -1,6 +1,7 @@
 import {
   BatchOptions,
   BatchResult,
+  ChecksumOutcome,
   DashboardStats,
   Download,
   DownloadPriority,
@@ -135,6 +136,18 @@ export async function verifyDownload(
   return request<VerifyResult>(`/api/v1/downloads/${id}/verify${query}`, {
     method: "POST",
   });
+}
+
+/** Compare a finished file with its (supplied or published) checksum. */
+export async function verifyChecksum(id: string): Promise<ChecksumOutcome> {
+  return request<ChecksumOutcome>(`/api/v1/downloads/${id}/verify-checksum`, {
+    method: "POST",
+  });
+}
+
+/** Replace a damaged file: same URL and options, fresh download. */
+export async function redownload(id: string): Promise<void> {
+  await request(`/api/v1/downloads/${id}/redownload`, { method: "POST" });
 }
 
 /**

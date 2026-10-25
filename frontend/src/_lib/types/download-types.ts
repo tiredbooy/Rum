@@ -43,6 +43,17 @@ export interface Download {
   night_queue?: boolean;
   /** The night plan itself paused it; it restarts when the window opens. */
   night_paused?: boolean;
+  /** Result of comparing the file with a checksum; absent when none was found. */
+  checksum_status?: "verified" | "mismatch";
+  checksum_result_algo?: ChecksumAlgo;
+  checksum_source?: "user" | "header" | "sidecar";
+}
+
+/** Result of POST /downloads/:id/verify-checksum. */
+export interface ChecksumOutcome {
+  status: "verified" | "mismatch" | "unavailable";
+  algo?: ChecksumAlgo;
+  source?: string;
 }
 
 /**

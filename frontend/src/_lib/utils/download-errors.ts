@@ -24,6 +24,7 @@ export const DOWNLOAD_ERROR_MESSAGES: Record<string, DownloadErrorInfo> = {
   stalled: { message: "Connection stalled, no data received.", action: "Retry, or switch VPN." },
   site_unreachable: { message: "This site is unreachable.", action: "Try a VPN or proxy." },
   link_expired: { message: "Link expired.", action: "Get a fresh link." },
+  checksum_mismatch: { message: "File is damaged.", action: "Redownload?" },
   night_limit: { message: "Night limit reached.", action: "Resumes next window." },
   unknown: { message: "Download failed.", action: "Retry; copy details for a bug report." },
 };

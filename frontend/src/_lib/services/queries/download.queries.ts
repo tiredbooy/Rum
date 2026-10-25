@@ -25,6 +25,8 @@ import {
   startAllDownloads,
   startDownload,
   verifyDownload,
+  verifyChecksum,
+  redownload,
   fetchDashboardStats,
 } from "../api/download-api";
 import { useVisibilityChange } from "@/hooks/useVisibilityChange";
@@ -448,3 +450,42 @@ export const useDashboardStats = (enabled: boolean = true) => {
     enabled,
   });
 };
+
+/** "Verify" on a completed card: compare with its checksum, show the result. */
+export function useVerifyChecksum() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => verifyChecksum(id),
+    onSuccess: (res) => {
+      if (res.status === "unavailable") toast.info("No checksum found for this file");
+      else if (res.status === "verified") toast.success("Checksum matches");
+      else toast.error("File is damaged");
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Could not verify file");
+    },
+  });
+}
+
+/** Redownload a damaged file with the same URL and options. */
+export function useRedownload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => redownload(id),
+    onMutate: (id) => {
+      patchDownloadInCaches(queryClient, id, {
+        status: "pending",
+        error: undefined,
+        error_code: undefined,
+        checksum_status: undefined,
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: downloadKeys.all });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Could not redownload");
+    },
+  });
+}

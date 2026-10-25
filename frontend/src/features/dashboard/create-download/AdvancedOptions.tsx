@@ -14,6 +14,7 @@ import { ChevronDown, FileCheck2, FolderTree, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDownloadRequestStore } from "@/stores/download-request-store";
 import { useCategories } from "@/_lib/services/queries/categories.queries";
+import { algoForChecksum } from "@/_lib/checksum";
 import type { ChecksumAlgo } from "@/_lib/types/download-types";
 import type { CategoryRule } from "@/_lib/types/setting-types";
 
@@ -78,11 +79,16 @@ export function AdvancedOptions() {
           <div className="flex gap-2">
             <Input
               id="adv-checksum"
-              placeholder="Expected hash to verify after download"
+              placeholder="Paste SHA-256 or MD5"
               value={draft.checksum ?? ""}
-              onChange={(e) =>
-                updateDraft({ checksum: e.target.value || undefined })
-              }
+              onChange={(e) => {
+                const checksum = e.target.value || undefined;
+                const detected = checksum ? algoForChecksum(checksum) : undefined;
+                updateDraft({
+                  checksum,
+                  ...(detected ? { checksum_algo: detected } : {}),
+                });
+              }}
               className="flex-1 bg-background text-foreground font-mono text-xs"
             />
             <NativeSelect
