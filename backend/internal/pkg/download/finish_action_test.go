@@ -184,7 +184,7 @@ func TestManagerFinishActionWaitsForWholeQueue(t *testing.T) {
 				return
 			}
 		}
-		w.Write([]byte("hello"))
+		w.Write([]byte("\x00hello")) // NUL: not text/plain, so not read as a block page
 	}))
 	defer srv.Close()
 
