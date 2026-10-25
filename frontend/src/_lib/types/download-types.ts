@@ -21,6 +21,8 @@ export interface Download {
   speed?: number;
   remaining: number;
   error?: string;
+  /** Stable machine code for `error` (e.g. "link_expired"); absent when unclassified. */
+  error_code?: string;
   priority?: DownloadPriority;
   dest_path?: string;
   created_at?: string;

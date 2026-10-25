@@ -119,6 +119,30 @@ export async function setDownloadPriority(
   });
 }
 
+export interface RefreshUrlResult {
+  id: string;
+  /** Partial data was kept and the download continues from it. */
+  resumed: boolean;
+  /** Partial data was discarded and the download starts from zero. */
+  restarted: boolean;
+}
+
+/**
+ * Give a failed download a fresh link. Rejects with an ApiError coded
+ * "remote_changed" when the new link is a different file; call again with
+ * `restart: true` once the user agrees to start over.
+ */
+export async function refreshDownloadUrl(
+  id: string,
+  url: string,
+  restart = false,
+): Promise<RefreshUrlResult> {
+  return request<RefreshUrlResult>(`/api/v1/downloads/${id}/url`, {
+    method: "PATCH",
+    body: JSON.stringify({ url: url.trim(), restart }),
+  });
+}
+
 export async function startAllDownloads(): Promise<void> {
   await request("/api/v1/downloads/start-all", { method: "POST" });
 }

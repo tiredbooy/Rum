@@ -23,6 +23,8 @@ import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
+import { ExpiredLinkNotice } from "./ExpiredLinkNotice";
+import { isLinkExpired } from "./link-refresh";
 
 interface DownloadCardProps {
   download: Download;
@@ -229,7 +231,9 @@ function DownloadCardImpl({
           </div>
         )}
 
-        {status === "error" && error && (
+        {isLinkExpired(download) && <ExpiredLinkNotice download={download} />}
+
+        {status === "error" && error && !isLinkExpired(download) && (
           <p
             className="text-[10px] text-destructive truncate"
             title={error}
