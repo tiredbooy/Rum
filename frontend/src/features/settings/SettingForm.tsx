@@ -13,6 +13,7 @@ import { IntegritySettings } from "./IntegritySettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { StorageSettings } from "./StorageSettings";
 import { ScheduleEditor } from "./ScheduleEditor";
+import { NightPlanEditor } from "./NightPlanEditor";
 import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
 import { BackupSettings } from "./BackupSettings";
@@ -42,6 +43,9 @@ export function SettingsForm() {
 
       {/* Bandwidth schedule + scheduled-start (PUT /settings/schedule) */}
       <ScheduleEditor />
+
+      {/* Night plan (PUT /settings/night-plan) */}
+      <NightPlanEditor />
 
       {/* Category auto-organize (PUT /settings/categories) */}
       <CategoryManager />

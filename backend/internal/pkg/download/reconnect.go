@@ -61,6 +61,9 @@ type ResumeController struct {
 	statusMu sync.Mutex
 	conn     connState
 
+	// now is the clock used for the night-window check; injectable for tests.
+	now func() time.Time
+
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	once   sync.Once
@@ -76,6 +79,7 @@ func NewResumeController(manager *JobManager) *ResumeController {
 		probe:    dialProbe,
 		attempts: make(map[string]int),
 		lastDone: make(map[string]int64),
+		now:      time.Now,
 	}
 }
 
@@ -182,7 +186,12 @@ func (c *ResumeController) tick(ctx context.Context) {
 // DiskWatcher); otherwise the live typed error decides, falling back to the
 // persisted classifier flag because a job reloaded after a restart only has the
 // error text.
-func (c *ResumeController) eligible(job *Job) bool { return jobAutoResumable(job) }
+func (c *ResumeController) eligible(job *Job) bool {
+	if c.manager != nil && c.manager.NightHolds(job, c.now()) {
+		return false // a night job waits for its window; the night plan restarts it
+	}
+	return jobAutoResumable(job)
+}
 
 // jobAutoResumable is the eligibility rule shared with the finish-action queue
 // check: a failed job that reconnect-resume would still pick up.

@@ -47,6 +47,10 @@ func SetupRouter(r *gin.Engine) {
 		v1.GET("/settings/schedule", handlers.GetSchedule)
 		v1.PUT("/settings/schedule", handlers.PutSchedule)
 
+		v1.GET("/settings/night-plan", handlers.GetNightPlan)
+		v1.PUT("/settings/night-plan", handlers.PutNightPlan)
+		v1.POST("/downloads/night-queue", handlers.MoveToNightQueue)
+
 		v1.GET("/settings/categories", handlers.GetCategories)
 		v1.PUT("/settings/categories", handlers.PutCategories)
 

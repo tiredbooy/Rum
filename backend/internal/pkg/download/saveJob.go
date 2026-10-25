@@ -58,6 +58,8 @@ func LoadJobsFromDisk(jobs map[string]*Job, urlToID map[string]string) {
 			// keep as-is
 		case job.Status == StatusPending && job.StartAt.After(time.Now()):
 			// keep pending until the schedule controller starts it
+		case job.Status == StatusPending && job.NightQueue:
+			// keep pending until the night window opens
 		case job.Status == StatusRunning || job.Status == StatusPending:
 			job.Status = StatusPaused
 			job.Interrupted = true

@@ -127,3 +127,27 @@ export interface CategorySettings {
   enabled: boolean;
   rules: CategoryRule[];
 }
+
+/* ------------------------------------------------------------------ */
+/* Night plan (GET|PUT /api/v1/settings/night-plan)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Daily night-internet window. Times are local "HH:MM"; end earlier than start
+ * means the window crosses midnight. cap_gb 0 = no cap.
+ */
+export interface NightPlan {
+  enabled: boolean;
+  start: string;
+  end: string;
+  start_at_open: boolean;
+  pause_at_close: boolean;
+  cap_gb: number;
+}
+
+/** GET response: the saved plan plus the engine's live window state. */
+export interface NightPlanState extends NightPlan {
+  active: boolean;
+  cap_reached: boolean;
+  next_start?: string;
+}

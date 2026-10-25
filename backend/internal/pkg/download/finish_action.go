@@ -161,7 +161,8 @@ func (m *JobManager) newFinishAction() *finishAction {
 
 // queueBusy reports whether any download is still to come: running, pending
 // (incl. scheduled), waiting for free disk space, or failed with a network error
-// that auto-resume-on-reconnect will retry. User-paused jobs are not queued.
+// that auto-resume-on-reconnect will retry, or parked by the night plan until
+// its next window. User-paused jobs are not queued.
 func (m *JobManager) queueBusy() bool {
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
@@ -169,6 +170,13 @@ func (m *JobManager) queueBusy() bool {
 		switch j.GetStatus() {
 		case StatusRunning, StatusPending:
 			return true
+		case StatusPaused:
+			// Night plan: a job parked by the schedule (window closed or cap
+			// spent) still has work to do tonight, so powering off or quitting
+			// now would defeat the plan. Only user-paused jobs are not queued.
+			if j.GetNightPaused() {
+				return true
+			}
 		case StatusError:
 			if _, full := AsDiskFull(j.GetError()); full {
 				return true

@@ -69,6 +69,7 @@ func CreateBatch(c *gin.Context) {
 			SpeedLimit:   req.Options.SpeedLimit,
 			MaxRetries:   req.Options.MaxRetries,
 			DestPath:     req.Options.DestPath,
+			NightQueue:   req.Options.NightQueue,
 		}
 	}
 
@@ -104,6 +105,9 @@ func CreateBatch(c *gin.Context) {
 		}
 		if req.Options != nil && req.Options.AutoStart {
 			for _, job := range jobs {
+				if GlobalManager.NightHolds(job, time.Now()) {
+					continue // night job outside its window: the night plan starts it
+				}
 				// Honor a per-download scheduled start (see ShouldDeferAutoStart):
 				// future-dated jobs stay pending for the schedule controller.
 				if download.ShouldDeferAutoStart(job) {
