@@ -67,6 +67,11 @@ export interface Setting {
   // prevent_sleep: keep the system awake (not the display) while downloading.
   // Default true.
   prevent_sleep?: boolean;
+  // check_for_updates: look for a newer release at startup, once a day. Default
+  // true. update_mirrors are URL prefixes tried when GitHub is unreachable
+  // (empty = built-in list); edit in settings.json.
+  check_for_updates?: boolean;
+  update_mirrors?: string[];
 }
 
 /** GET /api/v1/finish-action: a sleep/shutdown countdown the user can cancel. */

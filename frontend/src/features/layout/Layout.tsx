@@ -7,6 +7,7 @@ import { bannerMessage } from "@/_lib/network-banner";
 import { useNetworkBanner } from "./useNetworkBanner";
 import { RetryAllButton } from "@/features/dashboard/list-view/RetryAllButton";
 import { FinishCountdownDialog } from "./FinishCountdownDialog";
+import { UpdateNotice } from "./UpdateNotice";
 
 export default function Layout() {
   const { kind, failed } = useNetworkBanner();
@@ -32,6 +33,9 @@ export default function Layout() {
             message={bannerMessage(kind, failed)}
             action={kind === "offline" || back ? <RetryAllButton /> : undefined}
           />
+
+          {/* A newer Rum release exists (never auto-installs). */}
+          <UpdateNotice />
 
           {/* Downloads stopped by a full disk (resume by themselves). */}
           <DiskFullAlert />

@@ -17,6 +17,7 @@ import { NightPlanEditor } from "./NightPlanEditor";
 import { CategoryManager } from "./CategoryManager";
 import { DesktopSettings } from "./DesktopSettings";
 import { BackupSettings } from "./BackupSettings";
+import { UpdateSettings } from "./UpdateSettings";
 
 import { BrowserExtensionSettings } from "./BrowserExtensionSettings";
 
@@ -54,6 +55,9 @@ export function SettingsForm() {
 
       {/* Desktop preferences (PATCH /settings) */}
       <DesktopSettings />
+
+      {/* Update check (GET|POST /update) */}
+      <UpdateSettings />
 
       {/* Download list export/import + diagnostics */}
       <BackupSettings />
