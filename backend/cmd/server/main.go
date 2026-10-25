@@ -22,6 +22,7 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/download"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/logging"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/power"
 )
 
 // InitLogging sends logs to a rotating file under <UserConfigDir>/rum/logs (in
@@ -166,6 +167,12 @@ func Listen() (baseURL string, err error) {
 	download.SetQuitFunc(AppQuitFunc)
 
 	handlers.InitAPI(opt)
+
+	// Keep the system awake (not the display) while downloads run; the manager
+	// releases it when idle and on quit.
+	sleepInhibitor := power.NewInhibitor(power.SystemBackend())
+	sleepInhibitor.SetEnabled(setting.PreventSleep)
+	handlers.GlobalManager.SetSleepInhibitor(sleepInhibitor)
 
 	// Auto-resume previously-running/paused jobs on launch when the setting is on.
 	// This is the AutoResumeOnLaunch hook: a restart picks up where the last

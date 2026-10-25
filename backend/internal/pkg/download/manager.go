@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -19,6 +20,7 @@ import (
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
 	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/format"
+	"github.com/tiredbooy/Rum/backend/internal/pkg/power"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/scheduler"
 	"github.com/tiredbooy/Rum/backend/internal/pkg/utils"
 )
@@ -75,6 +77,15 @@ type JobManager struct {
 	// runWG tracks live download goroutines so GracefulShutdown can wait for
 	// them to flush their resume state after being paused.
 	runWG sync.WaitGroup
+
+	// inhibitor keeps the system awake while downloads run (nil = off);
+	// fin runs the global "when all downloads finish" action.
+	inhibitor atomic.Pointer[power.Inhibitor]
+	fin       *finishAction
+
+	// reconnectGaveUp holds ids of failed jobs auto-resume has abandoned; they
+	// no longer count as queued for the finish action. Cleared by StartJob.
+	reconnectGaveUp sync.Map
 
 	// saveMu guards the debounced-persist state below. It is never held while
 	// taking m.mu in the requesting path (see requestSave).
@@ -149,6 +160,8 @@ func NewJobManager(opt *Options) *JobManager {
 		dispatchCancel: dispatchCancel,
 	}
 
+	m.fin = m.newFinishAction()
+
 	m.mu.Lock()
 	m.loadFromDisk()
 	m.mu.Unlock()
@@ -205,9 +218,13 @@ func (m *JobManager) dispatch() {
 		var releaseOnce sync.Once
 		release := func() { releaseOnce.Do(func() { m.sched.Done(id) }) }
 
+		m.fin.activity() // new work voids a pending sleep/shutdown countdown
+		holdAwake := m.inhibitor.Load().Hold()
+
 		m.runWG.Add(1)
 		go func(id string, ctx context.Context, cancel context.CancelFunc, release func()) {
 			defer m.runWG.Done()
+			defer holdAwake()
 			defer release()
 			defer m.recoverJob(id) // turn a panic into one failed job, not a dead app
 			m.runDownload(ctx, id, cancel, release)
@@ -663,6 +680,8 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.mu.Unlock()
 	m.requestSave()
 
+	m.fin.activity()
+	m.reconnectGaveUp.Delete(jobID)
 	m.sched.Submit(jobID, scheduler.ParsePriority(normalizePriority(priority)))
 	return nil
 }
@@ -1119,6 +1138,7 @@ func (m *JobManager) ApplySettings(s config.Setting) {
 	// Outside the lock: the scheduler has its own mutex, the governor is
 	// lock-free, and the debug sink takes its own.
 	m.sched.SetMax(parallel)
+	m.inhibitor.Load().SetEnabled(s.PreventSleep)
 	if governor != nil {
 		governor.SetLimitKBps(limit)
 	}
@@ -1128,6 +1148,10 @@ func (m *JobManager) ApplySettings(s config.Setting) {
 		log.Printf("could not apply log level %q: %v", s.LogLevel, err)
 	}
 }
+
+// SetSleepInhibitor installs the wake-lock used while downloads run. Call once
+// at startup, before downloads begin; nil disables it.
+func (m *JobManager) SetSleepInhibitor(in *power.Inhibitor) { m.inhibitor.Store(in) }
 
 // Shutdown stops the dispatcher and closes the scheduler. It cancels the
 // dispatch context (waking a blocked Next), closes the scheduler (so no further
@@ -1155,6 +1179,8 @@ func (m *JobManager) Shutdown() {
 // stragglers flagged, so nothing is lost. A job the user paused by hand or that
 // already finished is left untouched.
 func (m *JobManager) GracefulShutdown(ctx context.Context) {
+	defer m.inhibitor.Load().Close() // let the system sleep again on quit
+	m.fin.cancel()
 	// No new downloads may start from here on (also flushes a pending save).
 	m.Shutdown()
 
@@ -1550,6 +1576,15 @@ func (m *JobManager) onJobFinished(job *Job) {
 		m.completionOperations(job)
 	}
 
+	// Global "when all downloads finish" action: only a download that ended on
+	// its own counts (a user pause must never power the machine off).
+	switch job.GetStatus() {
+	case StatusCompleted:
+		m.fin.noteCompleted()
+		m.fin.evaluate()
+	case StatusError:
+		m.fin.evaluate()
+	}
 }
 
 func (m *JobManager) handleBatchCompletion(batchID string, job *Job) {
@@ -1569,20 +1604,9 @@ func (m *JobManager) completionOperations(job *Job) {
 		filesystem.OpenFolder(job.GetOutputPath())
 	}
 
-	switch setting.PostDownload.Action {
-	case "shutdown":
-		if err := utils.ShutdownPC(); err != nil {
-			log.Printf("Shutdown failed: %v", err)
-		}
-	case "sleep":
-		if err := utils.SleepPC(); err != nil {
-			log.Printf("Sleep failed: %v", err)
-		}
-	case "close":
-		if quitFunc != nil {
-			quitFunc()
-		}
-	}
+	// System power actions (quit / sleep / shut down) are deliberately NOT here:
+	// this runs per job (or per batch), long before the rest of the queue is
+	// done. They belong to the global finishAction, which waits for an empty queue.
 
 	// Completion notifications are owned by the desktop poller (watchCompletions
 	// in desktop.go), which fires one native, per-download, Silent-respecting

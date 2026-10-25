@@ -152,6 +152,11 @@ func (c *ResumeController) tick(ctx context.Context) {
 			c.attempts[id] = 0
 		}
 		if c.attempts[id] >= maxReconnectAttempts {
+			// Final: stop counting it as queued so a "when all downloads
+			// finish" action isn't held hostage by it, and re-check now.
+			if _, seen := c.manager.reconnectGaveUp.LoadOrStore(id, true); !seen {
+				c.manager.fin.evaluate()
+			}
 			continue
 		}
 		if _, ok := hostPortForURL(job.GetURL()); !ok || !c.probe(ctx, job.GetURL()) {
@@ -177,7 +182,11 @@ func (c *ResumeController) tick(ctx context.Context) {
 // DiskWatcher); otherwise the live typed error decides, falling back to the
 // persisted classifier flag because a job reloaded after a restart only has the
 // error text.
-func (c *ResumeController) eligible(job *Job) bool {
+func (c *ResumeController) eligible(job *Job) bool { return jobAutoResumable(job) }
+
+// jobAutoResumable is the eligibility rule shared with the finish-action queue
+// check: a failed job that reconnect-resume would still pick up.
+func jobAutoResumable(job *Job) bool {
 	code, retryable := job.GetErrorCode()
 	if jobBlocked(job) || code == ErrCodeDiskFull || code == ErrCodeLinkExpired {
 		return false

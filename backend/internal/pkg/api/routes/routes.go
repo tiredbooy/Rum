@@ -51,5 +51,8 @@ func SetupRouter(r *gin.Engine) {
 		v1.PUT("/settings/categories", handlers.PutCategories)
 
 		v1.POST("/downloads/batch", handlers.CreateBatch)
+
+		v1.GET("/finish-action", handlers.GetFinishAction)
+		v1.POST("/finish-action/cancel", handlers.CancelFinishAction)
 	}
 }

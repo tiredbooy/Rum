@@ -6,6 +6,7 @@ import { DiskFullAlert } from "./DiskFullAlert";
 import { bannerMessage } from "@/_lib/network-banner";
 import { useNetworkBanner } from "./useNetworkBanner";
 import { RetryAllButton } from "@/features/dashboard/list-view/RetryAllButton";
+import { FinishCountdownDialog } from "./FinishCountdownDialog";
 
 export default function Layout() {
   const { kind, failed } = useNetworkBanner();
@@ -40,6 +41,7 @@ export default function Layout() {
           </main>
         </div>
       </div>
+      <FinishCountdownDialog />
     </SidebarProvider>
   );
 }
