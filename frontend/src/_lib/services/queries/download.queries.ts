@@ -26,6 +26,7 @@ import {
 } from "../api/download-api";
 import { useVisibilityChange } from "@/hooks/useVisibilityChange";
 import { toast } from "@/lib/toast";
+import { DISK_FULL, diskFullHeadline } from "@/_lib/disk-full";
 
 export const downloadKeys = {
   all: ["downloads"] as const,
@@ -52,8 +53,13 @@ export function useCreateDownloads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: DownloadReq) => createDownloads(payload),
-    onSuccess: () => {
-      toast.success("Download added");
+    onSuccess: (data) => {
+      const blocked = data?.jobs?.find((j) => j.error_code === DISK_FULL);
+      if (blocked) {
+        toast.error(diskFullHeadline({ ...blocked, status: "error" }));
+      } else {
+        toast.success("Download added");
+      }
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
     onError: (err) => {
@@ -74,7 +80,11 @@ export function useCreateBatch() {
       urls: string[];
       options?: BatchOptions;
     }) => createBatch(urls, options),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const blocked = data?.created?.find((j) => j.error_code === DISK_FULL);
+      if (blocked) {
+        toast.error(diskFullHeadline({ ...blocked, status: "error" }));
+      }
       queryClient.invalidateQueries({ queryKey: downloadKeys.all });
     },
   });

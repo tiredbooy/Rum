@@ -12,6 +12,7 @@ import {
   Clock,
   ClockFadingIcon,
   GripVertical,
+  HardDrive,
   HelpCircle,
   Pause,
   Play,
@@ -23,6 +24,8 @@ import { SpeedSparkline } from "./SpeedSparkline";
 import { PriorityBadge } from "./PriorityBadge";
 import { CategoryBadge } from "./CategoryBadge";
 import { CardActionsMenu } from "./CardActionsMenu";
+import { DiskFullNotice } from "./DiskFullNotice";
+import { isDiskFull } from "@/_lib/disk-full";
 
 interface DownloadCardProps {
   download: Download;
@@ -108,11 +111,14 @@ function DownloadCardImpl({
     category,
   } = download;
 
+  const diskFull = isDiskFull(download);
   const {
     icon: StatusIcon,
     colorClass: statusColor,
     label: statusLabel,
-  } = getStatusInfo(status);
+  } = diskFull
+    ? { icon: HardDrive, colorClass: "text-amber-400", label: "Disk full" }
+    : getStatusInfo(status);
 
   // Live speed history for the sparkline (only while actively downloading).
   const speedSamples = useSpeedHistory(speed, status === "running");
@@ -229,7 +235,9 @@ function DownloadCardImpl({
           </div>
         )}
 
-        {status === "error" && error && (
+        {diskFull && <DiskFullNotice download={download} onRetry={onRetry} />}
+
+        {status === "error" && error && !diskFull && (
           <p
             className="text-[10px] text-destructive truncate"
             title={error}
@@ -324,16 +332,19 @@ function DownloadCardImpl({
 
         {status === "error" && (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => onRetry?.(id)}
-              aria-label="Retry"
-              title="Retry"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </Button>
+            {/* Disk-full cards carry their own always-visible Retry. */}
+            {!diskFull && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onRetry?.(id)}
+                aria-label="Retry"
+                title="Retry"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"

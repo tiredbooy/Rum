@@ -24,7 +24,16 @@ export async function fetchDownloadProgress(id: string): Promise<Download> {
 }
 
 export async function createDownloads(payload: DownloadReq) {
-  return request<{ jobs: { id: string; url: string; status: string }[] }>(
+  return request<{
+    jobs: {
+      id: string;
+      url: string;
+      status: string;
+      error_code?: string;
+      needed_bytes?: number;
+      free_bytes?: number;
+    }[];
+  }>(
     "/api/v1/downloads",
     {
       method: "POST",

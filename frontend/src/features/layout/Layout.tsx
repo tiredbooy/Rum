@@ -2,6 +2,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./Sidebar";
 import { ConnectionBanner } from "@/components/connection-banner";
+import { DiskFullAlert } from "./DiskFullAlert";
 import { useProgressStore } from "@/stores/download-progress-store";
 
 export default function Layout() {
@@ -21,6 +22,9 @@ export default function Layout() {
 
           {/* Live-connection banner: shown when the SSE stream drops. */}
           <ConnectionBanner online={online} />
+
+          {/* Downloads stopped by a full disk (resume by themselves). */}
+          <DiskFullAlert />
 
           <main className="flex-1 overflow-y-auto p-6">
             <Outlet />
