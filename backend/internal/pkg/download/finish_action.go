@@ -173,7 +173,7 @@ func (m *JobManager) queueBusy() bool {
 			if _, full := AsDiskFull(j.GetError()); full {
 				return true
 			}
-			if s.AutoResumeOnReconnect && jobAutoResumable(j) {
+			if _, gaveUp := m.reconnectGaveUp.Load(j.ID); s.AutoResumeOnReconnect && !gaveUp && jobAutoResumable(j) {
 				return true
 			}
 		}

@@ -83,6 +83,10 @@ type JobManager struct {
 	inhibitor atomic.Pointer[power.Inhibitor]
 	fin       *finishAction
 
+	// reconnectGaveUp holds ids of failed jobs auto-resume has abandoned; they
+	// no longer count as queued for the finish action. Cleared by StartJob.
+	reconnectGaveUp sync.Map
+
 	// saveMu guards the debounced-persist state below. It is never held while
 	// taking m.mu in the requesting path (see requestSave).
 	saveMu     sync.Mutex
@@ -661,6 +665,7 @@ func (m *JobManager) StartJob(ctx context.Context, jobID string) error {
 	m.requestSave()
 
 	m.fin.activity()
+	m.reconnectGaveUp.Delete(jobID)
 	m.sched.Submit(jobID, scheduler.ParsePriority(normalizePriority(priority)))
 	return nil
 }

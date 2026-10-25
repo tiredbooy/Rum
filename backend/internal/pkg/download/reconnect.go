@@ -145,6 +145,11 @@ func (c *ResumeController) tick(ctx context.Context) {
 			c.attempts[id] = 0
 		}
 		if c.attempts[id] >= maxReconnectAttempts {
+			// Final: stop counting it as queued so a "when all downloads
+			// finish" action isn't held hostage by it, and re-check now.
+			if _, seen := c.manager.reconnectGaveUp.LoadOrStore(id, true); !seen {
+				c.manager.fin.evaluate()
+			}
 			continue
 		}
 		if _, ok := hostPortForURL(job.GetURL()); !ok || !c.probe(ctx, job.GetURL()) {

@@ -277,3 +277,38 @@ func TestResumeControllerStopsZeroProgressLoops(t *testing.T) {
 		t.Fatalf("attempts = %d, want <= %d", c.attempts["job-1"], maxReconnectAttempts)
 	}
 }
+
+// A job reconnect gave up on is final: it must not hold the "when all downloads
+// finish" action hostage forever, and giving up re-evaluates the action.
+func TestExhaustedReconnectJobNoLongerBlocksQueue(t *testing.T) {
+	writeReconnectSettings(t, true)
+	m := newQuietManager(t)
+
+	netErr := &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+	job := addFailedJob(m, "job-1", "https://example.test/file.bin", netErr)
+	c := NewResumeController(m)
+	c.probe = func(context.Context, string) bool { return true }
+
+	if !m.queueBusy() {
+		t.Fatal("retryable failed job must be busy while reconnect still tries")
+	}
+	for i := 0; i < maxReconnectAttempts+1; i++ {
+		job.SetStatus(StatusError)
+		job.SetError(netErr)
+		c.tick(context.Background())
+	}
+	job.SetStatus(StatusError)
+	job.SetError(netErr)
+	if m.queueBusy() {
+		t.Fatal("job reconnect gave up on must not keep the queue busy")
+	}
+	// A manual restart gives it a fresh chance.
+	if err := func() error { job.SetStatus(StatusPaused); return m.StartJob(context.Background(), "job-1") }(); err != nil {
+		t.Fatal(err)
+	}
+	job.SetStatus(StatusError)
+	job.SetError(netErr)
+	if !m.queueBusy() {
+		t.Fatal("restarted job must count as busy again")
+	}
+}
