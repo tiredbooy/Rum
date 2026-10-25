@@ -1,15 +1,15 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
 import "context"
 
-// trayAvailable is false on every non-Windows platform — see the explanation on
+// trayAvailable is false on platforms without a tray (macOS) — see the explanation on
 // the Windows const in tray_windows.go. The desktop layer reads this so the
 // close-to-tray and minimize-to-tray features degrade gracefully (they revert to
 // normal window behavior instead of hiding the window with no tray icon to
 // restore it from).
-const trayAvailable = false
+func trayAvailable() bool { return false }
 
 // startTray is a no-op outside Windows.
 //

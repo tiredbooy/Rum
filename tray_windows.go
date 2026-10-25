@@ -19,7 +19,7 @@ import (
 // thread. Two native UI loops in one process race on shared global state and
 // abort (SIGABRT inside gtk_widget_show_all on Linux). See tray_others.go for
 // the no-op used everywhere else.
-const trayAvailable = true
+func trayAvailable() bool { return true }
 
 //go:embed frontend/src/assets/tray-icon.png
 var trayIcon []byte // embed a 16x16 or 24x24 PNG

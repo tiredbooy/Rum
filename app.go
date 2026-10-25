@@ -73,7 +73,7 @@ func (a *App) startup(ctx context.Context) {
 	// started where a tray exists to minimize into — otherwise hiding the window
 	// on minimize would strand it with no tray icon to restore it from (see
 	// trayAvailable / tray_others.go).
-	if trayAvailable {
+	if trayAvailable() {
 		go a.watchMinimize(bgCtx)
 	}
 }
@@ -175,7 +175,7 @@ type DesktopCapabilities struct {
 // Capabilities returns the desktop feature matrix for the running build.
 func (a *App) Capabilities() DesktopCapabilities {
 	return DesktopCapabilities{
-		Tray:         trayAvailable,
+		Tray:         trayAvailable(),
 		FolderPicker: a.ctx != nil,
 		Platform:     goruntime.GOOS,
 	}
