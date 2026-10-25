@@ -2,7 +2,7 @@ import React from 'react'
 import {createRoot} from 'react-dom/client'
 import "./index.css"
 import App from './App'
-import { getApiBase } from './_lib/wails'
+import { getApiBase, watchWindowVisibility } from './_lib/wails'
 
 const container = document.getElementById('root')
 
@@ -21,3 +21,5 @@ function render() {
 // REST client and the SSE stream — uses the correct loopback base/port. Render
 // regardless of success so browser/dev (no binding) still boots on the fallback.
 getApiBase().finally(render)
+
+watchWindowVisibility()

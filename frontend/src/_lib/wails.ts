@@ -25,6 +25,7 @@ declare global {
           OpenDownload?: (id: string) => Promise<void>;
           JobsRestoredFromBackup?: () => Promise<boolean>;
           SaveTextFile?: (name: string, content: string) => Promise<boolean>;
+          SetWindowVisible?: (visible: boolean) => Promise<void>;
         };
       };
     };
@@ -233,4 +234,32 @@ export function onWailsEvent(
   } catch {
     return () => {};
   }
+}
+
+interface VisibilityDoc {
+  visibilityState: string;
+  addEventListener(type: "visibilitychange", h: () => void): void;
+  removeEventListener(type: "visibilitychange", h: () => void): void;
+}
+
+/**
+ * Tell the desktop shell whenever the page becomes hidden or visible, so it can
+ * send native notifications while the window is out of sight. No-op (and no
+ * listener) outside the desktop shell. Returns a cleanup function.
+ */
+export function watchWindowVisibility(
+  doc: VisibilityDoc = document,
+): () => void {
+  if (typeof window.go?.main?.App?.SetWindowVisible !== "function") {
+    return () => {};
+  }
+  const report = () => {
+    try {
+      void App.SetWindowVisible(doc.visibilityState === "visible").catch(() => {});
+    } catch {
+      // Binding missing or threw: notifications simply fall back to polling.
+    }
+  };
+  doc.addEventListener("visibilitychange", report);
+  return () => doc.removeEventListener("visibilitychange", report);
 }

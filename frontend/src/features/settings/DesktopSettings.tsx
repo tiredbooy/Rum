@@ -12,7 +12,8 @@ type ToggleField =
   | "launch_on_startup"
   | "minimize_to_tray"
   | "close_to_tray"
-  | "enable_clipboard_watch";
+  | "enable_clipboard_watch"
+  | "notify_when_hidden";
 
 const TOGGLES: {
   field: ToggleField;
@@ -43,6 +44,11 @@ const TOGGLES: {
     label: "Watch clipboard for links",
     help: "Offer to add a download link the moment you copy one.",
   },
+  {
+    field: "notify_when_hidden",
+    label: "Notify when hidden",
+    help: "Alert on disk full, failures and when all downloads finish.",
+  },
 ];
 
 /**
@@ -60,7 +66,7 @@ export function DesktopSettings() {
   const { tray, isDesktop } = useDesktopCapabilities();
 
   const value = (field: ToggleField): boolean =>
-    (settings as Setting | undefined)?.[field] ?? false;
+    (settings as Setting | undefined)?.[field] ?? field === "notify_when_hidden";
 
   return (
     <Card>
