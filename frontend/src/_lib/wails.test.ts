@@ -15,6 +15,7 @@ type AppStub = Partial<{
   ChooseDir: () => unknown;
   Capabilities: () => unknown;
   ResumedOnLaunch: () => unknown;
+  JobsRestoredFromBackup: () => unknown;
 }>;
 
 function installWindow(app?: AppStub, runtime?: unknown) {
@@ -183,6 +184,22 @@ describe("getResumedOnLaunch", () => {
     installWindow({ ResumedOnLaunch: () => Promise.reject(new Error("x")) });
     mod = await loadWails();
     await expect(mod.getResumedOnLaunch()).resolves.toBe(0);
+  });
+});
+
+describe("getJobsRestored", () => {
+  it("is false outside the desktop shell and when the binding rejects", async () => {
+    let mod = await loadWails();
+    await expect(mod.getJobsRestored()).resolves.toBe(false);
+    installWindow({ JobsRestoredFromBackup: () => Promise.reject(new Error("x")) });
+    mod = await loadWails();
+    await expect(mod.getJobsRestored()).resolves.toBe(false);
+  });
+
+  it("is true when the engine restored from backup", async () => {
+    installWindow({ JobsRestoredFromBackup: () => Promise.resolve(true) });
+    const mod = await loadWails();
+    await expect(mod.getJobsRestored()).resolves.toBe(true);
   });
 });
 

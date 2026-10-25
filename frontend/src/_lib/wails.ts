@@ -20,6 +20,8 @@ declare global {
           ChooseDir?: () => Promise<string> | string;
           Capabilities?: () => Promise<DesktopCapabilities>;
           ResumedOnLaunch?: () => Promise<number>;
+          JobsRestoredFromBackup?: () => Promise<boolean>;
+          SaveTextFile?: (name: string, content: string) => Promise<boolean>;
         };
       };
     };
@@ -177,6 +179,37 @@ export async function getResumedOnLaunch(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/**
+ * Whether the engine had to restore the download list from its backup at
+ * launch. Handed out once; false outside the desktop shell.
+ */
+export async function getJobsRestored(): Promise<boolean> {
+  if (typeof window.go?.main?.App?.JobsRestoredFromBackup !== "function") return false;
+  try {
+    return (await App.JobsRestoredFromBackup()) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Save text to a file the user picks. Uses the native save dialog in the
+ * desktop shell (webviews cannot download blobs reliably) and a plain browser
+ * download elsewhere. Resolves false when the user cancels.
+ */
+export async function saveTextFile(name: string, content: string): Promise<boolean> {
+  if (typeof window.go?.main?.App?.SaveTextFile === "function") {
+    return App.SaveTextFile(name, content);
+  }
+  const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+  return true;
 }
 
 /**

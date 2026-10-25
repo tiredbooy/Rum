@@ -18,6 +18,14 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function JobsRestoredFromBackup() {
+  return window['go']['main']['App']['JobsRestoredFromBackup']();
+}
+
 export function ResumedOnLaunch() {
   return window['go']['main']['App']['ResumedOnLaunch']();
+}
+
+export function SaveTextFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveTextFile'](arg1, arg2);
 }

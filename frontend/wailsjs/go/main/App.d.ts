@@ -10,4 +10,8 @@ export function GetApiBase():Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function JobsRestoredFromBackup():Promise<boolean>;
+
 export function ResumedOnLaunch():Promise<number>;
+
+export function SaveTextFile(arg1:string,arg2:string):Promise<boolean>;
