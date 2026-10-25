@@ -106,7 +106,7 @@ func DownloadWithRange(ctx context.Context, opt Options, req *http.Request, file
 			req.Header.Del("Range")
 			return DownloadWithRange(ctx, opt, req, fileName, outFile, 0, job, progressFn)
 		}
-		return &httpStatusError{code: resp.StatusCode}
+		return newHTTPStatusError(resp)
 	}
 
 	// Refuse a block page BEFORE touching the file (the truncate below included).
@@ -284,6 +284,7 @@ func DownloadSingleFile(ctx context.Context, opt Options, job *Job, progressFn P
 	// errors (HTTP 4xx) and context cancellation are not retried.
 	cfg := newRetryConfig(opt)
 	cfg.job = job
+	cfg.progress = job.GetDownloaded
 	if err := retryWithBackoff(ctx, cfg, func(ctx context.Context) error {
 		return downloadSingleAttempt(ctx, opt, job, url, fullPath, progressFn)
 	}); err != nil {

@@ -470,7 +470,9 @@ func runSegmentedPass(ctx context.Context, opt Options, job *Job, progressFn Pro
 			continue
 		}
 		g.Go(func() error {
-			return retryWithBackoff(gctx, cfg, func(ctx context.Context) error {
+			segCfg := cfg
+			segCfg.progress = segDone[idx].Load
+			return retryWithBackoff(gctx, segCfg, func(ctx context.Context) error {
 				return downloadSegment(ctx, opt, url, outFile, &segDone[idx], seg,
 					limiter, atomicDownloaded, totalSize, safeProgress, val)
 			})
@@ -694,7 +696,7 @@ func downloadSegment(
 			}
 			return fmt.Errorf("server ignored Range request for segment %d (got 200)", seg.Index)
 		}
-		return &httpStatusError{code: resp.StatusCode}
+		return newHTTPStatusError(resp)
 	}
 
 	// First 206 wins the right to record the resource validators for the whole

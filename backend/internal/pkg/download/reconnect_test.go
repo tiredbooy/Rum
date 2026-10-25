@@ -3,9 +3,13 @@ package download
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
@@ -64,14 +68,14 @@ func TestResumeControllerRequeuesWhenHostIsBack(t *testing.T) {
 
 	c := NewResumeController(m)
 	var probed string
-	c.probe = func(_ context.Context, addr string) bool {
-		probed = addr
+	c.probe = func(_ context.Context, target string) bool {
+		probed = target
 		return true // the network is back
 	}
 	c.tick(context.Background())
 
-	if probed != "example.test:443" {
-		t.Errorf("probed %q, want example.test:443", probed)
+	if probed != "https://example.test/file.bin" {
+		t.Errorf("probed %q, want the job URL", probed)
 	}
 	if got := job.GetStatus(); got != StatusPending && got != StatusRunning {
 		t.Fatalf("status = %q, want the job to have been re-queued", got)
@@ -177,5 +181,99 @@ func TestHostPortForURL(t *testing.T) {
 		if ok != tc.wantOK || got != tc.want {
 			t.Errorf("hostPortForURL(%q) = (%q,%v), want (%q,%v)", tc.in, got, ok, tc.want, tc.wantOK)
 		}
+	}
+}
+
+// writeProxySetting points the persisted Proxy setting at raw.
+func writeProxySetting(t *testing.T, raw string) {
+	t.Helper()
+	var s config.Setting
+	_ = s.LoadSettingMetadata()
+	s.Proxy = raw
+	if err := s.Save(); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+}
+
+// The reconnect probe must travel through the configured proxy: the target host
+// does not resolve, so the probe can only succeed via the proxy.
+func TestDialProbeGoesThroughProxy(t *testing.T) {
+	writeReconnectSettings(t, true)
+	var hits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxy.Close()
+	writeProxySetting(t, proxy.URL)
+
+	if !dialProbe(context.Background(), "http://unresolvable.invalid/file.bin") {
+		t.Fatal("probe failed; it did not go through the proxy")
+	}
+	if hits.Load() == 0 {
+		t.Fatal("proxy saw no request")
+	}
+
+	// Settings change applies without restart: a dead proxy now means unreachable.
+	proxy.Close()
+	if dialProbe(context.Background(), "http://unresolvable.invalid/file.bin") {
+		t.Fatal("probe succeeded with a dead proxy; setting not re-read")
+	}
+	writeProxySetting(t, "")
+	if dialProbe(context.Background(), "http://unresolvable.invalid/file.bin") {
+		t.Fatal("probe to an unresolvable host must fail without a proxy")
+	}
+}
+
+func TestDialProbeDirect(t *testing.T) {
+	writeReconnectSettings(t, true)
+	srv := httptest.NewServer(http.NotFoundHandler()) // any response = reachable
+	defer srv.Close()
+	if !dialProbe(context.Background(), srv.URL+"/x") {
+		t.Fatal("direct probe of a live server failed")
+	}
+}
+
+// Progress since the last attempt resets the budget; zero-progress attempts do not.
+func TestResumeControllerResetsAttemptsOnProgress(t *testing.T) {
+	writeReconnectSettings(t, true)
+	m := newQuietManager(t)
+	job := addFailedJob(m, "job-1", "https://example.test/file.bin", io.ErrUnexpectedEOF)
+
+	c := NewResumeController(m)
+	c.probe = func(context.Context, string) bool { return true }
+
+	for i := 0; i < maxReconnectAttempts*3; i++ {
+		job.SetStatus(StatusError) // the attempt failed again...
+		job.SetError(io.ErrUnexpectedEOF)
+		job.SetDownloaded(int64(i+1) * 1024) // ...but moved bytes first
+		c.tick(context.Background())
+		if job.GetStatus() == StatusError {
+			t.Fatalf("iteration %d: job with progress was abandoned", i)
+		}
+	}
+}
+
+func TestResumeControllerStopsZeroProgressLoops(t *testing.T) {
+	writeReconnectSettings(t, true)
+	m := newQuietManager(t)
+	job := addFailedJob(m, "job-1", "https://example.test/file.bin", io.ErrUnexpectedEOF)
+	job.SetDownloaded(4096)
+
+	c := NewResumeController(m)
+	probes := 0
+	c.probe = func(context.Context, string) bool { probes++; return true }
+
+	for i := 0; i < maxReconnectAttempts*3; i++ {
+		job.SetStatus(StatusError)
+		job.SetError(io.ErrUnexpectedEOF)
+		c.tick(context.Background())
+	}
+	if got := job.GetStatus(); got != StatusError {
+		t.Fatalf("status = %q, want error once the idle cap is hit", got)
+	}
+	// 1 baseline resume + maxReconnectAttempts zero-progress retries at most.
+	if c.attempts["job-1"] > maxReconnectAttempts {
+		t.Fatalf("attempts = %d, want <= %d", c.attempts["job-1"], maxReconnectAttempts)
 	}
 }

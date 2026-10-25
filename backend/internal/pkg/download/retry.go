@@ -2,6 +2,8 @@ package download
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"math"
@@ -10,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -17,6 +20,8 @@ import (
 // permanent client errors (4xx) from transient server/network errors.
 type httpStatusError struct {
 	code int
+	// retryAfter is the server's Retry-After hint (429/503), capped; 0 if absent.
+	retryAfter time.Duration
 }
 
 func (e *httpStatusError) Error() string {
@@ -69,6 +74,18 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A bad certificate will not fix itself on retry (and retrying could mask a
+	// MITM warning). Handshake *resets* (below) are different: filtered networks
+	// kill TLS mid-handshake and a retry often gets through.
+	var certErr *tls.CertificateVerificationError
+	var unknownAuth x509.UnknownAuthorityError
+	var hostErr x509.HostnameError
+	var invalidErr x509.CertificateInvalidError
+	if errors.As(err, &certErr) || errors.As(err, &unknownAuth) ||
+		errors.As(err, &hostErr) || errors.As(err, &invalidErr) {
+		return false
+	}
+
 	// HTTP status based decisions.
 	var se *httpStatusError
 	if errors.As(err, &se) {
@@ -91,6 +108,13 @@ func isRetryableError(err error) bool {
 		return true
 	}
 
+	for _, errno := range []error{syscall.ECONNRESET, syscall.ECONNREFUSED, syscall.ECONNABORTED,
+		syscall.ENETUNREACH, syscall.EHOSTUNREACH, syscall.ENETDOWN, syscall.EPIPE} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		// Timeouts and most net errors are transient.
@@ -105,7 +129,9 @@ func isRetryableError(err error) bool {
 	// Heuristic fallback for wrapped connection-reset style errors.
 	msg := strings.ToLower(err.Error())
 	for _, s := range []string{"connection reset", "broken pipe", "connection refused",
-		"unexpected eof", "timeout", "temporarily unavailable", "no route to host"} {
+		"unexpected eof", "timeout", "temporarily unavailable", "no route to host",
+		"no such host", "network is unreachable", "host is unreachable", "tls:", "handshake",
+		"proxyconnect", "server misbehaving"} {
 		if strings.Contains(msg, s) {
 			return true
 		}
@@ -162,6 +188,10 @@ type retryConfig struct {
 	maxDelay   time.Duration
 	// job, when set, gets ErrorCodeStalled while a stalled attempt is retried.
 	job *Job
+	// progress, when set, reports a monotonically growing byte count. An attempt
+	// that moved it forward before failing resets the retry budget: a download
+	// crawling over a bad link is not the same as one that is stuck.
+	progress func() int64
 }
 
 // newRetryConfig builds a retry config from opt. opt.MaxRetries bounds the retry
@@ -190,7 +220,12 @@ func newRetryConfig(opt Options) retryConfig {
 // cancellation aborts immediately and is never retried.
 func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.Context) error) error {
 	var lastErr error
-	for attempt := 0; ; attempt++ {
+	tries := 0 // consecutive failed attempts without progress
+	var lastProgress int64
+	if cfg.progress != nil {
+		lastProgress = cfg.progress()
+	}
+	for {
 		if err := ctx.Err(); err != nil {
 			if lastErr != nil {
 				return lastErr
@@ -205,7 +240,13 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 			}
 			return nil
 		}
-		if attempt >= cfg.maxRetries {
+		if cfg.progress != nil {
+			if cur := cfg.progress(); cur > lastProgress {
+				lastProgress = cur
+				tries = 0
+			}
+		}
+		if tries >= cfg.maxRetries {
 			return lastErr
 		}
 		if !isRetryableError(lastErr) {
@@ -215,7 +256,12 @@ func retryWithBackoff(ctx context.Context, cfg retryConfig, fn func(ctx context.
 		if cfg.job != nil && errors.Is(lastErr, errStalled) {
 			cfg.job.MarkStalled()
 		}
-		delay := backoffDelay(attempt, cfg.base, cfg.maxDelay, nil)
+		delay := backoffDelay(tries, cfg.base, cfg.maxDelay, nil)
+		var se *httpStatusError
+		if errors.As(lastErr, &se) && se.retryAfter > delay {
+			delay = se.retryAfter // server asked for a longer pause (429/503)
+		}
+		tries++
 		if err := sleepWithContext(ctx, delay); err != nil {
 			// Cancelled while waiting to retry: surface the original error if
 			// it was a real fault, else the context error.
