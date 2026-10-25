@@ -17,6 +17,7 @@ func extApp(t *testing.T) (*gin.Engine, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	out := t.TempDir()
 	handlers.InitAPI(&download.Options{Parallel: 1, Connections: 1, Out: out, Silent: true})
 	t.Cleanup(func() { handlers.GlobalManager.Shutdown() })

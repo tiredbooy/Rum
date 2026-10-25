@@ -11,11 +11,7 @@ import (
 // func CreateFile(fileName string, )
 
 func CreateMetadataFile(fileName string) string {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = ".rum"
-	}
-	dir := filepath.Join(configDir, "rum")
+	dir := DataDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Printf("filesystem: failed to create metadata dir %s: %v", dir, err)
 	}

@@ -61,6 +61,7 @@ func TestUpdateSettingRejectsInvalidValuesPerField(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 			w := patchSettings(t, tc.body)
 			if w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400 (%s)", w.Code, w.Body.String())
@@ -75,6 +76,7 @@ func TestUpdateSettingRejectsInvalidValuesPerField(t *testing.T) {
 
 func TestUpdateSettingAcceptsValidValues(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	w := patchSettings(t, `{"preferred_theme":"dark","ui_density":"compact","accent_color":"#1a2b3c","proxy":"127.0.0.1:1080","connections":4}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", w.Code, w.Body.String())
@@ -96,6 +98,7 @@ func TestUpdateSettingAcceptsValidValues(t *testing.T) {
 // discovered when a download fails an hour later.
 func TestUpdateSettingRejectsUnusableOutDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	// A regular file is not a folder.
 	file := filepath.Join(t.TempDir(), "not-a-dir")
@@ -115,6 +118,7 @@ func TestUpdateSettingRejectsUnusableOutDir(t *testing.T) {
 
 func TestUpdateSettingRejectsRelativeTempDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	w := patchSettings(t, `{"temp_dir":"relative/path"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (%s)", w.Code, w.Body.String())
@@ -128,6 +132,7 @@ func TestUpdateSettingRejectsRelativeTempDir(t *testing.T) {
 // picking a fresh folder in the UI should just work.
 func TestUpdateSettingCreatesMissingOutDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	target := filepath.Join(t.TempDir(), "new", "downloads")
 	body, _ := json.Marshal(map[string]string{"out_dir": target})
 
@@ -144,6 +149,7 @@ func TestUpdateSettingCreatesMissingOutDir(t *testing.T) {
 // must stay accepted.
 func TestUpdateSettingAcceptsEmptyTempDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	w := patchSettings(t, `{"temp_dir":""}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", w.Code, w.Body.String())
@@ -156,6 +162,7 @@ func writeCorruptSettings(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	path := filepath.Join(dir, "rum", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -223,6 +230,7 @@ func TestUpdateSettingAcceptsLogLevel(t *testing.T) {
 	for _, level := range []string{"debug", "info", "warn", "error"} {
 		t.Run(level, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 			w := patchSettings(t, `{"log_level":"`+level+`"}`)
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (%s)", w.Code, w.Body.String())
@@ -242,6 +250,7 @@ func TestUpdateSettingAcceptsLogLevel(t *testing.T) {
 // on the field that actually drives behaviour.
 func TestUpdateSettingRedirectsLegacyStartOnLaunch(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	w := patchSettings(t, `{"start_on_launch":false}`)
 	if w.Code != http.StatusOK {

@@ -117,6 +117,7 @@ func TestRequireProbeRefusesRejectedLink(t *testing.T) {
 
 func TestJobsFileIsPrivate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	if err := PersistJobs([]*Job{{ID: "a", URL: "http://h/f", Status: StatusPaused, Cookie: "sid=1"}}); err != nil {
 		t.Fatal(err)
 	}

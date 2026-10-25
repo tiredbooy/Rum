@@ -30,6 +30,7 @@ func TestStartOnLaunchMirrorsAutoResumeOnLaunch(t *testing.T) {
 func TestLegacyStartOnLaunchKeyIsKeptButFollowsTheCanonicalField(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	path := filepath.Join(dir, "rum", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -70,6 +71,7 @@ func TestLegacyStartOnLaunchKeyIsKeptButFollowsTheCanonicalField(t *testing.T) {
 // an older client keeps working instead of writing to a field nothing reads.
 func TestUpdateRedirectsStartOnLaunchToAutoResume(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s Setting
 	s.setDefaults()
@@ -90,6 +92,7 @@ func TestUpdateRedirectsStartOnLaunchToAutoResume(t *testing.T) {
 // When a body carries both, the canonical field wins.
 func TestUpdateCanonicalFieldWinsOverTheAlias(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s Setting
 	s.setDefaults()
@@ -106,6 +109,7 @@ func TestUpdateCanonicalFieldWinsOverTheAlias(t *testing.T) {
 
 func TestLogLevelRoundTripsThroughUpdate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s Setting
 	s.setDefaults()

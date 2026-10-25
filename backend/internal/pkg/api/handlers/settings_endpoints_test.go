@@ -13,6 +13,7 @@ import (
 
 func TestScheduleGetPutRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	// PUT a schedule.
 	put := `{"scheduled_start_enabled":true,"rules":[{"start_hour":9,"end_hour":18,"limit_kbps":500,"days":[1,2,3,4,5]}]}`
@@ -48,6 +49,7 @@ func TestScheduleGetPutRoundTrip(t *testing.T) {
 
 func TestSchedulePutValidationRejectsBadHour(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	put := `{"scheduled_start_enabled":false,"rules":[{"start_hour":99,"end_hour":18,"limit_kbps":500}]}`
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -61,6 +63,7 @@ func TestSchedulePutValidationRejectsBadHour(t *testing.T) {
 
 func TestCategoriesGetPutRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	put := `{"enabled":true,"rules":[{"name":"Video","extensions":[".mp4",".mkv"],"dest_dir":"Videos"}]}`
 	w := httptest.NewRecorder()
@@ -90,6 +93,7 @@ func TestCategoriesGetPutRoundTrip(t *testing.T) {
 
 func TestCategoriesPutValidationRejectsEmptyName(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	put := `{"enabled":true,"rules":[{"name":"","extensions":[".mp4"],"dest_dir":"X"}]}`
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

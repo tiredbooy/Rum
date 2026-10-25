@@ -21,6 +21,7 @@ func writeReconnectSettings(t *testing.T, enabled bool) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s config.Setting
 	s.OutDir = t.TempDir()

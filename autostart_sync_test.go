@@ -39,6 +39,7 @@ func autostartEntryExists(t *testing.T) bool {
 // until the next restart.
 func TestSyncAutostartAppliesAChangedPreference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	writeLaunchPref(t, true)
 	if got := syncAutostart(false); !got {
@@ -60,6 +61,7 @@ func TestSyncAutostartAppliesAChangedPreference(t *testing.T) {
 // An unchanged preference must not touch the OS entry at all.
 func TestSyncAutostartIsANoOpWhenUnchanged(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	writeLaunchPref(t, false)
 
 	if got := syncAutostart(false); got {
@@ -73,6 +75,7 @@ func TestSyncAutostartIsANoOpWhenUnchanged(t *testing.T) {
 // A missing settings file must not crash the watcher; it reads as "off".
 func TestSyncAutostartToleratesMissingSettings(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	if got := syncAutostart(false); got {
 		t.Fatal("expected the default (off) with no settings file")
 	}

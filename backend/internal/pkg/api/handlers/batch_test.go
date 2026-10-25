@@ -31,7 +31,7 @@ func newBatchFileServer(t *testing.T) *httptest.Server {
 // setupManager initializes GlobalManager against isolated config/out dirs.
 func setupManager(t *testing.T) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", t.TempDir())
 	outDir := t.TempDir()
 	var s config.Setting
 	_ = s.LoadSettingMetadata()
@@ -46,6 +46,7 @@ func setupManager(t *testing.T) {
 		if GlobalManager != nil {
 			GlobalManager.Shutdown()
 		}
+		GlobalManager = nil
 	})
 }
 

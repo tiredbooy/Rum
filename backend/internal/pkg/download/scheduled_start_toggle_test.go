@@ -13,6 +13,7 @@ import (
 func writeScheduleSettings(t *testing.T, enabled bool) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	var s config.Setting
 	s.OutDir = t.TempDir()
@@ -73,6 +74,7 @@ func TestScheduledStartDisabledLeavesJobPending(t *testing.T) {
 // Bandwidth windows are deliberately independent of the scheduled-start toggle.
 func TestBandwidthWindowAppliesWithScheduledStartOff(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	var s config.Setting
 	s.OutDir = t.TempDir()
 	s.MaxParallel = 1

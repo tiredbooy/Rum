@@ -5,7 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// renameFile is os.Rename, replaceable in tests to inject a rename failure.
+var renameFile = os.Rename
 
 // AtomicWriteFile writes data to path atomically: it writes to a temp file in
 // the SAME directory (so os.Rename stays on one filesystem) and renames it into
@@ -48,10 +52,35 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
 	if err = os.Chmod(tmpName, perm); err != nil {
 		return fmt.Errorf("atomic write: chmod temp: %w", err)
 	}
-	if err = os.Rename(tmpName, path); err != nil {
+	if err = renameFile(tmpName, path); err != nil {
 		return fmt.Errorf("atomic write: rename: %w", err)
 	}
 	return nil
+}
+
+// CleanStaleTempFiles removes AtomicWriteFile leftovers (".<name>.tmp-*") in dir
+// older than maxAge, e.g. from a process killed mid-write. Recent ones are kept
+// since a write may be in flight. It returns how many files were removed.
+func CleanStaleTempFiles(dir string, maxAge time.Duration) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, ".") || !strings.Contains(name, ".tmp-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < maxAge {
+			continue
+		}
+		if os.Remove(filepath.Join(dir, name)) == nil {
+			removed++
+		}
+	}
+	return removed
 }
 
 // SanitizeFileName strips any path components and dangerous characters from a

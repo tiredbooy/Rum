@@ -10,6 +10,7 @@ import (
 
 func TestExtensionTokenCreatedOnceAndStable(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 
 	a, err := ExtensionToken()
 	if err != nil {
@@ -27,6 +28,7 @@ func TestExtensionTokenCreatedOnceAndStable(t *testing.T) {
 func TestExtensionTokenFileIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	if _, err := ExtensionToken(); err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +43,7 @@ func TestExtensionTokenFileIsPrivate(t *testing.T) {
 
 func TestRegenerateExtensionTokenInvalidatesOld(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	old, _ := ExtensionToken()
 	fresh, err := RegenerateExtensionToken()
 	if err != nil {
@@ -59,6 +62,7 @@ func TestRegenerateExtensionTokenInvalidatesOld(t *testing.T) {
 
 func TestVerifyExtensionToken(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	tok, _ := ExtensionToken()
 	cases := map[string]bool{
 		tok:                  true,
@@ -80,6 +84,7 @@ func TestVerifyExtensionToken(t *testing.T) {
 func TestExtensionTokenReplacesWeakFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	p := filepath.Join(dir, "rum", extTokenFile)
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
 	_ = os.WriteFile(p, []byte("abc"), 0o600)

@@ -2,13 +2,13 @@ package download
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/tiredbooy/Rum/backend/internal/pkg/config"
+	filesystem "github.com/tiredbooy/Rum/backend/internal/pkg/file-system"
 )
 
 // debugFile is the verbose per-download trace sink (<config>/rum/logs/debug.log).
@@ -56,12 +56,7 @@ func SetDebugLogging(enabled bool) error {
 		return nil // already on
 	}
 
-	path, err := os.UserConfigDir()
-	if err != nil {
-		log.Println("Failed to get user config path")
-		return err
-	}
-	dir := filepath.Join(path, "rum", "logs")
+	dir := filepath.Join(filesystem.DataDir(), "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}

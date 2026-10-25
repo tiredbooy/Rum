@@ -12,9 +12,7 @@ import (
 )
 
 func TestImportExportEndpointsRoundtrip(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	GlobalManager = download.NewJobManager(&download.Options{Parallel: 1, Out: t.TempDir()})
-	t.Cleanup(GlobalManager.Shutdown)
+	freshManager(t, &download.Options{Parallel: 1, Out: t.TempDir()})
 
 	post := func(body string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
@@ -50,9 +48,7 @@ func TestImportExportEndpointsRoundtrip(t *testing.T) {
 // A cross-site form/text POST needs no CORS preflight; requiring a JSON content
 // type forces one, so another web page cannot inject downloads.
 func TestImportRejectsNonJSONContentType(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	GlobalManager = download.NewJobManager(&download.Options{Parallel: 1, Out: t.TempDir()})
-	t.Cleanup(GlobalManager.Shutdown)
+	freshManager(t, &download.Options{Parallel: 1, Out: t.TempDir()})
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

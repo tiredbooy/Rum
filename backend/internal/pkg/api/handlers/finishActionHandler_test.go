@@ -11,9 +11,7 @@ import (
 )
 
 func TestFinishActionEndpointsIdleAndCancel(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	InitAPI(&download.Options{Parallel: 1, Connections: 1, Silent: true})
-	defer GlobalManager.Shutdown()
+	freshManager(t, &download.Options{Parallel: 1, Connections: 1, Silent: true})
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

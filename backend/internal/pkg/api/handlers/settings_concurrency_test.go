@@ -17,6 +17,7 @@ import (
 // the earlier one: a toggle showed "Saved" and was gone on the next reload.
 func TestConcurrentSettingsWritesAreNotLost(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("RUM_CONFIG_DIR", "") // let XDG_CONFIG_HOME pick the dir
 	gin.SetMode(gin.TestMode)
 
 	const rounds = 25
