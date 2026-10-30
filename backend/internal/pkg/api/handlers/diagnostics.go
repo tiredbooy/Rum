@@ -18,7 +18,7 @@ import (
 
 // AppVersion is reported in diagnostics. Override at build time with
 // -ldflags "-X github.com/tiredbooy/Rum/backend/internal/pkg/api/handlers.AppVersion=...".
-var AppVersion = "1.0.0"
+var AppVersion = "1.2.3"
 
 // diagLogLines is how many trailing log lines a diagnostics report carries.
 const diagLogLines = 50

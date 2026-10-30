@@ -10,7 +10,7 @@
   "info": {
     "companyName": "tiredbooy",
     "productName": "Rum",
-    "productVersion": "1.0.0",
+    "productVersion": "1.2.3",
     "copyright": "Copyright © 2026 tiredbooy",
     "comments": "Rum Is a Fast & Modern Download Manager Written In golang"
   },
